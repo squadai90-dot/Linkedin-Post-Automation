@@ -2,3 +2,5 @@ node_modules
 dist
 .vercel
 .env*
+playwright-report
+test-results
