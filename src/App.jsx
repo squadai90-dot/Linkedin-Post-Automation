@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
-import { STORE_KEY, persistentStore } from "./lib/store.js";
+import { STORE_KEY, persistentStore, sanitizeSession } from "./lib/store.js";
 import { P, S } from "./lib/pointer.js";
 import { friendlyError, askJSON, JSON_RULE, fb, WEB_SEARCH_TOOL, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
 import { EMPTY_CONNECTION, withDerived, linkedinService, readCallbackParams } from "./lib/linkedin.js";
@@ -18,7 +18,7 @@ import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js"
 import { downloadBlob } from "./lib/brand.js";
 import { todayISO, isDue } from "./lib/dates.js";
 import { loadPublishSettings, savePublishSettings } from "./lib/publish.js";
-import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources } from "./lib/freeApis.js";
+import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources, fetchImageAsDataUrl } from "./lib/freeApis.js";
 import {
   loadLinkedInSettings, saveLinkedInSettings, getLinkedInSettings, isLinkedInConfigured, isBridgeConfigured, toAppConnection,
   readAuthCallback, exchangeCode, connectionFromToken, fetchOrganizations, beginAuthorization, disconnectLinkedIn as disconnectBrowserLinkedIn,
@@ -94,10 +94,26 @@ export default function UnisonContentOS() {
   const [publishError, setPublishError] = useState(null);
   const [publishVia, setPublishVia] = useState(null);      // "make" | "api" — which route the last publish took
   const [publishUnverified, setPublishUnverified] = useState(false);
+  const [publishLimits, setPublishLimits] = useState([]);
+  const [publishKind, setPublishKind] = useState(null);   // why the last send failed, for the recovery UI
+  const [publishFramed, setPublishFramed] = useState(false);
   const [sentKeys, setSentKeys] = useState([]);            // idempotency: posts already handed to Make
   const [makeCompany, setMakeCompany] = useState({ name: "", urn: "" });
   const [relay, setRelay] = useState({ relay: false, checked: false });
   useEffect(() => { makeLinkedInService.health().then((r) => setRelay({ ...r, checked: true })); }, []);
+
+  const [analytics, setAnalytics] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const [openClaim, setOpenClaim] = useState(null);
+  const [openPost, setOpenPost] = useState(null);
+  const [undoStack, setUndoStack] = useState([]);
+
+  const [tone, setTone] = useState("Confident");
+  const [pov, setPov] = useState("Strong opinion");
+  const [length, setLength] = useState("Medium");
+  const [voice, setVoice] = useState(DEFAULT_VOICE);
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
 
   /* Device-level settings: AI key, LinkedIn app, publishing webhook. Kept out
      of the session blob so clearing or exporting a session never carries them. */
@@ -112,18 +128,6 @@ export default function UnisonContentOS() {
   const updatePublish = (patch) => setPubSettings(savePublishSettings(patch));
   const [extras, setExtras] = useState(DEFAULT_EXTRAS);        // free public APIs on/off (persisted with the session)
   const [setupHidden, setSetupHidden] = useState(false);       // the first-run checklist on Home
-  const [analytics, setAnalytics] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [showDetail, setShowDetail] = useState(false);
-  const [openClaim, setOpenClaim] = useState(null);
-  const [openPost, setOpenPost] = useState(null);
-  const [undoStack, setUndoStack] = useState([]);
-
-  const [tone, setTone] = useState("Confident");
-  const [pov, setPov] = useState("Strong opinion");
-  const [length, setLength] = useState("Medium");
-  const [voice, setVoice] = useState(DEFAULT_VOICE);
-  const [profile, setProfile] = useState(DEFAULT_PROFILE);
 
   /* Three sources of truth for the LinkedIn connection, in priority order:
      a real server-side OAuth API (if one is deployed), the browser sign-in
@@ -142,6 +146,13 @@ export default function UnisonContentOS() {
     ? (v) => { const next = typeof v === "function" ? v(conn) : v; setLiTransient({ status: next.status, error: next.error || null }); }
     : setBaseConn;
   const linkedin = useMemo(() => withDerived(conn), [conn]);
+  /* The single answer to "will pressing Publish actually send anything?".
+     Both the button label and the send path read this, so they can never
+     disagree. */
+  const publishReady = useMemo(
+    () => makeLinkedInService.configured() && !linkedin.simulated && (linkedin.viaWorkflow || (liMeta.mode === "browser" && linkedin.connected)),
+    [linkedin, liMeta.mode],
+  );
   const [failMode, setFailMode] = useState(false);
   const [searchOn, setSearchOn] = useState(true);
   const [notes, setNotes] = useState([{ t: "09:14", text: "3 posts are waiting for your review." }]);
@@ -176,12 +187,16 @@ export default function UnisonContentOS() {
     (async () => {
       try {
         const r = await persistentStore.get(STORE_KEY);
-        if (r?.value) {
-          const d = JSON.parse(r.value);
+        const d = r?.value ? sanitizeSession(r.value) : null;
+        /* The UI is live while this resolves. If the user already started
+           something, keep their work and restore only what it cannot conflict
+           with. */
+        const busyAlready = !!workRef.current;
+        if (d) {
           d.theme && setTheme(d.theme);
-          d.idea && setIdea(d.idea);
-          d.stage && setStage(settleStage(d));
-          d.steps && setSteps(settleSteps(d.steps));
+          if (!busyAlready) d.idea && setIdea(d.idea);
+          if (!busyAlready) d.stage && setStage(settleStage(d));
+          if (!busyAlready) d.steps && setSteps(settleSteps(d.steps));
           d.tone && setTone(d.tone); d.pov && setPov(d.pov); d.length && setLength(d.length);
           if (d.publishState && ["SENT", "PUBLISHED", "FAILED", "SIMULATED"].includes(d.publishState)) {
             setPublishState(d.publishState); d.publishVia && setPublishVia(d.publishVia);
@@ -189,20 +204,20 @@ export default function UnisonContentOS() {
             Array.isArray(d.publishLimits) && setPublishLimits(d.publishLimits); d.publishKind && setPublishKind(d.publishKind);
             setPublishUnverified(!!d.publishUnverified);
           }
-          d.research && setResearch(d.research);
-          d.angles && setAngles(d.angles);
-          d.angle && setAngle(d.angle);
-          d.draft && setDraft(d.draft);
-          d.verification && setVerification(d.verification);
-          d.quality && setQuality(d.quality);
-          d.media && setMedia(d.media);
-          (d.formats || d.format) && setFormats(normalizeFormats(d.formats || d.format));
-          d.workId && setWorkId(d.workId);
+          if (!busyAlready) d.research && setResearch(d.research);
+          if (!busyAlready) d.angles && setAngles(d.angles);
+          if (!busyAlready) d.angle && setAngle(d.angle);
+          if (!busyAlready) d.draft && setDraft(d.draft);
+          if (!busyAlready) d.verification && setVerification(d.verification);
+          if (!busyAlready) d.quality && setQuality(d.quality);
+          if (!busyAlready) d.media && setMedia(d.media);
+          d.formats && setFormats(normalizeFormats(d.formats));
+          if (!busyAlready) d.workId && setWorkId(d.workId);
           d.drafts && setDrafts(d.drafts);
           d.sentKeys && setSentKeys(d.sentKeys);
           d.makeCompany && setMakeCompany(d.makeCompany);
-          d.assets && setAssets({ ...EMPTY_ASSETS, ...d.assets });
-          d.versions && setVersions(d.versions);
+          if (!busyAlready) d.assets && setAssets({ ...EMPTY_ASSETS, ...d.assets });
+          if (!busyAlready) d.versions && setVersions(d.versions);
           d.schedule && setSchedule(d.schedule);
           d.analytics && setAnalytics(d.analytics);
           d.voice && setVoice(d.voice);
@@ -218,10 +233,12 @@ export default function UnisonContentOS() {
           if (typeof d.bg3d === "boolean") setBg3d(d.bg3d);
           if (d.extras && typeof d.extras === "object") setExtras({ ...DEFAULT_EXTRAS, ...d.extras });
           if (typeof d.setupHidden === "boolean") setSetupHidden(d.setupHidden);
-          if (d.idea) setView("workspace");
-          if (d.workId) workRef.current = d.workId;
+          if (d.idea && !busyAlready) setView("workspace");
+          if (d.workId && !busyAlready) workRef.current = d.workId;
           /* research that was cut off by a reload is started again */
-          if (d.idea && d.workId && !d.research && settleStage(d) === "RESEARCHING") setTimeout(() => runDiscovery(d.idea, d.formats || d.format || "text", d.workId), 0);
+          /* runDiscovery resets research itself, so restarting is always safe —
+             gating on !d.research stranded a save made between research and angles. */
+          if (!busyAlready && d.idea && d.workId && settleStage(d) === "RESEARCHING") setTimeout(() => runDiscovery(d.idea, d.formats || "text", d.workId), 0);
         }
       } catch (e) { /* first run */ }
       setRestored(true);
@@ -271,7 +288,8 @@ export default function UnisonContentOS() {
   const finishedNow = FINISHED.includes(stage) && publishState !== "FAILED";
   const snapshotWork = () => ({
     id: workId, title: idea, idea, formats, stage, steps, research, angles, angle, draft, verification, quality,
-    media, assets: compactAssets(assets), versions: versions.slice(-6), schedule, tone, pov, length, undoStack: undoStack.slice(-3), savedAt: new Date().toISOString(),
+    media, assets: compactAssets(assets), versions: versions.slice(-6), schedule, tone, pov, length, undoStack: undoStack.slice(-3),
+    audit: audit.slice(-40), analytics, savedAt: new Date().toISOString(),
   });
   useEffect(() => {
     if (!restored || !workId || !idea) return;
@@ -287,7 +305,7 @@ export default function UnisonContentOS() {
   /* Clears the workspace without touching the drafts list. */
   function clearWork() {
     abortRef.current?.abort(); runRef.current += 1; workRef.current = null;
-    setWorkId(null); setIdea(""); setRecFormat(null); setStage("IDEA"); setResearch(null); setAngles(null); setAngle(null);
+    setWorkId(null); setIdea(""); setRecFormat(null); recordIdRef.current = null; autoPublishRef.current = null; setStage("IDEA"); setResearch(null); setAngles(null); setAngle(null);
     setDraft(null); setVerification(null); setQuality(null); setMedia(null); setFormats(["text"]);
     setAssets(EMPTY_ASSETS); setMstate({}); setVersions([]); setPublishState(null); setAttempts([]);
     setAnalytics(null); setSteps([]); setAudit([]); setUndoStack([]); setBusy(false);
@@ -308,10 +326,13 @@ export default function UnisonContentOS() {
     setPublishError(null); setPublishLimits(opts.limits || []); setPublishKind(null); setPublishFramed(false); setPublishUnverified(!!opts.unverified);
     setBusy(false); setDupDismissed(false); setOpenClaim(null); setAudit(d.audit || []); autoRef.current = `${d.idea}|${normalizeFormats(d.formats || "text").join("+")}`;
     // a job that was mid-flight when the draft was parked settles to the last completed stage
-    setStage(opts.stage || settleStage(d));
+    /* A failed publish reopens as Approved: the retry card needs publishState,
+       which a draft snapshot does not carry, so FAILED would be a dead end. */
+    const settled = opts.stage || settleStage(d);
+    setStage(settled === "FAILED" ? "APPROVED" : settled);
     setView("workspace"); setNavOpen(false); setModal(null); setOpenPost(null);
     window.scrollTo({ top: 0 });
-    if (!d.research && !opts.stage) runDiscovery(d.idea, d.formats || "text", d.id);
+    if (!opts.stage && settleStage(d) === "RESEARCHING") runDiscovery(d.idea, d.formats || "text", d.id);
   }
 
   /* A scheduled, sent or published post can always be reopened from its
@@ -319,6 +340,7 @@ export default function UnisonContentOS() {
   function openPostInWorkspace(post, { publish = false } = {}) {
     const snap = post.snapshot || { idea: post.topic || post.title, formats: post.formats || "text", draft: post.content, assets: { ...EMPTY_ASSETS, poll: post.poll || null } };
     const id = post.workId || snap.id || post.id;
+    recordIdRef.current = post.id;          // keep the row this post already has
     if (publish) autoPublishRef.current = id;
     openDraft({ ...snap, id, idea: snap.idea || post.topic || post.title, savedAt: snap.savedAt || post.scheduledAt }, {
       stage: stageOfPost(post),
@@ -388,11 +410,18 @@ export default function UnisonContentOS() {
 
       const cb = readCallbackParams();
       if (!cb) return;
+      /* `setConn` is chosen by the render that created this effect, when the
+         mode was still unknown. Write to the store the freshly fetched mode
+         actually names, so an error is never swallowed. */
+      const setConnNow = (patch) => {
+        if (st.mode === "real") setBaseConn((c) => ({ ...c, ...patch }));
+        else setLiTransient((t) => ({ ...(t || {}), ...patch }));
+      };
       if (cb.result === "authorized") {
         setModal("linkedin");                    // authorised — now choose a Page
         notify("LinkedIn authorised. Choose the Company Page to connect.");
       } else if (cb.result === "denied") {
-        setConn((c) => ({ ...c, status: "disconnected", error: "Authorization was cancelled on LinkedIn." }));
+        setConnNow({ status: "disconnected", error: "Authorization was cancelled on LinkedIn." });
         notify("LinkedIn authorization was cancelled.");
       } else if (cb.result === "unavailable") {
         notify("Real LinkedIn authorization isn't configured, so Unison stayed in prototype mode.");
@@ -400,7 +429,7 @@ export default function UnisonContentOS() {
         const why = cb.reason === "invalid_state" ? "The authorization response failed a security check."
           : cb.reason === "exchange_failed" ? "LinkedIn rejected the authorization exchange."
           : "Authorization failed.";
-        setConn((c) => ({ ...c, status: "error", error: why }));
+        setConnNow({ status: "error", error: why });
         notify(why);
       }
     })();
@@ -517,7 +546,7 @@ Be terse.`,
       const merged = { ...r, items: [...aiItems, ...trending], trending: trending.length, degraded: aiItems.length ? (r.degraded === "sample" ? undefined : r.degraded) : trending.length ? "hn-only" : r.degraded };
       setOpps(merged);
       logAudit(`Opportunity scan returned ${aiItems.length} stories${trending.length ? ` + ${trending.length} trending from Hacker News` : ""}`);
-    } catch (e) { if (e?.name !== "AbortError") setOpps(fb.opportunities()); }
+    } catch (e) { if (e?.name !== "AbortError" && id === oppRunRef.current) setOpps(fb.opportunities()); }
     if (id === oppRunRef.current) setOppBusy(false);
   }
 
@@ -813,7 +842,7 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
     if (!cur?.storyboard?.length) throw new Error("Nothing to encode yet.");
     if (cur.url) URL.revokeObjectURL(cur.url);
     const file = await engine.encodeVideo(cur, { onProgress: (p) => live() && mset("encode", { status: "generating", progress: p }) });
-    if (!live()) return;
+    if (!live()) { URL.revokeObjectURL(file.url); return; }   // superseded: don't pin the blob
     setAssets((a) => ({ ...a, video: { ...a.video, blob: file.blob, url: file.url, mime: file.mime, bytes: file.blob.size } }));
     logAudit("Video encoded to WebM");
   });
@@ -927,7 +956,14 @@ Four sections, each body 50-70 words. No headings inside the body text.
       poll: [makePoll, () => assets.poll],
       article: [makeArticle, () => assets.article],
     };
-    const todo = fmt.list.filter((f) => starters[f] && !starters[f][1]());
+    let todo = fmt.list.filter((f) => starters[f] && !starters[f][1]());
+    /* A file the user uploaded was too large to keep across a reload. Do not
+       quietly generate a different picture in its place — say what happened. */
+    if (assets.uploadDropped && todo.some((f) => ["image", "multi", "video"].includes(f))) {
+      todo = todo.filter((f) => !["image", "multi", "video"].includes(f));
+      notify(`"${assets.uploadDropped.name}" was too large to keep when the page reloaded. Upload it again in the Media step.`, { tone: "warn", ms: 9000 });
+      patchAssets({ uploadDropped: null });
+    }
     if (!todo.length) return;
     logAudit(`Auto-generating ${todo.map((f) => FORMAT_BY_ID[f].label.toLowerCase()).join(", ")}`);
     todo.forEach((f) => starters[f][0]());
@@ -1036,13 +1072,25 @@ Give up to 4 of each. Only include what the document actually says.`,
     time: schedule.time, tz: schedule.tz, ...extra,
   });
 
+  /* One record per piece of work: scheduling, then publishing, replaces the
+     same row instead of leaving two entries for one post. */
+  const recordIdRef = useRef(null);
+  const recordId = () => {
+    /* A post reopened from Content keeps its existing row id, so publishing
+       replaces that row instead of adding a second one beside it. */
+    if (recordIdRef.current) return recordIdRef.current;
+    if (workId) return "p-" + workId;
+    recordIdRef.current = "p-" + Date.now().toString(36);
+    return recordIdRef.current;
+  };
+
   function confirmSchedule() {
     if (!schedule.date || !/^\d{4}-\d{2}-\d{2}$/.test(schedule.date)) { notify("Pick a date first.", { tone: "warn" }); return; }
     if (isDue(schedule.date, schedule.time || "09:00", schedule.tz)) { notify("That time has already passed — pick a later slot, or use Publish now.", { tone: "warn" }); return; }
     setStage("SCHEDULED");
     /* One record per piece of work: rescheduling replaces, never duplicates. */
-    const id = workId ? "p-" + workId : "p-" + Date.now().toString(36);
-    setPosts((p) => [postRecord({ id, state: "SCHEDULED", date: schedule.date, scheduledAt: new Date().toISOString() }), ...p.filter((x) => x.id !== id && !(workId && x.workId === workId && x.state === "SCHEDULED"))]);
+    const id = recordId();
+    setPosts((p) => [postRecord({ id, state: "SCHEDULED", date: schedule.date, scheduledAt: new Date().toISOString() }), ...p.filter((x) => x.id !== id && !(workId && x.workId === workId))]);
     logAudit(`Scheduled for ${schedule.date} ${schedule.time} ${schedule.tz}`);
     notify(`Scheduled for ${schedule.date} at ${schedule.time}.`);
   }
@@ -1102,7 +1150,6 @@ Give up to 4 of each. Only include what the document actually says.`,
     const photo = async (img, filename, altText, extra = {}) => {
       /* AI photo: fetched into base64 when the host allows it, else sent by URL */
       try {
-        const { fetchImageAsDataUrl } = await import("./lib/freeApis.js");
         const parts = dataUrlParts(await fetchImageAsDataUrl(img.url));
         media.push({ kind: "image", filename, mimeType: parts.mimeType, data: parts.data, altText: altText || "", width: img.width || 1200, height: img.height || 630, ...extra });
       } catch {
@@ -1166,9 +1213,6 @@ Give up to 4 of each. Only include what the document actually says.`,
 
   const publishingRef = useRef(false);   // hard guard against a second click landing mid-request
   const lastPayloadRef = useRef(null);   // kept so a manual "send anyway" resends exactly the same body
-  const [publishLimits, setPublishLimits] = useState([]);
-  const [publishKind, setPublishKind] = useState(null);   // why the last send failed, for the recovery UI
-  const [publishFramed, setPublishFramed] = useState(false);
 
   /* Sent in full, with a note where LinkedIn itself constrains what the
      scenario can do with it. These are notes, not blocks — nothing is
@@ -1185,14 +1229,20 @@ Give up to 4 of each. Only include what the document actually says.`,
     setStage("PUBLISHING"); setPublishState("SENDING"); setPublishVia("simulated");
     setAttempts([{ label: "Simulated — nothing was sent", status: "ok", idem: postId }, { label: "Published (simulated)", status: "ok", idem: postId }]);
     setPublishState("SIMULATED"); setStage("PUBLISHED");
-    setPosts((p) => [postRecord({ id: postId, state: "PUBLISHED", date: todayISO(), simulated: true, publishedAt: new Date().toISOString() }), ...p.filter((x) => x.id !== postId)]);
+    setPosts((p) => [postRecord({ id: postId, state: "PUBLISHED", date: todayISO(), simulated: true, publishedAt: new Date().toISOString() }), ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
     logAudit("Simulated publish — nothing was sent to LinkedIn");
     notify("Simulated publish — nothing was sent. Connect Make or LinkedIn under Settings to publish for real.", { tone: "warn", ms: 8000 });
   }
 
   async function publishNow({ scheduled = false } = {}) {
     if (publishingRef.current || ["PREPARING", "SENDING"].includes(publishState) || stage === "PUBLISHED") return;
-    const postId = workId || "unison-" + Math.random().toString(36).slice(2, 10);
+    /* Never send a row that has no written post behind it — a sample or a
+       legacy record would otherwise go out as its own title. */
+    if (!draft || !finalPostText().trim()) {
+      notify("There's no post text to publish. Open it and write the post first.", { tone: "warn" });
+      return;
+    }
+    const postId = recordId();
     const idem = postId;
     const startedFor = workRef.current;
     const live = () => workRef.current === startedFor;
@@ -1201,6 +1251,7 @@ Give up to 4 of each. Only include what the document actually says.`,
 
     /* ---- real publishing through Unison's own API (unchanged) ---- */
     if (liMeta.mode === "real" && conn.status === "connected") {
+      publishingRef.current = true;
       setStage("PUBLISHING"); setPublishState("SENDING"); setPublishVia("api");
       step("Sending to Unison API", "ok");
       try {
@@ -1211,19 +1262,24 @@ Give up to 4 of each. Only include what the document actually says.`,
           payload.altText = assets.images[0].brief?.subject || "";
         }
         const r = await linkedinService.publish(payload);
+        setPosts((p) => [postRecord({ id: postId, reference: r.post.urn, url: r.post.url, state: "PUBLISHED", date: todayISO(), real: true, publishedAt: new Date().toISOString() }),
+          ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        logAudit(`Published to LinkedIn — ${r.post.urn}`);
+        if (!live()) return;
         step("LinkedIn confirmed the post", "ok");
         setPublishState("PUBLISHED"); setStage("PUBLISHED");
-        logAudit(`Published to LinkedIn — ${r.post.urn}`);
-        notify("Published to LinkedIn.");
-        setPosts((p) => [postRecord({ id: r.post.urn, url: r.post.url, state: "PUBLISHED", date: schedule.date, real: true }), ...p]);
+        notify("Published to LinkedIn.", { tone: "ok" });
         setAnalytics(null);   // performance arrives later, from LinkedIn — nothing is invented here
       } catch (e) {
+        if (!live()) return;
         step(e.code === "cannot_publish" ? "Page permission check" : "LinkedIn rejected the request", "failed");
         setPublishState("FAILED"); setStage("FAILED");
         setPublishError(e.message || "LinkedIn rejected the request.");
         if (e.code === "not_authorized") setConn((c) => ({ ...c, status: "expired" }));
         logAudit(`Publishing failed — ${e.code || e.status || "unknown"}`);
-        notify("Publishing failed. Nothing was posted.");
+        notify("Publishing failed. Nothing was posted.", { tone: "bad" });
+      } finally {
+        publishingRef.current = false;
       }
       return;
     }
@@ -1235,8 +1291,7 @@ Give up to 4 of each. Only include what the document actually says.`,
     const postType = postTypeOf();
     /* Only a real route may send anything: the Make workflow, or a browser
        sign-in with a Page selected. A sample Page or no connection is a dry run. */
-    const realRoute = makeLinkedInService.configured() && !linkedin.simulated && (linkedin.viaWorkflow || (liMeta.mode === "browser" && linkedin.connected));
-    if (!realRoute) { simulatePublish(postId); return; }
+    if (!publishReady) { simulatePublish(postId); return; }
     if (sentKeys.includes(postId)) {
       setPublishState("SENT");
       notify("This post has already been sent to Make. It won't be sent again — mark it live if you've checked LinkedIn.", { tone: "warn" });
@@ -1261,7 +1316,7 @@ Give up to 4 of each. Only include what the document actually says.`,
       const r = await makeLinkedInService.publish(payload);
       setSentKeys((k) => (k.includes(postId) ? k : [...k, postId]));
       if (!live()) {
-        setPosts((p) => [{ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null }, ...p.filter((x) => x.id !== postId)]);
+        setPosts((p) => [{ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         return;
       }
       step(r.duplicate ? "Already delivered — not sent again" : r.unverified ? "Sent — Make's reply couldn't be read from this browser" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service", "ok");
@@ -1273,13 +1328,13 @@ Give up to 4 of each. Only include what the document actually says.`,
       if (r.published) {
         step("Publishing through LinkedIn", "ok"); step("Published", "ok");
         setPublishState("PUBLISHED"); setStage("PUBLISHED");
-        setPosts((p) => [{ ...sentRecord, state: "PUBLISHED", publishedAt: r.at }, ...p.filter((x) => x.id !== postId)]);
+        setPosts((p) => [{ ...sentRecord, state: "PUBLISHED", publishedAt: r.at }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         logAudit(`Published to LinkedIn via Make${r.urn ? ` — ${r.urn}` : ""}`);
         notify("Published to LinkedIn.");
       } else {
         step(scheduled ? `Make will publish on ${schedule.date} at ${schedule.time}` : "Publishing through LinkedIn", "pending");
         setPublishState("SENT");
-        setPosts((p) => [sentRecord, ...p.filter((x) => x.id !== postId)]);
+        setPosts((p) => [sentRecord, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         logAudit(`Sent to Make — ${postType} post${payload.media.length ? `, ${payload.media.length} media file(s)` : ""}${r.unverified ? " (reply unreadable)" : ""}`);
         notify(r.unverified ? "Sent to Make. The reply couldn't be read from this browser, so check the scenario before sending again." : scheduled ? "Handed to Make with the schedule." : "Sent to Make — LinkedIn publishing is being processed.", { tone: r.unverified ? "warn" : "ok" });
       }
@@ -1402,7 +1457,6 @@ Give up to 4 of each. Only include what the document actually says.`,
   /* Components call setModal("settings", "ai") to land on a tab. */
   const openModal = (m, tab) => { if (m === "settings" && tab) setSettingsTab(tab); setModal(m); };
   /* Something real happens on Publish only on these routes. */
-  const publishReady = makeLinkedInService.configured() && !linkedin.simulated && (linkedin.viaWorkflow || (liMeta.mode === "browser" && linkedin.connected));
 
   /* Performance numbers are typed in from LinkedIn analytics; the learning
      engine explains them on request and the explanation lives on the post. */
@@ -1428,7 +1482,7 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
     const analytics = { ...a, metrics: post.metrics, at: new Date().toISOString() };
     setPosts((p) => p.map((x) => (x.id === post.id ? { ...x, analytics } : x)));
     setOpenPost((o) => (o && o.id === post.id ? { ...o, analytics } : o));
-    if (post.workId && post.workId === workId) setAnalytics(analytics);
+    if (post.workId && post.workId === workRef.current) setAnalytics(analytics);
     logAudit(`Performance explained — ${post.title}${a.degraded ? " (sample explanation — AI unavailable)" : ""}`);
     if (a.degraded) notify("The AI was unavailable, so this is a sample explanation.", { tone: "warn" });
   }
@@ -1491,7 +1545,7 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
     analytics, busy, tone, setTone, pov, setPov, length, setLength, showDetail, setShowDetail,
     openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter, approve, reject, confirmSchedule,
     publishNow, runDiscovery, setDrawer, reset, cancelWork, setFailMode, undoStack, pushUndo, undo,
-    publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras,
+    publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras, publishReady,
     setModal: openModal,
   };
 

@@ -92,7 +92,7 @@ export const isDue = (iso, hhmm, tz, now = new Date()) => { try { return zonedTo
 
 export const relativeTime = (iso, now = Date.now()) => {
   if (!iso) return "";
-  const m = Math.round((now - new Date(iso).getTime()) / 60000);
+  const m = Math.floor((now - new Date(iso).getTime()) / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m} min ago`;
   if (m < 1440) return `${Math.round(m / 60)} h ago`;

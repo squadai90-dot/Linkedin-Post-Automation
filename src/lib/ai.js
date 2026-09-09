@@ -322,6 +322,10 @@ export async function askText({ capability = "reasoning", system, user, signal, 
   return text;
 }
 
+/* Fallback rows are dated relative to today so they never read as real,
+   stale sources. */
+const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
 export const JSON_RULE = "Reply with one raw JSON object and nothing else. No prose, no markdown fences, no preamble.";
 
 /* ---------- fallbacks ---------- */
@@ -335,10 +339,9 @@ export const fb = {
   }),
   research: (topic) => ({
     sources: [
-      { title: `Official announcement: ${topic}`, publisher: "Company newsroom", date: "2026-08-21", tier: 1, note: "First-party statement with product detail.", url: "" },
-      { title: "Enterprise adoption report", publisher: "Financial Times", date: "2026-08-14", tier: 2, note: "Survey of 400 enterprise buyers.", url: "" },
-      { title: "Category analysis", publisher: "Industry Weekly", date: "2026-07-30", tier: 3, note: "Practitioner view of the market shift.", url: "" },
-      { title: "Practitioner thread", publisher: "Community forum", date: "2026-08-25", tier: 4, note: "Discovery only — not treated as evidence.", url: "" },
+      { title: `Placeholder: an announcement about ${topic}`, publisher: "Not retrieved", date: daysAgo(18), tier: 1, note: "Example row — no source was fetched.", url: "" },
+      { title: "Placeholder: an adoption report", publisher: "Not retrieved", date: daysAgo(25), tier: 2, note: "Example row — no source was fetched.", url: "" },
+      { title: "Placeholder: a category analysis", publisher: "Not retrieved", date: daysAgo(40), tier: 3, note: "Example row — no source was fetched.", url: "" },
     ],
     claims: [
       { text: `${topic} is moving from pilot projects into production workloads.`, sourceIndex: 1 },
@@ -426,7 +429,9 @@ export function normalizeVerification(v) {
     ...o,
     claims: arr(o.claims).map((c) => (c && typeof c === "object" ? {
       claim: str(c.claim || c.text), status: STATUSES.includes(String(c.status).toLowerCase()) ? String(c.status).toLowerCase() : "yellow",
-      source: str(c.source), url: str(c.url), confidence: str(c.confidence, "Low"), note: str(c.note),
+      /* This value is rendered into an href, and the trust check runs with web
+         search on — so a fetched page can steer it. Only http(s) is allowed. */
+      source: str(c.source), url: /^https?:\/\//.test(str(c.url)) ? str(c.url) : "", confidence: str(c.confidence, "Low"), note: str(c.note),
     } : null)).filter((c) => c && c.claim),
     unresolved: arr(o.unresolved).map((u) => str(u)).filter(Boolean),
   };

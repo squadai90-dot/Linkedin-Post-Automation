@@ -26,8 +26,21 @@ export default [
     },
   },
   {
-    files: ["api/**/*.js", "*.config.js", "tests/**/*.{js,mjs}", "e2e/**/*.{js,mjs}"],
+    files: ["api/**/*.js", "*.config.js"],
     languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node, ...globals.es2021 } },
     rules: { "no-unused-vars": ["warn", { args: "none" }], "no-empty": ["error", { allowEmptyCatch: true }] },
+  },
+  {
+    /* Unit tests run in jsdom, so browser globals are legitimately available. */
+    files: ["tests/**/*.{js,jsx,mjs}"],
+    languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node, ...globals.browser, ...globals.es2021 } },
+    rules: { "no-unused-vars": ["warn", { args: "none" }], "no-empty": ["error", { allowEmptyCatch: true }] },
+  },
+  {
+    /* Playwright specs run in Node but evaluate snippets in the page, so they
+       legitimately reference browser globals inside page.evaluate(). */
+    files: ["e2e/**/*.{js,mjs}"],
+    languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node, ...globals.browser, ...globals.es2021 } },
+    rules: { "no-unused-vars": ["warn", { args: "none" }] },
   },
 ];

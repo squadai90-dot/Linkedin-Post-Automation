@@ -1,14 +1,22 @@
 
 
-/* ---------- seed data ---------- */
+/* ---------- seed data ----------
+   Example rows so the screens are not empty on a first run. Every one is
+   flagged `sample: true` so the UI can label it and the team can clear them
+   in one action. Dates are relative to today, so the demo never looks stale
+   and a sample post is never "overdue" on day one. */
+
+import { addDays, todayISO } from "./dates.js";
+
+const day = (n) => addDays(todayISO(), n);
 
 export const SEED_POSTS = [
-  { id: "p-201", title: "Why procurement is the real AI bottleneck", state: "HUMAN_REVIEW", date: "2026-08-26" },
-  { id: "p-202", title: "Three questions to ask before you buy an AI tool", state: "HUMAN_REVIEW", date: "2026-08-26" },
-  { id: "p-203", title: "What our support team learned in 90 days", state: "HUMAN_REVIEW", date: "2026-08-25" },
-  { id: "p-198", title: "AI agents in enterprise software", state: "PUBLISHED", date: "2026-08-19", metrics: { impressions: 14820, reactions: 386, comments: 74, shares: 41, clicks: 512 } },
-  { id: "p-195", title: "The quiet cost of unverified content", state: "PUBLISHED", date: "2026-08-12", metrics: { impressions: 9110, reactions: 211, comments: 33, shares: 18, clicks: 274 } },
-  { id: "p-207", title: "Q3 customer roundup", state: "SCHEDULED", date: "2026-09-02" },
+  { id: "p-201", title: "Why procurement is the real AI bottleneck", state: "HUMAN_REVIEW", date: day(-2), sample: true },
+  { id: "p-202", title: "Three questions to ask before you buy an AI tool", state: "HUMAN_REVIEW", date: day(-2), sample: true },
+  { id: "p-203", title: "What our support team learned in 90 days", state: "HUMAN_REVIEW", date: day(-3), sample: true },
+  { id: "p-198", title: "AI agents in enterprise software", state: "PUBLISHED", date: day(-14), sample: true, metrics: { impressions: 14820, reactions: 386, comments: 74, shares: 41, clicks: 512 } },
+  { id: "p-195", title: "The quiet cost of unverified content", state: "PUBLISHED", date: day(-21), sample: true, metrics: { impressions: 9110, reactions: 211, comments: 33, shares: 18, clicks: 274 } },
+  { id: "p-207", title: "Q3 customer roundup", state: "SCHEDULED", date: day(4), time: "09:30", sample: true },
 ];
 
 /* Home holds the composer, so there is no separate "New". "Drafts" is the
@@ -54,12 +62,9 @@ export const DEFAULT_VOICE = {
   prefer: ["operators", "evidence", "workflow", "shipped"],
 };
 
-export const SEED_TEAM = [
-  { name: "Jaynil A.", email: "jaynil@acme.systems", role: "Owner" },
-  { name: "Krunal P.", email: "krunal@acme.systems", role: "Admin" },
-  { name: "Priya S.", email: "priya@acme.systems", role: "Creator" },
-  { name: "Daniel R.", email: "daniel@acme.systems", role: "Reviewer" },
-];
+/* No invented colleagues. The team list starts empty and the workspace
+   settings explain what it is for. */
+export const SEED_TEAM = [];
 
 export const DEFAULT_PROFILE = {
   company: "", website: "", followers: "", userName: "",

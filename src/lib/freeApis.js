@@ -61,7 +61,8 @@ export async function hnStories(query, { limit = 6, days = 21, minPoints = 20 } 
    to the Page's history — the UI says so. */
 export function hnToOpportunities(stories, { now = Date.now() } = {}) {
   return stories.map((s) => {
-    const ageDays = Math.max(0, (now - Date.parse(s.date || "")) / 86400000);
+    const parsed = Date.parse(s.date || "");
+    const ageDays = Number.isNaN(parsed) ? 0 : Math.max(0, (now - parsed) / 86400000);
     const recency = Math.max(0, 40 - ageDays * 2);
     const heat = Math.min(60, Math.log10(1 + s.points + s.comments * 2) * 20);
     return {

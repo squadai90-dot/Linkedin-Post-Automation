@@ -16,6 +16,8 @@ export function setBrandText({ name, site } = {}) {
 const brandName = () => BRAND_TEXT.name || "";
 const brandSite = () => BRAND_TEXT.site || BRAND_TEXT.name || "";
 
+/* Escape LAST. Uppercasing an escaped string turns &amp; into &AMP;, which is
+   not a valid XML entity and makes the whole SVG fail to parse. */
 export const esc = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export function wrapText(str, max) {
@@ -37,11 +39,11 @@ export function tplCard(kicker, title, footer) {
 <rect width="1200" height="630" fill="${BRAND.bg}"/>
 <circle cx="1090" cy="70" r="240" fill="${BRAND.acc}" opacity="0.10"/>
 <circle cx="150" cy="600" r="180" fill="${BRAND.acc2}" opacity="0.07"/>
-<text x="80" y="98" fill="${BRAND.acc2}" font-family="${FONT}" font-size="21" letter-spacing="5">${esc(kicker).toUpperCase()}</text>
+<text x="80" y="98" fill="${BRAND.acc2}" font-family="${FONT}" font-size="21" letter-spacing="5">${esc(String(kicker).toUpperCase())}</text>
 <rect x="80" y="120" width="72" height="5" fill="${BRAND.acc}"/>
 ${lines.map((l, i) => `<text x="80" y="${222 + i * (fs + 14)}" fill="${BRAND.ink}" font-family="${FONT}" font-size="${fs}" font-weight="700">${esc(l)}</text>`).join("")}
 <rect x="80" y="524" width="1040" height="1" fill="${BRAND.rule}"/>
-<text x="80" y="572" fill="${BRAND.mute}" font-family="${FONT}" font-size="20" letter-spacing="4">${esc(footer).toUpperCase()}</text>
+<text x="80" y="572" fill="${BRAND.mute}" font-family="${FONT}" font-size="20" letter-spacing="4">${esc(String(footer).toUpperCase())}</text>
 </svg>`;
 }
 
@@ -56,7 +58,7 @@ ${h.map((l, i) => `<text x="90" y="${330 + i * 96}" fill="${BRAND.ink}" font-fam
 <rect x="90" y="${360 + h.length * 96}" width="90" height="5" fill="${BRAND.acc}"/>
 ${b.map((l, i) => `<text x="90" y="${450 + h.length * 96 + i * 54}" fill="${BRAND.mute}" font-family="${FONT}" font-size="38">${esc(l)}</text>`).join("")}
 ${Array.from({ length: total }).map((_, i) => `<rect x="${90 + i * 34}" y="1070" width="24" height="6" rx="3" fill="${i < n ? BRAND.acc : BRAND.rule}"/>`).join("")}
-<text x="1110" y="1080" text-anchor="end" fill="${BRAND.mute}" font-family="${FONT}" font-size="22" letter-spacing="4">${esc(brandName()).toUpperCase()}</text>
+<text x="1110" y="1080" text-anchor="end" fill="${BRAND.mute}" font-family="${FONT}" font-size="22" letter-spacing="4">${esc(brandName().toUpperCase())}</text>
 </svg>`;
 }
 
@@ -68,7 +70,7 @@ export function tplTile(label, stat) {
 <text x="90" y="480" fill="${BRAND.acc}" font-family="${FONT}" font-size="190" font-weight="700">${esc(stat)}</text>
 <rect x="90" y="540" width="110" height="6" fill="${BRAND.acc2}"/>
 ${l.map((x, i) => `<text x="90" y="${650 + i * 68}" fill="${BRAND.ink}" font-family="${FONT}" font-size="52" font-weight="500">${esc(x)}</text>`).join("")}
-<text x="90" y="1110" fill="${BRAND.mute}" font-family="${FONT}" font-size="24" letter-spacing="4">${esc(brandName()).toUpperCase()}</text>
+<text x="90" y="1110" fill="${BRAND.mute}" font-family="${FONT}" font-size="24" letter-spacing="4">${esc(brandName().toUpperCase())}</text>
 </svg>`;
 }
 
@@ -80,7 +82,7 @@ export function tplPoster(title) {
 <circle cx="600" cy="250" r="74" fill="none" stroke="${BRAND.acc}" stroke-width="5"/>
 <path d="M580 218 L630 250 L580 282 Z" fill="${BRAND.acc}"/>
 ${lines.map((l, i) => `<text x="600" y="${406 + i * 52}" text-anchor="middle" fill="${BRAND.ink}" font-family="${FONT}" font-size="44" font-weight="600">${esc(l)}</text>`).join("")}
-<text x="600" y="572" text-anchor="middle" fill="${BRAND.mute}" font-family="${FONT}" font-size="20" letter-spacing="4">${esc(brandName()).toUpperCase()}</text>
+<text x="600" y="572" text-anchor="middle" fill="${BRAND.mute}" font-family="${FONT}" font-size="20" letter-spacing="4">${esc(brandName().toUpperCase())}</text>
 </svg>`;
 }
 
@@ -155,7 +157,7 @@ export function renderBrandImage(brief, variant = 0) {
 <rect x="0" y="0" width="470" height="630" fill="${BRAND.panel}"/>
 <circle cx="470" cy="315" r="150" fill="none" stroke="${BRAND.acc}" stroke-width="4" opacity="0.55"/>
 <circle cx="470" cy="315" r="230" fill="none" stroke="${BRAND.acc2}" stroke-width="2" opacity="0.35"/>
-<text x="90" y="120" fill="${BRAND.acc2}" font-family="${FONT}" font-size="20" letter-spacing="5">${esc(kicker).toUpperCase()}</text>
+<text x="90" y="120" fill="${BRAND.acc2}" font-family="${FONT}" font-size="20" letter-spacing="5">${esc(String(kicker).toUpperCase())}</text>
 ${lines.map((l, i) => `<text x="90" y="${300 + i * 62}" fill="${BRAND.ink}" font-family="${FONT}" font-size="54" font-weight="700">${esc(l)}</text>`).join("")}
 <text x="640" y="560" fill="${BRAND.mute}" font-family="${FONT}" font-size="22">${esc(wrapText(support, 44)[0] || "")}</text>
 </svg>`;
@@ -166,7 +168,7 @@ ${lines.map((l, i) => `<text x="90" y="${300 + i * 62}" fill="${BRAND.ink}" font
 <rect width="1200" height="630" fill="${BRAND.bg}"/>
 ${Array.from({ length: 14 }).map((_, i) => `<rect x="${60 + i * 80}" y="${430 - (i % 5) * 46}" width="34" height="${120 + (i % 5) * 46}" fill="${i % 5 === 3 ? BRAND.acc : BRAND.panel}" opacity="${i % 5 === 3 ? 0.95 : 0.7}"/>`).join("")}
 <rect x="0" y="0" width="1200" height="330" fill="${BRAND.bg}" opacity="0.88"/>
-<text x="80" y="96" fill="${BRAND.acc2}" font-family="${FONT}" font-size="20" letter-spacing="5">${esc(kicker).toUpperCase()}</text>
+<text x="80" y="96" fill="${BRAND.acc2}" font-family="${FONT}" font-size="20" letter-spacing="5">${esc(String(kicker).toUpperCase())}</text>
 ${lines.map((l, i) => `<text x="80" y="${186 + i * 66}" fill="${BRAND.ink}" font-family="${FONT}" font-size="58" font-weight="700">${esc(l)}</text>`).join("")}
 </svg>`;
   }
@@ -177,7 +179,7 @@ ${lines.map((l, i) => `<text x="80" y="${186 + i * 66}" fill="${BRAND.ink}" font
 <path d="M0 630 L420 180 L760 420 L1200 60 L1200 630 Z" fill="${BRAND.panel}" opacity="0.85"/>
 <path d="M0 630 L420 180 L760 420 L1200 60" fill="none" stroke="${BRAND.acc}" stroke-width="5"/>
 <circle cx="760" cy="420" r="14" fill="${BRAND.acc2}"/>
-<text x="80" y="100" fill="${BRAND.acc2}" font-family="${FONT}" font-size="20" letter-spacing="5">${esc(kicker).toUpperCase()}</text>
+<text x="80" y="100" fill="${BRAND.acc2}" font-family="${FONT}" font-size="20" letter-spacing="5">${esc(String(kicker).toUpperCase())}</text>
 ${lines.map((l, i) => `<text x="80" y="${200 + i * 64}" fill="${BRAND.ink}" font-family="${FONT}" font-size="56" font-weight="700">${esc(l)}</text>`).join("")}
 </svg>`;
   }

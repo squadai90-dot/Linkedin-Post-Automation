@@ -9,16 +9,21 @@ import { isLinkedInConfigured, isBridgeConfigured } from "../lib/linkedinAuth.js
 
 export function Modal({ title, children, onClose, wide }) {
   const box = useRef(null);
+  /* Callers pass a fresh arrow for onClose on every render. Reading it
+     through a ref keeps the setup effect at [] — otherwise it re-runs on
+     each keystroke and pulls focus out of whatever field is being typed in. */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    const k = (e) => e.key === "Escape" && onClose();
+    const k = (e) => e.key === "Escape" && closeRef.current();
     window.addEventListener("keydown", k);
-    /* lock the page behind the dialog and put focus inside it */
+    /* lock the page behind the dialog and put focus inside it — once */
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const first = box.current?.querySelector("input, select, textarea, button:not(.modal-close)");
     (first || box.current)?.focus?.({ preventScroll: true });
     return () => { window.removeEventListener("keydown", k); document.body.style.overflow = prev; };
-  }, [onClose]);
+  }, []);
   return (
     <>
       <div className="scrim" onClick={onClose} />
@@ -113,7 +118,7 @@ export function LinkedInFlow({ onDone, startAt = 0, mode, connection, scopes, br
     setBusy(true); setError(null);
     browser.loadOrgs().then((list) => { if (alive) setOrgs(list); }).catch((e) => { if (alive) setError(`Couldn't list your Pages through the bridge: ${e.message}`); }).finally(() => alive && setBusy(false));
     return () => { alive = false; };
-  }, [inBrowser, step, hasToken, bridge]);  
+  }, [inBrowser, step, hasToken, bridge, orgs]);   // orgs: clearing it is how "Refresh" re-runs this
 
   useEffect(() => {
     if (!real && !inBrowser && step === 2) { setScan(true); const t = setTimeout(() => setScan(false), 1100); return () => clearTimeout(t); }

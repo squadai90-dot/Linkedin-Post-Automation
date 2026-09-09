@@ -64,9 +64,22 @@ export const STAGE_LABEL = {
   evidence: "Evidence", health: "Health", approval: "Approval", schedule: "Publish",
 };
 
-export const EMPTY_ASSETS = { images: [], video: null, doc: null, carousel: [], poll: null, article: null, upload: null, sourceDoc: null };
+export const EMPTY_ASSETS = { images: [], video: null, doc: null, carousel: [], poll: null, article: null, upload: null, uploadDropped: null, sourceDoc: null };
 /* what is safe to persist: blobs and object URLs don't survive a reload */
-export const compactAssets = (a) => ({ ...a, upload: null, video: a.video ? { ...a.video, url: null, blob: null } : null });
+/* What survives a reload. Object URLs and Blobs do not, so the video keeps
+   only its storyboard. An uploaded image is already downscaled, so it is kept
+   unless it is large; when it has to be dropped, `uploadDropped` records that
+   so the UI can say so instead of silently regenerating something else. */
+export const MAX_PERSISTED_UPLOAD = 700 * 1024;
+export const compactAssets = (a) => {
+  const keepUpload = a.upload && !String(a.upload.type || "").startsWith("video") && String(a.upload.data || "").length <= MAX_PERSISTED_UPLOAD;
+  return {
+    ...a,
+    upload: keepUpload ? a.upload : null,
+    uploadDropped: a.upload && !keepUpload ? { name: a.upload.name, type: a.upload.type } : (a.uploadDropped || null),
+    video: a.video ? { ...a.video, url: null, blob: null } : null,
+  };
+};
 
 /* every generation task reports one of four states, never a silent failure */
 export const idle = () => ({ status: "idle", error: null, progress: 0 });

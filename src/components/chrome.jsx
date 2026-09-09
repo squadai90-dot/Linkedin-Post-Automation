@@ -105,8 +105,8 @@ export function LinkedInChip({ linkedin, liMeta, relay, open, setOpen, openLinke
 
   return (
     <div className="pop-wrap" ref={wrap}>
-      <button className={"btn sm chip-li " + (linkedin.connected ? "" : "acc")} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog" title={label}>
-        <span className={"dot " + tone} /><span className="chip-text">{label}</span><span className="caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
+      <button className={"btn sm chip-li " + (linkedin.connected ? "" : "acc")} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog" aria-label={`LinkedIn: ${label}`} title={label}>
+        <span className={"dot " + tone} /><span className="chip-text">{label}</span><span className="chip-in" aria-hidden="true">in</span><span className="caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
       </button>
 
       {open && (

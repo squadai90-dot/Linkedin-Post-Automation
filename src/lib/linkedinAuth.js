@@ -113,6 +113,7 @@ export async function bridge(action, payload, s = current, { timeoutMs = 30000 }
 }
 
 export const normalizeOrgs = (list) => (Array.isArray(list) ? list : []).map((o) => {
+  if (!o || typeof o !== "object") return null;
   const urn = o.urn || o.organizationUrn || (o.id ? `urn:li:organization:${String(o.id).split(":").pop()}` : null);
   if (!urn) return null;
   const role = o.role || o.roleAssignee || (o.roles || [])[0] || "ADMINISTRATOR";

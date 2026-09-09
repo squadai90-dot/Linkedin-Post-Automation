@@ -98,6 +98,7 @@ export function Settings(props) {
             <table className="tbl">
               <thead><tr><th>Member</th><th>Role</th><th></th></tr></thead>
               <tbody>
+                {team.length === 0 && <tr><td colSpan={3} className="u-muted" style={{ fontSize: 13.5 }}>Nobody added yet. Add the people who create and approve posts so the activity log can name them.</td></tr>}
                 {team.map((m, i) => (
                   <tr key={m.email}>
                     <td><div style={{ fontWeight: 600 }}>{m.name}</div><div className="u-muted" style={{ fontSize: 12.5 }}>{m.email}</div></td>

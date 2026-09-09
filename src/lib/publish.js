@@ -179,8 +179,10 @@ export const makeLinkedInService = {
 
   /* Is a relay deployed, and can it reach Make? Cheap, no post involved. */
   async health() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
     try {
-      const res = await fetch(MAKE_CONFIG.relay, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
+      const res = await fetch(MAKE_CONFIG.relay, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store", signal: ctrl.signal });
       const raw = await res.text().catch(() => "");
       let body = null;
       try { body = raw ? JSON.parse(raw) : null; } catch { body = null; }
@@ -188,6 +190,7 @@ export const makeLinkedInService = {
       mkLog("relay health", body);
       return { relay: true, ...body };
     } catch { return { relay: false }; }
+    finally { clearTimeout(timer); }
   },
 
   /* Tells apart "the environment allows outside requests but Make's reply is
@@ -197,14 +200,16 @@ export const makeLinkedInService = {
     let origin;
     try { origin = new URL(MAKE_CONFIG.url).origin; } catch { return { networkAllowed: false, reason: "bad-url" }; }
     const framed = typeof window !== "undefined" && window.self !== window.top;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     try {
-      await fetch(origin + "/", { method: "GET", mode: "no-cors", cache: "no-store" });
+      await fetch(origin + "/", { method: "GET", mode: "no-cors", cache: "no-store", signal: ctrl.signal });
       mkLog("diagnosis: outside requests are allowed — Make's reply was unreadable, the request itself was not blocked", { framed });
       return { networkAllowed: true, framed };
     } catch (e) {
       mkLog("diagnosis: this environment blocks outside requests", { framed, hint: framed ? "Running inside a sandboxed preview frame. Deploy Unison with its API to publish." : "Check the network, an extension, or the page's content security policy." });
       return { networkAllowed: false, framed };
-    }
+    } finally { clearTimeout(timer); }
   },
 
   /* Last resort, only on an explicit user action. A no-cors POST does leave

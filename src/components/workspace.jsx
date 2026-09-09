@@ -35,11 +35,22 @@ function GrammarPanel({ draft, setDraft, pushUndo, locked, enabled, notify }) {
     } finally { setBusy(false); }
   };
 
-  /* Map an offset in the combined text back onto hook / body / cta. */
+  /* Map an offset in the combined text back onto hook / body / cta. A match
+     that lands on a paragraph break, or straddles two fields, belongs to no
+     single field — applying it there would splice text at a negative offset
+     and silently mangle the draft, so it is refused instead. */
+  const fieldFor = (m) => {
+    const bounds = [["hook", 0, draft.hook.length], ["body", draft.hook.length + 2, draft.hook.length + 2 + draft.body.length]];
+    bounds.push(["cta", bounds[1][2] + 2, bounds[1][2] + 2 + draft.cta.length]);
+    const end = m.offset + m.length;
+    const hit = bounds.find(([, start, stop]) => m.offset >= start && end <= stop);
+    return hit ? { field: hit[0], base: hit[1] } : null;
+  };
+
   const apply = (m, value) => {
-    const bodyStart = draft.hook.length + 2, ctaStart = bodyStart + draft.body.length + 2;
-    const field = m.offset < draft.hook.length ? "hook" : m.offset < ctaStart - 2 ? "body" : "cta";
-    const base = field === "hook" ? 0 : field === "body" ? bodyStart : ctaStart;
+    const at = fieldFor(m);
+    if (!at) { notify?.("That suggestion spans a paragraph break — edit it by hand.", { tone: "warn" }); setMatches(matches.filter((x) => x !== m)); return; }
+    const { field, base } = at;
     const local = { ...m, offset: m.offset - base };
     pushUndo("grammar fix");
     const next = { ...draft, [field]: applyReplacement(draft[field], local, value) };
@@ -66,7 +77,7 @@ function GrammarPanel({ draft, setDraft, pushUndo, locked, enabled, notify }) {
                 <div style={{ fontSize: 13 }}><span className="mono" style={{ background: "rgba(243,180,76,.25)", borderRadius: 3, padding: "0 3px" }}>{m.text || "…"}</span> <span className="u-muted">{m.message}</span></div>
               </div>
               <div className="row" style={{ flex: "none" }}>
-                {m.replacements.slice(0, 2).map((r) => <button key={r} className="btn sm" disabled={locked} onClick={() => apply(m, r)}>{r}</button>)}
+                {fieldFor(m) && m.replacements.slice(0, 2).map((r) => <button key={r} className="btn sm" disabled={locked} onClick={() => apply(m, r)}>{r}</button>)}
                 <button className="btn sm" onClick={() => setMatches(matches.filter((x) => x !== m))}>Ignore</button>
               </div>
             </div>
@@ -88,7 +99,7 @@ export function Workspace(p) {
     approve, reject, confirmSchedule, publishNow, runDiscovery, setDrawer, setModal, reset, cancelWork,
     setFailMode, undoStack, undo, pushUndo, assets, patchAssets, mstate, makeImage, makeImageSet,
     retile, addTile, makeVideo, makeDocument, makeCarousel, reslide, moveItem, dropItem, editSlide,
-    editDocPage, makePoll, makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {},
+    editDocPage, makePoll, makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady,
   } = p;
 
   const [rejecting, setRejecting] = useState(false);
@@ -109,8 +120,8 @@ export function Workspace(p) {
   const hl = useMemo(() => (activeClaim ? locateClaim(full, activeClaim.claim) : null), [activeClaim, full]);
   const over = shows("draft") && publishedLength > LI_LIMIT;   // never applied to articles or documents
 
-  /* A real route means something actually leaves the browser on Publish. */
-  const realRoute = !linkedin.simulated && (linkedin.viaWorkflow || (liMeta?.mode === "browser" && linkedin.connected));
+  /* Decided once in App so the button label and the send path agree. */
+  const realRoute = !!publishReady;
   const aiDown = aiInfo && !aiInfo.ready;
 
   useEffect(() => {
@@ -485,10 +496,12 @@ export function Workspace(p) {
                   <span className="eyebrow">Tip</span>
                   <div className="u-muted" style={{ fontSize: 13.5, marginTop: 5 }}>Weekday mornings in the audience's timezone tend to do best for B2B Pages. Unison holds the post until you press Publish, or hands it to Make to publish at this time.</div>
                 </div>
+                {/* Scheduling is local state, so it never needs a connection.
+                    Publishing without one is a labelled dry run. */}
                 <div className="row" style={{ marginTop: 16 }}>
-                  <button className="btn acc" disabled={!linkedin.connected} onClick={confirmSchedule}>Schedule post</button>
-                  <button className="btn" disabled={!linkedin.connected} onClick={() => publishNow()}>Publish now</button>
-                  {!linkedin.connected && <button className="btn sm" onClick={() => setModal("linkedin")}>Connect a Page first</button>}
+                  <button className="btn acc" onClick={confirmSchedule}>Schedule post</button>
+                  <button className="btn" onClick={() => publishNow()}>{realRoute ? "Publish now" : "Publish now (dry run)"}</button>
+                  {!realRoute && <button className="btn sm" onClick={() => setModal("settings", "linkedin")}>Connect for real</button>}
                 </div>
               </>
             ) : (

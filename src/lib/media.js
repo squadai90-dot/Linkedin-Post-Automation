@@ -1,6 +1,11 @@
 import { askJSON, askText, JSON_RULE } from "./ai.js";
 
 import { tplPage, tplTile, tplPoster, drawScene, renderBrandImage, BRAND_TEXT } from "./brand.js";
+import { pollinationsUrl } from "./freeApis.js";
+
+/* The model can return an object, a string or nothing where a list is
+   expected. `|| []` does not catch that; this does. */
+const arr = (v) => (Array.isArray(v) ? v : []);
 
 /* ============================================================
    MEDIA ENGINE
@@ -20,15 +25,24 @@ export const imageProvider = {
   id: "prototype-renderer",
   configured: false,
   label: "Brand renderer (SVG templates) · optional AI photo via Pollinations",
-  async generate({ brief, prompt, variant = 0, photo = false }) {
+  async generate({ brief, prompt, variant = 0, photo = false, signal }) {
     if (photo) {
       /* Free, keyless image generation. The URL is the asset; the browser
          renders it directly and publishing fetches it into base64 when the
          host allows, else sends the link. */
-      const { pollinationsUrl } = await import("./freeApis.js");
       const seed = (variant * 7919 + 17) % 100000;
       const url = pollinationsUrl(`${prompt || brief?.headline || brief?.subject || "professional B2B brand imagery"}. Clean, modern, editorial, no text, no logos.`, { width: 1200, height: 630, seed });
-      await new Promise((resolve, reject) => { const im = new Image(); im.onload = resolve; im.onerror = () => reject(new Error("The image service did not return an image.")); im.src = url; });
+      /* No ceiling here would leave the task "generating" for good. */
+      await new Promise((resolve, reject) => {
+        const im = new Image();
+        const timer = setTimeout(() => { im.src = ""; reject(new Error("The image service took too long.")); }, 60000);
+        const stop = () => { clearTimeout(timer); signal?.removeEventListener?.("abort", onAbort); };
+        const onAbort = () => { im.src = ""; stop(); reject(Object.assign(new Error("Cancelled."), { name: "AbortError" })); };
+        im.onload = () => { stop(); resolve(); };
+        im.onerror = () => { stop(); reject(new Error("The image service did not return an image.")); };
+        signal?.addEventListener?.("abort", onAbort, { once: true });
+        im.src = url;
+      });
       return { kind: "url", url, width: 1200, height: 630, source: "pollinations", generated: true };
     }
     const svg = renderBrandImage(brief, variant);
@@ -154,7 +168,7 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
       const b = await brief("image", ctx, signal);
       /* The generation prompt is only worth a model call when a generator will use it. */
       const prompt = photo ? await enhance("image", b, signal) : null;
-      const asset = await imageProvider.generate({ brief: b, prompt, variant, photo });
+      const asset = await imageProvider.generate({ brief: b, prompt, variant, photo, signal });
       log?.(photo ? "Image generated — Pollinations" : `Image rendered — ${imageProvider.id}`);
       return { ...asset, brief: b, prompt, id: "img-" + Math.random().toString(36).slice(2, 8) };
     },
@@ -169,7 +183,7 @@ Post: ${ctx.hook} ${ctx.body || ""}
         fallback: () => ({ tiles: [{ stat: "01", label: "The problem" }, { stat: "02", label: "What changed" }, { stat: "03", label: "What to do" }] }),
         track, signal,
       });
-      let tiles = (r.tiles || []).filter((t) => t && (t.label || t.stat)).slice(0, count);
+      let tiles = arr(r.tiles).filter((t) => t && (t.label || t.stat)).slice(0, count);
       if (!tiles.length) tiles = [{ stat: "01", label: "The problem" }, { stat: "02", label: "What changed" }, { stat: "03", label: "What to do" }].slice(0, count);
       log?.(`Image set rendered — ${tiles.length} tiles`);
       return tiles.map((t, i) => ({
@@ -196,7 +210,7 @@ Rewrite this single tile so it says something different but still fits the set. 
     async video(ctx, { signal } = {}) {
       const b = await brief("video", ctx, signal);
       const prompt = null;   // no video generator is connected, so no prompt is written for one
-      let storyboard = (b.scenes || []).filter((x) => x && x.line).slice(0, 5);
+      let storyboard = arr(b.scenes).filter((x) => x && x.line).slice(0, 5);
       if (!storyboard.length) storyboard = [
         { label: "HOOK", line: String(ctx.hook || "").slice(0, 60), note: "" },
         { label: "PROBLEM", line: "What actually slows teams down", note: "" },
@@ -241,7 +255,7 @@ ${ctx.body || ""}
         }),
         track, signal,
       });
-      let pgs = (r.pages || []).filter((x) => x && x.heading).slice(0, 8);
+      let pgs = arr(r.pages).filter((x) => x && x.heading).slice(0, 8);
       if (!pgs.length) pgs = [
         { heading: String(ctx.hook || "Overview").slice(0, 40), body: "" },
         { heading: "The problem", body: "What slows teams down today." },
@@ -274,7 +288,7 @@ Use this arc: hook, problem, insight, framework, example, conclusion.
         }),
         track, signal,
       });
-      let sl = (r.slides || []).filter((x) => x && x.heading).slice(0, 10);
+      let sl = arr(r.slides).filter((x) => x && x.heading).slice(0, 10);
       if (!sl.length) sl = [
         { role: "Hook", heading: String(ctx.hook || "Start here").slice(0, 40), body: "" },
         { role: "Problem", heading: "Where it breaks", body: "The step everyone skips." },
