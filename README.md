@@ -27,15 +27,22 @@ npm run preview    # http://localhost:4173
 Deploy `dist/` to any static host (Vercel, Netlify, S3, an internal nginx). No
 build-time environment variables are required.
 
+For a shareable single file — no server, no build step at the other end —
+`npm run build:preview` writes `preview.html` with the app inlined. Opening it
+from disk works; note that a sandboxed host (or `file://`) may block outbound
+requests, in which case the AI and publishing steps stay in their labelled
+fallback mode and file downloads are unavailable.
+
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server with hot reload |
 | `npm run build` | Production bundle into `dist/` |
 | `npm run preview` | Serve the built bundle on port 4173 |
 | `npm run lint` | ESLint over the app, the API routes and the tests |
-| `npm test` | Vitest unit tests (70 tests, no network) |
+| `npm test` | Vitest unit tests (91 tests, no network) |
 | `npm run test:e2e` | Playwright journey tests against the built app |
 | `npm run check` | lint + unit tests + build, in that order |
+| `npm run build:preview` | One self-contained `preview.html` — the whole app inlined into a single file you can email, open from disk, or host anywhere |
 
 ---
 
@@ -240,7 +247,7 @@ Notes worth knowing:
 
 ## Handover checklist
 
-Run `npm run check` first — lint, 70 unit tests and the build must all pass.
+Run `npm run check` first — lint, 91 unit tests and the build must all pass.
 Then walk this by hand with nothing configured:
 
 - [ ] Home shows the setup checklist and honest AI / publishing status

@@ -26,7 +26,7 @@ export default [
     },
   },
   {
-    files: ["api/**/*.js", "*.config.js"],
+    files: ["api/**/*.js", "*.config.js", "scripts/**/*.{js,mjs}"],
     languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node, ...globals.es2021 } },
     rules: { "no-unused-vars": ["warn", { args: "none" }], "no-empty": ["error", { allowEmptyCatch: true }] },
   },
