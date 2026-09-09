@@ -1,6 +1,6 @@
 import { askJSON, askText, JSON_RULE } from "./ai.js";
 
-import { tplPage, tplTile, tplPoster, drawScene, renderBrandImage } from "./brand.js";
+import { tplPage, tplTile, tplPoster, drawScene, renderBrandImage, BRAND_TEXT } from "./brand.js";
 
 /* ============================================================
    MEDIA ENGINE
@@ -19,8 +19,18 @@ export const SCENE_SECONDS = 2.2;
 export const imageProvider = {
   id: "prototype-renderer",
   configured: false,
-  label: "Local brand renderer (prototype)",
-  async generate({ brief, variant = 0 }) {
+  label: "Brand renderer (SVG templates) · optional AI photo via Pollinations",
+  async generate({ brief, prompt, variant = 0, photo = false }) {
+    if (photo) {
+      /* Free, keyless image generation. The URL is the asset; the browser
+         renders it directly and publishing fetches it into base64 when the
+         host allows, else sends the link. */
+      const { pollinationsUrl } = await import("./freeApis.js");
+      const seed = (variant * 7919 + 17) % 100000;
+      const url = pollinationsUrl(`${prompt || brief?.headline || brief?.subject || "professional B2B brand imagery"}. Clean, modern, editorial, no text, no logos.`, { width: 1200, height: 630, seed });
+      await new Promise((resolve, reject) => { const im = new Image(); im.onload = resolve; im.onerror = () => reject(new Error("The image service did not return an image.")); im.src = url; });
+      return { kind: "url", url, width: 1200, height: 630, source: "pollinations", generated: true };
+    }
     const svg = renderBrandImage(brief, variant);
     return { kind: "svg", svg, source: this.id, generated: false };
   },
@@ -114,7 +124,7 @@ ${ctx.body || ""}
 {"subject":"one line","headline":"under 9 words","message":"one line","audience":"one line","composition":"one line","kicker":"under 3 words","support":"under 10 words","aspect":"1.91:1","avoid":"one line"}`,
       fallback: () => (kind === "video"
         ? { title: ctx.hook?.slice(0, 60) || "Video", concept: "A short explainer built from the post.", audience: "Marketing leaders", style: "Dark, typographic, restrained", motion: "Slow drift between titles", aspect: "16:9", scenes: [{ label: "HOOK", line: ctx.hook || "", note: "" }, { label: "PROBLEM", line: "What actually slows teams down", note: "" }, { label: "INSIGHT", line: "The part nobody automates", note: "" }, { label: "CTA", line: "What would you fix first?", note: "" }], avoid: "stock footage clichés" }
-        : { subject: ctx.hook || "", headline: (ctx.hook || "").slice(0, 60), message: "", audience: "Marketing leaders", composition: "Type-led with one geometric motif", kicker: "Acme Systems", support: "acme.systems", aspect: "1.91:1", avoid: "stock photography" }),
+        : { subject: ctx.hook || "", headline: (ctx.hook || "").slice(0, 60), message: "", audience: "Marketing leaders", composition: "Type-led with one geometric motif", kicker: BRAND_TEXT.name, support: BRAND_TEXT.site || BRAND_TEXT.name, aspect: "1.91:1", avoid: "stock photography" }),
       track, signal,
     });
     return r;
@@ -140,11 +150,12 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
   return {
     providers: { image: imageProvider, video: videoProvider },
 
-    async image(ctx, { variant = 0, signal } = {}) {
+    async image(ctx, { variant = 0, signal, photo = false } = {}) {
       const b = await brief("image", ctx, signal);
-      const prompt = await enhance("image", b, signal);
-      const asset = await imageProvider.generate({ brief: b, prompt, variant });
-      log?.(`Image rendered — ${imageProvider.id}`);
+      /* The generation prompt is only worth a model call when a generator will use it. */
+      const prompt = photo ? await enhance("image", b, signal) : null;
+      const asset = await imageProvider.generate({ brief: b, prompt, variant, photo });
+      log?.(photo ? "Image generated — Pollinations" : `Image rendered — ${imageProvider.id}`);
       return { ...asset, brief: b, prompt, id: "img-" + Math.random().toString(36).slice(2, 8) };
     },
 
@@ -184,7 +195,7 @@ Rewrite this single tile so it says something different but still fits the set. 
        happens when the user actually asks to export one. */
     async video(ctx, { signal } = {}) {
       const b = await brief("video", ctx, signal);
-      const prompt = await enhance("video", b, signal);
+      const prompt = null;   // no video generator is connected, so no prompt is written for one
       let storyboard = (b.scenes || []).filter((x) => x && x.line).slice(0, 5);
       if (!storyboard.length) storyboard = [
         { label: "HOOK", line: String(ctx.hook || "").slice(0, 60), note: "" },

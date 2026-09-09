@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import mammoth from "mammoth";
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
 import { STORE_KEY, persistentStore } from "./lib/store.js";
 import { P, S } from "./lib/pointer.js";
-import { friendlyError, askJSON, JSON_RULE, fb } from "./lib/ai.js";
+import { friendlyError, askJSON, JSON_RULE, fb, WEB_SEARCH_TOOL, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
 import { EMPTY_CONNECTION, withDerived, linkedinService, readCallbackParams } from "./lib/linkedin.js";
 import { MAKE_CONFIG, makeLinkedInService } from "./lib/publish.js";
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
@@ -12,7 +11,35 @@ import { tplPage, svgToPng } from "./lib/brand.js";
 import { createMediaEngine } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
 import { Header, MobileRail, Rail } from "./components/chrome.jsx";
-import { PipelineScene } from "./components/scene3d.jsx";
+import { Toasts } from "./components/toast.jsx";
+import { setBrandText } from "./lib/brand.js";
+import { nextSlot, localTimezone } from "./lib/dates.js";
+import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js";
+import { downloadBlob } from "./lib/brand.js";
+import { todayISO, isDue } from "./lib/dates.js";
+import { loadPublishSettings, savePublishSettings } from "./lib/publish.js";
+import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources } from "./lib/freeApis.js";
+import {
+  loadLinkedInSettings, saveLinkedInSettings, getLinkedInSettings, isLinkedInConfigured, isBridgeConfigured, toAppConnection,
+  readAuthCallback, exchangeCode, connectionFromToken, fetchOrganizations, beginAuthorization, disconnectLinkedIn as disconnectBrowserLinkedIn,
+} from "./lib/linkedinAuth.js";
+
+/* A stage that was mid-flight when the state was saved settles to the last
+   completed stage, so nothing ever restores as "running" with no job behind it. */
+function settleStage(d) {
+  const s = d.stage || "IDEA";
+  if (["RESEARCHING", "DRAFT", "AI_REVIEW"].includes(s)) return d.draft ? "HUMAN_REVIEW" : d.angles ? "RESEARCH_COMPLETE" : "RESEARCHING";
+  if (s === "PUBLISHING") return d.publishState === "SENT" ? "PUBLISHING" : d.publishState === "PUBLISHED" ? "PUBLISHED" : "SCHEDULED";
+  if (s === "ANALYZING") return "PUBLISHED";
+  return s;
+}
+const settleSteps = (steps) => (steps || []).map((x) => ({ ...x, status: x.status === "active" ? "done" : x.status }));
+const textOf = (d) => (d ? `${d.hook}\n\n${d.body}\n\n${d.cta}` : "");
+/* The state a post record maps to when it is reopened in the workspace. */
+const stageOfPost = (post) => (post.state === "PUBLISHED" ? "PUBLISHED" : post.state === "SENT" ? "PUBLISHING" : post.state === "SCHEDULED" ? "SCHEDULED" : "APPROVED");
+
+/* three.js is ~600 KB; only people who turn the ambient scene on pay for it. */
+const PipelineScene = lazy(() => import("./components/scene3d.jsx").then((m) => ({ default: m.PipelineScene })));
 import { Dashboard, CreateFlow, DraftsList } from "./components/dashboard.jsx";
 import { Discover } from "./components/discover.jsx";
 import { Workspace, EmptyWorkspace } from "./components/workspace.jsx";
@@ -33,9 +60,9 @@ export default function UnisonContentOS() {
   const [modal, setModal] = useState(null);
   const [navOpen, setNavOpen] = useState(false);
   const [liStart, setLiStart] = useState(0);          // which step the LinkedIn flow opens on
-  const [settingsTab, setSettingsTab] = useState("models");
+  const [settingsTab, setSettingsTab] = useState("workspace");
   const [restored, setRestored] = useState(false);
-  const [bg3d, setBg3d] = useState(true);
+  const [bg3d, setBg3d] = useState(false);          // ambient 3D scene + cursor glow; off by default for speed
 
   const [idea, setIdea] = useState("");
   const [stage, setStage] = useState("IDEA");
@@ -61,7 +88,7 @@ export default function UnisonContentOS() {
   const [assets, setAssets] = useState(EMPTY_ASSETS);
   const [mstate, setMstate] = useState({});          // per-task idle/generating/success/error
   const [versions, setVersions] = useState([]);
-  const [schedule, setSchedule] = useState({ date: "2026-09-02", time: "09:30", tz: "Asia/Kolkata" });
+  const [schedule, setSchedule] = useState(() => ({ ...nextSlot(), tz: localTimezone() }));
   const [publishState, setPublishState] = useState(null);
   const [attempts, setAttempts] = useState([]);
   const [publishError, setPublishError] = useState(null);
@@ -71,6 +98,20 @@ export default function UnisonContentOS() {
   const [makeCompany, setMakeCompany] = useState({ name: "", urn: "" });
   const [relay, setRelay] = useState({ relay: false, checked: false });
   useEffect(() => { makeLinkedInService.health().then((r) => setRelay({ ...r, checked: true })); }, []);
+
+  /* Device-level settings: AI key, LinkedIn app, publishing webhook. Kept out
+     of the session blob so clearing or exporting a session never carries them. */
+  const [aiSettings, setAiSettings] = useState(() => loadAISettings());
+  const [aiInfo, setAiInfo] = useState(null);
+  const refreshAI = useCallback(() => { describeAI().then(setAiInfo).catch(() => setAiInfo({ ready: false, summary: "AI status unavailable." })); }, []);
+  useEffect(() => { refreshAI(); }, [refreshAI, aiSettings]);
+  const updateAI = (patch) => setAiSettings(saveAISettings(patch));
+  const [liSettings, setLiSettings] = useState(() => loadLinkedInSettings());
+  const updateLinkedIn = (patch) => setLiSettings(saveLinkedInSettings(patch));
+  const [pubSettings, setPubSettings] = useState(() => loadPublishSettings());
+  const updatePublish = (patch) => setPubSettings(savePublishSettings(patch));
+  const [extras, setExtras] = useState(DEFAULT_EXTRAS);        // free public APIs on/off (persisted with the session)
+  const [setupHidden, setSetupHidden] = useState(false);       // the first-run checklist on Home
   const [analytics, setAnalytics] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -84,8 +125,22 @@ export default function UnisonContentOS() {
   const [voice, setVoice] = useState(DEFAULT_VOICE);
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
 
-  const [conn, setConn] = useState(EMPTY_CONNECTION);
-  const [liMeta, setLiMeta] = useState({ reachable: false, mode: "unknown", apiVersion: null, scopes: [] });
+  /* Three sources of truth for the LinkedIn connection, in priority order:
+     a real server-side OAuth API (if one is deployed), the browser sign-in
+     configured under Settings → LinkedIn, or the prototype/Make-only state.
+     `conn` and `liMeta` are derived so the rest of the app reads one shape. */
+  const [baseConn, setBaseConn] = useState(EMPTY_CONNECTION);
+  const [baseMeta, setBaseMeta] = useState({ reachable: false, mode: "unknown", apiVersion: null, scopes: [] });
+  const [liTransient, setLiTransient] = useState(null);        // { status, error } while connecting or after an error (browser mode)
+  const browserConn = useMemo(() => toAppConnection(liSettings), [liSettings]);
+  const browserMode = baseMeta.mode !== "real" && (isLinkedInConfigured(liSettings) || !!browserConn);
+  const liMeta = useMemo(() => (browserMode
+    ? { ...baseMeta, mode: "browser", apiVersion: null, scopes: String(liSettings.scopes || "").split(/\s+/).filter(Boolean), bridge: isBridgeConfigured(liSettings) }
+    : baseMeta), [browserMode, baseMeta, liSettings]);
+  const conn = useMemo(() => (browserMode ? { ...EMPTY_CONNECTION, mode: "browser", ...(browserConn || {}), ...(liTransient || {}) } : baseConn), [browserMode, browserConn, liTransient, baseConn]);
+  const setConn = browserMode
+    ? (v) => { const next = typeof v === "function" ? v(conn) : v; setLiTransient({ status: next.status, error: next.error || null }); }
+    : setBaseConn;
   const linkedin = useMemo(() => withDerived(conn), [conn]);
   const [failMode, setFailMode] = useState(false);
   const [searchOn, setSearchOn] = useState(true);
@@ -98,6 +153,9 @@ export default function UnisonContentOS() {
   const abortRef = useRef(null);
   const runRef = useRef(0);
   const cacheRef = useRef({});
+  const workRef = useRef(null);          // the post any async job belongs to
+  const oppAbortRef = useRef(null);      // Discover has its own controller so a scan never kills a draft in progress
+  const oppRunRef = useRef(0);
 
   /* pointer + scroll, no re-render */
   useEffect(() => {
@@ -122,8 +180,15 @@ export default function UnisonContentOS() {
           const d = JSON.parse(r.value);
           d.theme && setTheme(d.theme);
           d.idea && setIdea(d.idea);
-          d.stage && setStage(d.stage);
-          d.steps && setSteps(d.steps);
+          d.stage && setStage(settleStage(d));
+          d.steps && setSteps(settleSteps(d.steps));
+          d.tone && setTone(d.tone); d.pov && setPov(d.pov); d.length && setLength(d.length);
+          if (d.publishState && ["SENT", "PUBLISHED", "FAILED", "SIMULATED"].includes(d.publishState)) {
+            setPublishState(d.publishState); d.publishVia && setPublishVia(d.publishVia);
+            Array.isArray(d.attempts) && setAttempts(d.attempts); d.publishError && setPublishError(d.publishError);
+            Array.isArray(d.publishLimits) && setPublishLimits(d.publishLimits); d.publishKind && setPublishKind(d.publishKind);
+            setPublishUnverified(!!d.publishUnverified);
+          }
           d.research && setResearch(d.research);
           d.angles && setAngles(d.angles);
           d.angle && setAngle(d.angle);
@@ -151,7 +216,12 @@ export default function UnisonContentOS() {
           d.opps && setOpps(d.opps);
           if (typeof d.searchOn === "boolean") setSearchOn(d.searchOn);
           if (typeof d.bg3d === "boolean") setBg3d(d.bg3d);
+          if (d.extras && typeof d.extras === "object") setExtras({ ...DEFAULT_EXTRAS, ...d.extras });
+          if (typeof d.setupHidden === "boolean") setSetupHidden(d.setupHidden);
           if (d.idea) setView("workspace");
+          if (d.workId) workRef.current = d.workId;
+          /* research that was cut off by a reload is started again */
+          if (d.idea && d.workId && !d.research && settleStage(d) === "RESEARCHING") setTimeout(() => runDiscovery(d.idea, d.formats || d.format || "text", d.workId), 0);
         }
       } catch (e) { /* first run */ }
       setRestored(true);
@@ -159,21 +229,39 @@ export default function UnisonContentOS() {
   }, []);
 
   const saveTimer = useRef(null);
+  const storageWarnedRef = useRef(false);
+  const [storageIssue, setStorageIssue] = useState(null);   // null | "partial" | "failed"
+  useEffect(() => { setBrandText({ name: profile.company, site: profile.website }); }, [profile.company, profile.website]);
   useEffect(() => {
     if (!restored) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
+      const full = {
+        version: 2, savedAt: new Date().toISOString(),
+        theme, idea, stage, steps, research, angles, angle, draft, verification, quality,
+        media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany,
+        posts, team, notes, audit, usage, opps, searchOn, bg3d, extras, setupHidden, tone, pov, length,
+        publishState, publishVia, attempts, publishError, publishLimits, publishKind, publishUnverified,
+        assets: compactAssets(assets),
+      };
       try {
-        await persistentStore.set(STORE_KEY, JSON.stringify({
-          theme, idea, stage, steps, research, angles, angle, draft, verification, quality,
-          media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany,
-          posts, team, notes, audit, usage, opps, searchOn, bg3d,
-          assets: compactAssets(assets),
-        }));
-      } catch (e) { /* over quota or unavailable */ }
+        await persistentStore.set(STORE_KEY, JSON.stringify(full));
+        if (storageWarnedRef.current) { storageWarnedRef.current = false; setStorageIssue(null); }
+      } catch (e) {
+        /* Over quota. Drop the heaviest, most reproducible parts (rendered
+           media on old posts) and try once more, so text is never lost. */
+        try {
+          const slim = { ...full, posts: posts.map(({ image, images, pages, upload, ...rest }) => ({ ...rest, mediaDropped: !!(image || (images || []).length || pages || upload) })), drafts: drafts.map((d) => ({ ...d, assets: { ...(d.assets || {}), images: [], doc: null, carousel: [] } })) };
+          await persistentStore.set(STORE_KEY, JSON.stringify(slim));
+          if (!storageWarnedRef.current) { storageWarnedRef.current = true; setStorageIssue("partial"); notify("Browser storage is nearly full — text was saved, but rendered media on older posts was dropped.", { tone: "warn", ms: 8000 }); }
+        } catch (e2) {
+          if (!storageWarnedRef.current) { storageWarnedRef.current = true; setStorageIssue("failed"); notify("Couldn't save your session — browser storage is full or unavailable. Clear old posts under Content, or export your work.", { tone: "bad", ms: 10000 }); }
+        }
+      }
     }, 700);
   }, [restored, theme, idea, stage, steps, research, angles, angle, draft, verification, quality,
-      media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany, posts, team, notes, audit, usage, opps, searchOn, bg3d, assets]);
+      media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany, posts, team, notes, audit, usage, opps, searchOn, bg3d, extras, assets,
+      tone, pov, length, publishState, publishVia, attempts, publishError, publishLimits, publishKind, publishUnverified, setupHidden]);
 
   /* ---------- drafts ----------
      Anything in progress is a draft until it is scheduled or published. The
@@ -183,7 +271,7 @@ export default function UnisonContentOS() {
   const finishedNow = FINISHED.includes(stage) && publishState !== "FAILED";
   const snapshotWork = () => ({
     id: workId, title: idea, idea, formats, stage, steps, research, angles, angle, draft, verification, quality,
-    media, assets: compactAssets(assets), versions, schedule, tone, pov, length, undoStack, savedAt: new Date().toISOString(),
+    media, assets: compactAssets(assets), versions: versions.slice(-6), schedule, tone, pov, length, undoStack: undoStack.slice(-3), savedAt: new Date().toISOString(),
   });
   useEffect(() => {
     if (!restored || !workId || !idea) return;
@@ -198,33 +286,54 @@ export default function UnisonContentOS() {
 
   /* Clears the workspace without touching the drafts list. */
   function clearWork() {
-    abortRef.current?.abort(); runRef.current += 1;
-    setWorkId(null); setIdea(""); setStage("IDEA"); setResearch(null); setAngles(null); setAngle(null);
+    abortRef.current?.abort(); runRef.current += 1; workRef.current = null;
+    setWorkId(null); setIdea(""); setRecFormat(null); setStage("IDEA"); setResearch(null); setAngles(null); setAngle(null);
     setDraft(null); setVerification(null); setQuality(null); setMedia(null); setFormats(["text"]);
     setAssets(EMPTY_ASSETS); setMstate({}); setVersions([]); setPublishState(null); setAttempts([]);
     setAnalytics(null); setSteps([]); setAudit([]); setUndoStack([]); setBusy(false);
     setDupDismissed(false); setOpenClaim(null); setPublishError(null); setPublishVia(null); setPublishLimits([]); setPublishKind(null); setPublishFramed(false); setPublishUnverified(false); lastPayloadRef.current = null; autoRef.current = "";
   }
 
-  function openDraft(d) {
-    abortRef.current?.abort(); runRef.current += 1;
+  function openDraft(d, opts = {}) {
+    abortRef.current?.abort(); runRef.current += 1; workRef.current = d.id;
     setWorkId(d.id); setIdea(d.idea); setFormats(normalizeFormats(d.formats || "text"));
-    setSteps((d.steps || []).map((s) => ({ ...s, status: s.status === "active" ? "done" : s.status })));
+    setSteps(settleSteps(d.steps));
     setResearch(d.research || null); setAngles(d.angles || null); setAngle(d.angle || null);
     setDraft(d.draft || null); setVerification(d.verification || null); setQuality(d.quality || null);
     setMedia(d.media || null); setAssets({ ...EMPTY_ASSETS, ...(d.assets || {}) }); setMstate({});
     setVersions(d.versions || []); if (d.schedule) setSchedule(d.schedule);
     d.tone && setTone(d.tone); d.pov && setPov(d.pov); d.length && setLength(d.length);
-    setUndoStack(d.undoStack || []); setPublishState(null); setAttempts([]); setAnalytics(null);
-    setBusy(false); setDupDismissed(false); setOpenClaim(null); autoRef.current = `${d.idea}|${normalizeFormats(d.formats || "text").join("+")}`;
+    setUndoStack(d.undoStack || []); setAnalytics(d.analytics || null);
+    setPublishState(opts.publishState || null); setPublishVia(opts.publishState ? "make" : null); setAttempts(opts.attempts || []);
+    setPublishError(null); setPublishLimits(opts.limits || []); setPublishKind(null); setPublishFramed(false); setPublishUnverified(!!opts.unverified);
+    setBusy(false); setDupDismissed(false); setOpenClaim(null); setAudit(d.audit || []); autoRef.current = `${d.idea}|${normalizeFormats(d.formats || "text").join("+")}`;
     // a job that was mid-flight when the draft was parked settles to the last completed stage
-    const s = d.stage || "IDEA";
-    if (["RESEARCHING", "DRAFT", "AI_REVIEW"].includes(s)) setStage(d.draft ? "HUMAN_REVIEW" : d.angles ? "RESEARCH_COMPLETE" : "RESEARCHING");
-    else setStage(s);
+    setStage(opts.stage || settleStage(d));
     setView("workspace"); setNavOpen(false); setModal(null); setOpenPost(null);
     window.scrollTo({ top: 0 });
-    if (!d.research) runDiscovery(d.idea, d.formats || "text", d.id);
+    if (!d.research && !opts.stage) runDiscovery(d.idea, d.formats || "text", d.id);
   }
+
+  /* A scheduled, sent or published post can always be reopened from its
+     record — the snapshot carries everything the workspace needs. */
+  function openPostInWorkspace(post, { publish = false } = {}) {
+    const snap = post.snapshot || { idea: post.topic || post.title, formats: post.formats || "text", draft: post.content, assets: { ...EMPTY_ASSETS, poll: post.poll || null } };
+    const id = post.workId || snap.id || post.id;
+    if (publish) autoPublishRef.current = id;
+    openDraft({ ...snap, id, idea: snap.idea || post.topic || post.title, savedAt: snap.savedAt || post.scheduledAt }, {
+      stage: stageOfPost(post),
+      publishState: post.state === "SENT" ? "SENT" : post.state === "PUBLISHED" ? (post.simulated ? "SIMULATED" : "PUBLISHED") : null,
+      limits: post.limits || [], unverified: !!post.unverified,
+    });
+    if (post.state === "SCHEDULED" && post.date) setSchedule((sc) => ({ ...sc, date: post.date, time: post.time || sc.time, tz: post.tz || sc.tz }));
+  }
+  const autoPublishRef = useRef(null);
+  useEffect(() => {
+    if (autoPublishRef.current && autoPublishRef.current === workId && stage === "SCHEDULED" && restored) {
+      autoPublishRef.current = null;
+      publishNow();
+    }
+  });  
 
   const removeDraft = (id) => {
     setDrafts((d) => d.filter((x) => x.id !== id));
@@ -246,8 +355,36 @@ export default function UnisonContentOS() {
     (async () => {
       const st = await linkedinService.status();
       if (!alive) return;
-      setLiMeta({ reachable: st.reachable, mode: st.mode, apiVersion: st.apiVersion, scopes: st.scopes });
-      setConn(st.connection);
+      setBaseMeta({ reachable: st.reachable, mode: st.mode, apiVersion: st.apiVersion, scopes: st.scopes });
+      setBaseConn(st.connection);
+
+      /* Back from LinkedIn's consent screen (browser sign-in). */
+      const auth = readAuthCallback();
+      if (auth && st.mode !== "real") {
+        if (auth.error) {
+          setLiTransient({ status: "error", error: auth.description });
+          notify(auth.description || "LinkedIn sign-in failed.", { tone: "bad", ms: 8000 });
+          return;
+        }
+        setLiTransient({ status: "connecting", error: null });
+        try {
+          const connection = await exchangeCode(auth.code, getLinkedInSettings());
+          if (!alive) return;
+          const next = saveLinkedInSettings({ connection });
+          setLiSettings(next); setLiTransient(null);
+          const appConn = toAppConnection(next);
+          if (connection.profile?.name) setProfile((p) => (p.userName ? p : { ...p, userName: connection.profile.name, userEmail: connection.profile.email || p.userEmail || "" }));
+          logAudit(`LinkedIn sign-in ${connection.accessToken ? "completed" : "authorised — code received, no token bridge"}`);
+          if (connection.accessToken) notify(`Signed in${connection.profile?.name ? " as " + connection.profile.name : ""}. ${appConn?.organizationName ? appConn.organizationName + " selected." : "Choose the Company Page to finish."}`, { tone: "ok" });
+          else notify("LinkedIn authorised. No token bridge is set, so finish by pasting an access token or adding a bridge URL under Settings → LinkedIn.", { tone: "warn", ms: 9000 });
+          setLiStart(1); setModal("linkedin");
+        } catch (e) {
+          if (!alive) return;
+          setLiTransient({ status: "error", error: e?.message || "The token exchange failed." });
+          notify(`LinkedIn sign-in failed: ${e?.message || e}`, { tone: "bad", ms: 9000 });
+        }
+        return;
+      }
 
       const cb = readCallbackParams();
       if (!cb) return;
@@ -271,7 +408,16 @@ export default function UnisonContentOS() {
   }, []);
 
   const logAudit = (text) => setAudit((l) => [...l, { t: now(), text }]);
-  const notify = (text) => setNotes((n) => [{ t: now(), text }, ...n].slice(0, 10));
+
+  /* Feedback goes two places: a toast the user sees now, and the
+     notifications drawer they can read later. */
+  const [toasts, setToasts] = useState([]);
+  const dismissToast = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const notify = (text, opts = {}) => {
+    setNotes((n) => [{ t: now(), text }, ...n].slice(0, 20));
+    const id = "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    setToasts((t) => [...t.slice(-4), { id, text, ...opts }]);
+  };
 
   const track = (name) => ({ inChars, outChars, ok, searched }) =>
     setUsage((u) => {
@@ -309,15 +455,13 @@ export default function UnisonContentOS() {
     return { id: runRef.current, signal: abortRef.current.signal };
   };
 
-  const pushUndo = (label) => setUndoStack((s) => [...s.slice(-9), { label, at: now(), draft, verification }]);
+  const pushUndo = (label) => setUndoStack((s) => [...s.slice(-9), { label, at: now(), draft, verification, quality }]);
   const undo = () => {
-    setUndoStack((s) => {
-      const last = s[s.length - 1];
-      if (!last) return s;
-      setDraft(last.draft); setVerification(last.verification);
-      logAudit(`Undid — ${last.label}`);
-      return s.slice(0, -1);
-    });
+    const last = undoStack[undoStack.length - 1];
+    if (!last) return;
+    setUndoStack((s) => s.slice(0, -1));
+    setDraft(last.draft); setVerification(last.verification); if (last.quality !== undefined) setQuality(last.quality);
+    logAudit(`Undid — ${last.label}`);
   };
 
   /* ---------- engines ---------- */
@@ -325,26 +469,31 @@ export default function UnisonContentOS() {
   async function runOpportunities() {
     setView("discover"); setNavOpen(false); setOppBusy(true); setOpps(null);
     window.scrollTo({ top: 0 });
-    const { id, signal } = newRun();
+    oppAbortRef.current?.abort(); oppAbortRef.current = new AbortController();
+    const signal = oppAbortRef.current.signal;
+    const id = ++oppRunRef.current;
     logAudit("Opportunity scan started");
+    const hosted = await hostedProvider.configured();
+    /* Free, keyless trending feed runs alongside the model. */
+    const hnPromise = extras.hn ? hnStories(String(profile.keywords || profile.industry || "marketing").split(",")[0].trim(), { limit: 6 }).catch(() => []) : Promise.resolve([]);
 
     const shape = `{"items":[{"headline":"under 11 words","summary":"under 16 words","publisher":"","url":"https://…","date":"YYYY-MM-DD","score":0,"whyNow":"under 16 words","gap":"open|adjacent|covered","angle":"Contrarian|Educational|Industry insight|Data-driven"}]}`;
-    const brief = `Industry: ${profile.industry}. Audience: ${profile.audience}. Watch terms: ${profile.keywords}.
+    const brief = `Today is ${todayISO()}. Industry: ${profile.industry}. Audience: ${profile.audience}. Watch terms: ${profile.keywords}.
 Already published: ${JSON.stringify(posts.slice(0, 6).map((x) => x.title))}
 Score 0-100 for how worth posting each is this week. gap = "open" if the Page has not covered it, "adjacent" if loosely related, "covered" if already posted. Sort by score, highest first.`;
 
     try {
       // pass 1 — live search
-      let r = searchOn ? await askJSON({
+      let r = searchOn && hosted ? await askJSON({
         system: `You are the content opportunity engine. ${JSON_RULE}`,
         user: `Find 4 real stories this company could post about this week. Search the web and return each real URL.
 ${brief}
 ${shape}
 Be terse. The whole reply must fit in 400 words.`,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        tools: [WEB_SEARCH_TOOL],
         fallback: () => null, track: track("Discovery"), signal,
       }) : null;
-      if (id !== runRef.current) return;
+      if (id !== oppRunRef.current) return;
 
       // pass 2 — no search, so nothing competes for the response budget
       if (!r || !(r.items || []).length) {
@@ -356,32 +505,44 @@ ${shape}
 Be terse.`,
           fallback: () => fb.opportunities(), track: track("Discovery"), signal,
         });
-        if (id !== runRef.current) return;
+        if (id !== oppRunRef.current) return;
         if (!r.degraded) r.degraded = searchOn ? "no-search" : "off";
       }
 
-      setOpps(r);
-      logAudit(`Opportunity scan returned ${(r.items || []).length} stories`);
+      const hn = await hnPromise;
+      if (id !== oppRunRef.current) return;
+      const aiItems = r.degraded === "sample" ? [] : (r.items || []);
+      const seen = new Set(aiItems.map((x) => x.url).filter(Boolean));
+      const trending = hnToOpportunities(hn).filter((x) => !seen.has(x.url));
+      const merged = { ...r, items: [...aiItems, ...trending], trending: trending.length, degraded: aiItems.length ? (r.degraded === "sample" ? undefined : r.degraded) : trending.length ? "hn-only" : r.degraded };
+      setOpps(merged);
+      logAudit(`Opportunity scan returned ${aiItems.length} stories${trending.length ? ` + ${trending.length} trending from Hacker News` : ""}`);
     } catch (e) { if (e?.name !== "AbortError") setOpps(fb.opportunities()); }
-    setOppBusy(false);
+    if (id === oppRunRef.current) setOppBusy(false);
   }
 
   async function runDiscovery(topic, chosenFormats, existingId) {
     const list = normalizeFormats(chosenFormats || formats);
     setFormats(list);
-    setWorkId(existingId || "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    const newId = existingId || "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    workRef.current = newId;
+    setWorkId(newId);
     setView("workspace"); setNavOpen(false); setModal(null); setOpenPost(null);
     setIdea(topic); setStage("RESEARCHING"); setBusy(true);
     setResearch(null); setAngles(null); setAngle(null); setDraft(null); setVerification(null);
     setQuality(null); setMedia(null); setAssets(EMPTY_ASSETS); setMstate({});
     setAnalytics(null); setPublishState(null); setAttempts([]); setVersions([]); setAudit([]);
-    setDupDismissed(false); setUndoStack([]); autoRef.current = "";
+    setDupDismissed(false); setUndoStack([]); setRecFormat(null); autoRef.current = "";
+    setPublishError(null); setPublishVia(null); setPublishLimits([]); setPublishKind(null); setPublishUnverified(false);
     logAudit("Research started");
     window.scrollTo({ top: 0 });
 
     const { id, signal } = newRun();
     const key = topic.trim().toLowerCase();
     const cached = cacheRef.current[key];
+    const hosted = await hostedProvider.configured();
+    if (id !== runRef.current) return;
+    const wikiPromise = extras.wikipedia ? wikiSearch(topic, { limit: 2 }).catch(() => []) : Promise.resolve([]);
 
     setSteps([
       { key: "search", label: cached ? "Reusing research from this session" : searchOn ? "Searching the live web" : "Web search is off — using known context", status: "active" },
@@ -398,14 +559,14 @@ Be terse.`,
 Tier 1 = official/primary, 2 = major publication, 3 = industry press, 4 = blogs/social (discovery only).`;
 
       let r = cached;
-      if (!r && searchOn) {
+      if (!r && searchOn && hosted) {
         r = await askJSON({
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
-          user: `Research this for a LinkedIn company page post: "${topic}".
-Search the web and return the real URL of every source.
+          user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}".
+Search the web and return the real URL of every source. Prefer sources from the last 90 days.
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 400 words.`,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          tools: [WEB_SEARCH_TOOL],
           fallback: () => null, track: track("Discovery"), signal,
         });
         if (id !== runRef.current) return;
@@ -413,7 +574,7 @@ Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 4
       if (!r || !(r.sources || []).length) {
         r = await askJSON({
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
-          user: `Research this for a LinkedIn company page post: "${topic}", from what you already know. Leave url empty.
+          user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}", from what you already know. Leave url empty.
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse.`,
           fallback: () => fb.research(topic), track: track("Discovery"), signal,
@@ -421,7 +582,12 @@ Give 3 sources, 2 claims, 3 insights. Be terse.`,
         if (id !== runRef.current) return;
         if (!r.degraded) r.degraded = searchOn ? "no-search" : "off";
       }
+      r = normalizeResearch(r);
       if (!cached && !r.degraded) cacheRef.current[key] = r;
+      /* Background reading from Wikipedia — clearly labelled, never evidence for a claim. */
+      const wiki = await wikiPromise;
+      if (id !== runRef.current) return;
+      if (wiki.length && !r.sources.some((x) => x.background)) r = { ...r, sources: [...r.sources, ...wikiToSources(wiki)] };
 
       setStep("search", "done"); setStep("company", "done"); setStep("compare", "done");
       setResearch(r);
@@ -437,9 +603,12 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
         fallback: () => fb.angles(topic), track: track("Intelligence"), signal,
       });
       if (id !== runRef.current) return;
-      if (!(a.angles || []).some((x) => x.recommended) && a.angles?.length) a.angles[0].recommended = true;
-      setAngles(a); setStep("angles", "done"); setStage("RESEARCH_COMPLETE");
-    } catch (e) { if (e?.name !== "AbortError") console.warn(e); }
+      setAngles(normalizeAngles(a, topic)); setStep("angles", "done"); setStage("RESEARCH_COMPLETE");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      console.warn(e);
+      if (id === runRef.current) { setSteps((st) => st.map((x) => (x.status === "active" ? { ...x, status: "failed", label: x.label + " — failed" } : x))); notify(`Research stopped: ${friendlyError(e)}`, { tone: "bad", ms: 8000 }); }
+    }
     if (id === runRef.current) setBusy(false);
   }
 
@@ -451,7 +620,7 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
     const keepMedia = !!media;   // only ask the media engine once per topic
 
     try {
-      const d = await askJSON({
+      const dRaw = await askJSON({
         system: `You are the brand writer engine. ${JSON_RULE}`,
         user: `Write a LinkedIn company page post.
 Topic: ${idea}
@@ -473,33 +642,13 @@ Claims must be quoted verbatim from the post text so they can be highlighted.
       });
       if (id !== runRef.current) return;
 
+      const d = normalizeDraft(dRaw, idea);
       setDraft(d);
       setVersions((v) => [...v, { n: v.length + 1, label: feedback ? "AI revised" : "AI generated", author: "Unison", at: now(), snapshot: d }]);
       setStage("AI_REVIEW");
 
       const jobs = [
-        askJSON({
-          system: `You are the trust engine. ${JSON_RULE}`,
-          user: `Check each claim against the sources. Copy each claim exactly as it appears in the post.
-Post claims: ${JSON.stringify(d.claims || [])}
-Sources: ${JSON.stringify((research?.sources || []).map((s, i) => ({ i, title: s.title, publisher: s.publisher, tier: s.tier, url: s.url })))}
-green = clearly supported, yellow = needs human review, red = unsupported or contradicted.
-{"claims":[{"claim":"","status":"green","source":"publisher name","url":"source url or empty","confidence":"High|Medium|Low","note":"one line"}],"unresolved":["one line"]}`,
-          fallback: fb.verify, track: track("Trust"), signal,
-        }),
-        askJSON({
-          system: `You are the content quality engine. ${JSON_RULE}`,
-          user: `Assess this LinkedIn post.
-Hook: ${d.hook}
-Body: ${d.body}
-CTA: ${d.cta}
-Previously published titles: ${JSON.stringify(posts.map((p) => p.title))}
-{"checks":[{"label":"Evidence verified","pass":true},{"label":"Brand aligned","pass":true},{"label":"Strong opening","pass":true},{"label":"No unsupported statistics","pass":true},{"label":"No duplicate content","pass":true},{"label":"Low AI-style language","pass":true}],
-"slop":["specific phrase to fix"],"duplicate":{"similar":false,"days":0,"title":""},
-"detail":{"hook":0,"readability":0,"brand":0,"originality":0,"evidence":0}}
-Scores 0-100. Only list slop phrases that are really present.`,
-          fallback: fb.quality, track: track("Trust"), signal,
-        }),
+        ...checkJobs(d, signal),
       ];
       if (!keepMedia) jobs.push(askJSON({
         system: `You are the media engine. ${JSON_RULE}`,
@@ -511,11 +660,60 @@ Post: ${d.hook} ${d.body}
 
       const [ver, q, m] = await Promise.all(jobs);
       if (id !== runRef.current) return;
-      setVerification(ver); setQuality(q);
+      setVerification({ ...normalizeVerification(ver), checkedText: textOf(d) }); setQuality(normalizeQuality(q));
       if (m) setMedia(m);   // a suggestion only — the user's chosen format wins
       setStage("HUMAN_REVIEW");
-      logAudit("Claims verified and quality check completed");
-    } catch (e) { if (e?.name !== "AbortError") console.warn(e); }
+      logAudit(ver?.degraded ? "Checks could not run — AI unavailable" : "Claims verified and quality check completed");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      console.warn(e);
+      if (id === runRef.current) { setStage(draft ? "HUMAN_REVIEW" : "RESEARCH_COMPLETE"); notify(`Writing stopped: ${friendlyError(e)}`, { tone: "bad", ms: 8000 }); }
+    }
+    if (id === runRef.current) setBusy(false);
+  }
+
+  /* The two checks that run after every draft: evidence and quality. */
+  function checkJobs(d, signal) {
+    return [
+      askJSON({
+        system: `You are the trust engine. ${JSON_RULE}`,
+        user: `Check each claim against the sources. Copy each claim exactly as it appears in the post.
+Post claims: ${JSON.stringify(d.claims || [])}
+Sources: ${JSON.stringify((research?.sources || []).filter((x) => !x.background).map((x, i) => ({ i, title: x.title, publisher: x.publisher, tier: x.tier, url: x.url, note: x.note })))}
+Research claims (with the source index they came from): ${JSON.stringify((research?.claims || []).slice(0, 8))}
+green = clearly supported by a listed source, yellow = plausible but not directly supported (needs human review), red = unsupported or contradicted. Placeholder sources with no URL support nothing.
+{"claims":[{"claim":"","status":"green","source":"publisher name","url":"source url or empty","confidence":"High|Medium|Low","note":"one line"}],"unresolved":["one line"]}`,
+        fallback: fb.verify, track: track("Trust"), signal,
+      }),
+      askJSON({
+        system: `You are the content quality engine. ${JSON_RULE}`,
+        user: `Assess this LinkedIn post.
+Hook: ${d.hook}
+Body: ${d.body}
+CTA: ${d.cta}
+Previously published titles: ${JSON.stringify(posts.map((p) => p.title))}
+{"checks":[{"label":"Evidence verified","pass":true},{"label":"Brand aligned","pass":true},{"label":"Strong opening","pass":true},{"label":"No unsupported statistics","pass":true},{"label":"No duplicate content","pass":true},{"label":"Low AI-style language","pass":true}],
+"slop":["specific phrase to fix"],"duplicate":{"similar":false,"days":0,"title":""},
+"detail":{"hook":0,"readability":0,"brand":0,"originality":0,"evidence":0}}
+Scores 0-100. "Evidence verified" passes only if every factual statement is one of the listed claims. "No duplicate content" compares against the previously published titles. Only list slop phrases that are really present.`,
+        fallback: fb.quality, track: track("Trust"), signal,
+      }),
+    ];
+  }
+
+  /* Re-run evidence and quality on the current text without rewriting it. */
+  async function recheck() {
+    if (!draft) return;
+    const { id, signal } = newRun();
+    setBusy(true); setOpenClaim(null);
+    logAudit("Re-checking the edited text");
+    try {
+      const [ver, q] = await Promise.all(checkJobs(draft, signal));
+      if (id !== runRef.current) return;
+      setVerification({ ...normalizeVerification(ver), checkedText: textOf(draft) }); setQuality(normalizeQuality(q));
+      if (["APPROVED", "SCHEDULED"].includes(stage)) setStage("HUMAN_REVIEW");
+      notify(ver?.degraded ? "Checks couldn't run — AI is unavailable." : "Checks updated for the edited text.", { tone: ver?.degraded ? "warn" : "ok" });
+    } catch (e) { if (e?.name !== "AbortError") notify(`Re-check failed: ${friendlyError(e)}`, { tone: "bad" }); }
     if (id === runRef.current) setBusy(false);
   }
 
@@ -556,41 +754,53 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
   const mset = (k, v) => setMstate((m) => ({ ...m, [k]: { ...idle(), ...v } }));
   const patchAssets = (patch) => setAssets((a) => ({ ...a, ...patch }));
 
+  /* Every media job remembers which post it started on. If the user opens
+     another draft while it runs, the result is dropped instead of landing on
+     the wrong post. */
   async function run(key, fn) {
+    const started = workRef.current;
+    const live = () => workRef.current === started;
     mset(key, { status: "generating" });
     try {
-      await fn();
-      mset(key, { status: "success" });
+      await fn(live);
+      if (live()) mset(key, { status: "success" });
     } catch (e) {
+      if (!live()) return;
       if (e?.name === "AbortError") return mset(key, { status: "idle" });
       console.warn("[unison] media task failed:", key, e);
       mset(key, { status: "error", error: friendlyError(e) });
     }
   }
 
-  const makeImage = (variant = 0) => run("image", async () => {
-    const a = await engine.image(ctxOf(), { variant });
+  const makeImage = (variant = 0) => run("image", async (live) => {
+    const a = await engine.image(ctxOf(), { variant, photo: extras.pollinations === true });
+    if (!live()) return;
     patchAssets({ images: [a], upload: null });
   });
 
-  const makeImageSet = (count = 3) => run("multi", async () => {
+  const makeImageSet = (count = 3) => run("multi", async (live) => {
     const set = await engine.imageSet(ctxOf(), { count });
+    if (!live()) return;
     patchAssets({ images: set, upload: null });
   });
 
-  const retile = (i) => run("tile-" + i, async () => {
-    const next = await engine.retile(assets.images[i], ctxOf());
-    setAssets((a) => ({ ...a, images: a.images.map((x, j) => (j === i ? next : x)) }));
+  const retile = (i) => run("tile-" + i, async (live) => {
+    const tile = assets.images[i];
+    const next = await engine.retile(tile, ctxOf());
+    if (!live()) return;
+    setAssets((a) => ({ ...a, images: a.images.map((x) => (x.id === tile.id ? next : x)) }));
   });
 
-  const addTile = () => run("multi", async () => {
+  const addTile = () => run("multi", async (live) => {
     const [t] = await engine.imageSet(ctxOf(), { count: 1 });
+    if (!live()) return;
     setAssets((a) => ({ ...a, images: [...a.images, t].slice(0, 4) }));
   });
 
-  const makeVideo = () => run("video", async () => {
+  const makeVideo = () => run("video", async (live) => {
     const previous = assets.video?.url;
     const a = await engine.video(ctxOf());
+    if (!live()) return;
     if (previous) URL.revokeObjectURL(previous);       // the old encode is dead weight
     mset("encode", { status: "idle" });
     patchAssets({ video: a, upload: null });
@@ -598,28 +808,33 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
 
   /* Encoding is real-time capture, so it is a deliberate action rather than
      something that happens behind the Generate button. */
-  const exportVideo = () => run("encode", async () => {
+  const exportVideo = () => run("encode", async (live) => {
     const cur = assets.video;
     if (!cur?.storyboard?.length) throw new Error("Nothing to encode yet.");
     if (cur.url) URL.revokeObjectURL(cur.url);
-    const file = await engine.encodeVideo(cur, { onProgress: (p) => mset("encode", { status: "generating", progress: p }) });
-    setAssets((a) => ({ ...a, video: { ...a.video, blob: file.blob, url: file.url, mime: file.mime } }));
+    const file = await engine.encodeVideo(cur, { onProgress: (p) => live() && mset("encode", { status: "generating", progress: p }) });
+    if (!live()) return;
+    setAssets((a) => ({ ...a, video: { ...a.video, blob: file.blob, url: file.url, mime: file.mime, bytes: file.blob.size } }));
     logAudit("Video encoded to WebM");
   });
 
-  const makeDocument = (pages = 5) => run("doc", async () => {
+  const makeDocument = (pages = 5) => run("doc", async (live) => {
     const d = await engine.document(ctxOf(), { pages });
+    if (!live()) return;
     patchAssets({ doc: d });
   });
 
-  const makeCarousel = (slides = 6) => run("carousel", async () => {
+  const makeCarousel = (slides = 6) => run("carousel", async (live) => {
     const c = await engine.carousel(ctxOf(), { slides });
+    if (!live()) return;
     patchAssets({ carousel: c });
   });
 
-  const reslide = (i) => run("slide-" + i, async () => {
-    const next = await engine.reslide(assets.carousel[i], i, assets.carousel.length, ctxOf());
-    setAssets((a) => ({ ...a, carousel: a.carousel.map((x, j) => (j === i ? next : x)) }));
+  const reslide = (i) => run("slide-" + i, async (live) => {
+    const slide = assets.carousel[i];
+    const next = await engine.reslide(slide, i, assets.carousel.length, ctxOf());
+    if (!live()) return;
+    setAssets((a) => ({ ...a, carousel: engine.renumber(a.carousel.map((x) => (x.id === slide.id ? { ...next, id: slide.id } : x))) }));
   });
 
   const moveItem = (listKey, from, to) => setAssets((a) => {
@@ -645,7 +860,7 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
     return { ...a, doc: { ...a.doc, pages: pages.map((pg, k) => ({ ...pg, svg: tplPage(k + 1, pages.length, pg.heading, pg.body) })) } };
   });
 
-  const makePoll = () => run("poll", async () => {
+  const makePoll = () => run("poll", async (live) => {
     const r = await askJSON({
       capability: "writing",
       system: `You write LinkedIn polls that sit underneath a written post. ${JSON_RULE}`,
@@ -658,7 +873,8 @@ The question must be under 140 characters and read naturally. Give 3 or 4 option
       fallback: () => ({ question: "What actually slows your content down?", options: ["Finding a topic", "Getting approval", "Checking the facts", "Finding the time"] }),
       track: track("Writing"),
     });
-    const opts = (r.options || []).slice(0, 4).map((o) => String(o).slice(0, 30)).filter(Boolean);
+    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map((o) => String(o).slice(0, 30)).filter(Boolean);
+    if (!live()) return;
     patchAssets({
       poll: {
         question: String(r.question || "").slice(0, 140) || "What is holding your team back?",
@@ -668,7 +884,7 @@ The question must be under 140 characters and read naturally. Give 3 or 4 option
     });
   });
 
-  const makeArticle = () => run("article", async () => {
+  const makeArticle = () => run("article", async (live) => {
     const r = await askJSON({
       capability: "writing",
       system: `You write long-form LinkedIn articles. ${JSON_RULE}`,
@@ -685,7 +901,8 @@ Four sections, each body 50-70 words. No headings inside the body text.
       }),
       track: track("Writing"),
     });
-    const sections = (r.sections || []).filter((x) => x && x.heading);
+    const sections = (Array.isArray(r.sections) ? r.sections : []).filter((x) => x && x.heading);
+    if (!live()) return;
     patchAssets({ article: { ...r, title: r.title || idea, sections: sections.length ? sections : [{ heading: "The problem", body: "" }, { heading: "What changed", body: "" }] } });
   });
 
@@ -721,6 +938,7 @@ Four sections, each body 50-70 words. No headings inside the body text.
   async function readDocText(file) {
     if (/\.docx$/i.test(file.name)) {
       const buf = await file.arrayBuffer();
+      const { default: mammoth } = await import("mammoth");   // 400 KB, loaded on first .docx only
       const out = await mammoth.extractRawText({ arrayBuffer: buf });
       return out.value || "";
     }
@@ -739,7 +957,7 @@ Four sections, each body 50-70 words. No headings inside the body text.
     throw new Error("unsupported");
   }
 
-  const ingestDocument = (file) => run("sourceDoc", async () => {
+  const ingestDocument = (file) => run("sourceDoc", async (live) => {
     let text;
     try {
       text = await readDocText(file);
@@ -763,6 +981,7 @@ Give up to 4 of each. Only include what the document actually says.`,
       track: track("Document"),
     });
     const doc = { name: file.name, size: file.size, chars: text.length, ...r, at: now() };
+    if (!live()) return;
     patchAssets({ sourceDoc: doc });
     setResearch((prev) => {
       const src = { title: file.name, publisher: "Uploaded document", date: new Date().toISOString().slice(0, 10), tier: 1, note: r.summary || "Uploaded by you.", url: "", uploaded: true };
@@ -773,35 +992,36 @@ Give up to 4 of each. Only include what the document actually says.`,
     notify(`${file.name} added as a source.`);
   });
 
-  const attachUpload = (file) => {
-    const r = new FileReader();
-    r.onload = () => patchAssets({ upload: { name: file.name, data: r.result, type: file.type }, images: [], video: null });
-    r.readAsDataURL(file);
+  const attachUpload = async (file) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith("video");
+    if (isVideo && file.size > 6 * 1024 * 1024) {
+      notify(`${file.name} is ${(file.size / 1048576).toFixed(1)} MB. Videos over 6 MB can be previewed but not sent from the browser — keep it under 6 MB to publish.`, { tone: "warn", ms: 8000 });
+    }
+    try {
+      let data = await readFileAsDataUrl(file);
+      if (!isVideo) data = await downscaleImage(data);
+      patchAssets({ upload: { name: file.name, data, type: isVideo ? file.type : (/^data:([^;]+)/.exec(data)?.[1] || file.type), bytes: dataUrlBytes(data) }, images: [], video: null });
+      logAudit(`Uploaded ${file.name}`);
+    } catch (e) {
+      notify("That file couldn't be read.", { tone: "bad" });
+    }
   };
-
-  async function runLearning(metrics) {
-    setStage("ANALYZING");
-    const a = await askJSON({
-      system: `You are the learning engine. Explain performance as likely reasons, never as proven cause. ${JSON_RULE}`,
-      user: `Post: ${draft?.hook}
-Metrics: ${JSON.stringify(metrics)}
-Page average impressions: 9800, average reactions: 240.
-{"headline":"one sentence with the comparison","why":["likely reason","likely reason","likely reason"],"next":"one recommendation"}`,
-      fallback: fb.performance, track: track("Learning"),
-    });
-    setAnalytics({ ...a, metrics });
-    logAudit("Performance summary generated");
-  }
 
   /* ---------- actions ---------- */
 
   const claimsBlocking = (verification?.claims || []).some((c) => c.status === "red");
+  const checksStale = !!(draft && verification && verification.checkedText != null && verification.checkedText !== textOf(draft));
+  const checksDegraded = !!(verification?.degraded || quality?.degraded);
 
-  function approve() {
+  function approve({ force = false } = {}) {
     if (claimsBlocking) return;
-    setVersions((v) => [...v, { n: v.length + 1, label: "Approved", author: "You", at: now(), snapshot: draft }]);
-    setStage("APPROVED"); logAudit("Reviewer approved"); notify("Post approved. Choose a time to publish.");
+    if ((checksStale || checksDegraded) && !force) return;
+    setVersions((v) => [...v, { n: v.length + 1, label: force ? "Approved without checks" : "Approved", author: profile.userName || "You", at: now(), snapshot: draft }]);
+    setStage("APPROVED"); logAudit(`${profile.userName || "Reviewer"} approved${force ? " (checks skipped)" : ""}`); notify("Post approved. Choose a time to publish.", { tone: "ok" });
   }
+  /* Editing after approval means approving again. */
+  function unlock() { if (["APPROVED", "SCHEDULED"].includes(stage)) { setStage("HUMAN_REVIEW"); setAttempts([]); logAudit("Unlocked for editing — approval withdrawn"); } }
   function reject(reason) { logAudit(`Reviewer rejected — ${reason}`); runWriter(angle, reason); }
 
   /* Everything a post needs to be re-opened later, without the working state. */
@@ -811,12 +1031,18 @@ Page average impressions: 9800, average reactions: 240.
     poll: assets.poll, image: assets.images[0]?.svg || null, images: assets.images.map((x) => x.svg),
     upload: assets.upload && !assets.upload.type.startsWith("video") ? assets.upload.data : null,
     pages: assets.doc?.pages?.map((x) => x.svg) || (assets.carousel.length ? assets.carousel.map((x) => x.svg) : null),
+    snapshot: snapshotWork(),           // enough to reopen the post in the workspace
+    submittedBy: profile.userName || null,
     time: schedule.time, tz: schedule.tz, ...extra,
   });
 
   function confirmSchedule() {
+    if (!schedule.date || !/^\d{4}-\d{2}-\d{2}$/.test(schedule.date)) { notify("Pick a date first.", { tone: "warn" }); return; }
+    if (isDue(schedule.date, schedule.time || "09:00", schedule.tz)) { notify("That time has already passed — pick a later slot, or use Publish now.", { tone: "warn" }); return; }
     setStage("SCHEDULED");
-    setPosts((p) => [postRecord({ id: "p-" + Math.floor(Math.random() * 900 + 100), state: "SCHEDULED", date: schedule.date }), ...p]);
+    /* One record per piece of work: rescheduling replaces, never duplicates. */
+    const id = workId ? "p-" + workId : "p-" + Date.now().toString(36);
+    setPosts((p) => [postRecord({ id, state: "SCHEDULED", date: schedule.date, scheduledAt: new Date().toISOString() }), ...p.filter((x) => x.id !== id && !(workId && x.workId === workId && x.state === "SCHEDULED"))]);
     logAudit(`Scheduled for ${schedule.date} ${schedule.time} ${schedule.tz}`);
     notify(`Scheduled for ${schedule.date} at ${schedule.time}.`);
   }
@@ -825,12 +1051,18 @@ Page average impressions: 9800, average reactions: 240.
      workspace, it steps back to Approved so nothing goes out at the old time. */
   function cancelScheduled(post) {
     setPosts((p) => p.filter((x) => x.id !== post.id));
-    if (post.workId && post.workId === workId && stage === "SCHEDULED") { setStage("APPROVED"); setAttempts([]); }
+    const isOpen = post.workId && post.workId === workId;
+    if (isOpen && stage === "SCHEDULED") { setStage("APPROVED"); setAttempts([]); }
+    else if (post.snapshot) {
+      /* Not open: the approved work goes back to Drafts instead of vanishing. */
+      const id = post.workId || post.id;
+      setDrafts((d) => [{ ...post.snapshot, id, stage: "APPROVED", savedAt: new Date().toISOString() }, ...d.filter((x) => x.id !== id)]);
+    }
     setOpenPost(null);
     logAudit(`Schedule cancelled — ${post.title}`);
-    notify(post.workId && post.workId === workId
-      ? `"${post.title}" will not be published. It's back in Approved if you want to reschedule it.`
-      : `"${post.title}" will not be published. Start it again from Home if you want to reschedule it.`);
+    notify(isOpen ? `"${post.title}" will not be published. It's back in Approved if you want to reschedule it.`
+      : post.snapshot ? `"${post.title}" will not be published. It's back in Drafts, approved and ready to reschedule.`
+      : `"${post.title}" will not be published.`);
   }
 
   /* The final post text exactly as it appears in the preview — hook, body,
@@ -862,8 +1094,21 @@ Page average impressions: 9800, average reactions: 240.
   async function collectMedia(postType) {
     const media = []; const limits = [];
     const png = async (svg, filename, altText, extra = {}) => {
-      const parts = dataUrlParts(await svgToPng(svg, 1200, 630));
-      media.push({ kind: "image", filename, mimeType: parts.mimeType, data: parts.data, altText: altText || "", width: 1200, height: 630, ...extra });
+      const vb = /viewBox="0 0 (\d+) (\d+)"/.exec(svg || "");
+      const w = vb ? Number(vb[1]) : 1200, h = vb ? Number(vb[2]) : 630;
+      const parts = dataUrlParts(await svgToPng(svg, w, h));
+      media.push({ kind: "image", filename, mimeType: parts.mimeType, data: parts.data, altText: altText || "", width: w, height: h, ...extra });
+    };
+    const photo = async (img, filename, altText, extra = {}) => {
+      /* AI photo: fetched into base64 when the host allows it, else sent by URL */
+      try {
+        const { fetchImageAsDataUrl } = await import("./lib/freeApis.js");
+        const parts = dataUrlParts(await fetchImageAsDataUrl(img.url));
+        media.push({ kind: "image", filename, mimeType: parts.mimeType, data: parts.data, altText: altText || "", width: img.width || 1200, height: img.height || 630, ...extra });
+      } catch {
+        media.push({ kind: "image", filename, mimeType: "image/jpeg", url: img.url, altText: altText || "", width: img.width || 1200, height: img.height || 630, ...extra });
+        limits.push("The AI image is sent as a link for the scenario to download — it couldn't be read into the request from this browser.");
+      }
     };
     if (assets.upload) {
       const parts = dataUrlParts(assets.upload.data);
@@ -871,7 +1116,10 @@ Page average impressions: 9800, average reactions: 240.
       else limits.push("The uploaded file couldn't be read for sending.");
       return { media, limits };
     }
-    if (postType === "image" && assets.images[0]) await png(assets.images[0].svg, "unison-image.png", assets.images[0].brief?.subject);
+    if (postType === "image" && assets.images[0]) {
+      const img = assets.images[0];
+      if (img.kind === "url") await photo(img, "unison-image.jpg", img.brief?.subject); else await png(img.svg, "unison-image.png", img.brief?.subject);
+    }
     if (postType === "multi") for (let i = 0; i < assets.images.length; i++) await png(assets.images[i].svg, `unison-image-${i + 1}.png`, assets.images[i].brief?.subject, { index: i });
     if (postType === "video") {
       const v = assets.video;
@@ -882,7 +1130,6 @@ Page average impressions: 9800, average reactions: 240.
     }
     if (postType === "document" && assets.doc?.pages?.length) {
       for (let i = 0; i < assets.doc.pages.length; i++) await png(assets.doc.pages[i].svg, `unison-document-page-${i + 1}.png`, assets.doc.pages[i].heading, { kind: "document-page", index: i, of: assets.doc.pages.length });
-      limits.push("LinkedIn document posts need a PDF. The pages are sent as images; the scenario has to assemble them into a PDF before LinkedIn will accept a document post.");
     }
     if (postType === "carousel" && assets.carousel.length) {
       for (let i = 0; i < assets.carousel.length; i++) await png(assets.carousel[i].svg, `unison-slide-${i + 1}.png`, assets.carousel[i].heading, { kind: "slide", index: i, of: assets.carousel.length });
@@ -891,7 +1138,7 @@ Page average impressions: 9800, average reactions: 240.
   }
 
   /* Everything the scenario needs, from live state — nothing placeholder. */
-  async function buildPublishPayload(postId) {
+  async function buildPublishPayload(postId, { scheduled = false } = {}) {
     const postType = postTypeOf();
     const { media, limits } = await collectMedia(postType);
     const payload = {
@@ -902,9 +1149,12 @@ Page average impressions: 9800, average reactions: 240.
       content: finalPostText(),
       company: linkedin.org || makeCompany.name || MAKE_CONFIG.company.name || null,
       companyUrn: linkedin.organizationUrn || makeCompany.urn || MAKE_CONFIG.company.urn || null,
-      scheduledDate: stage === "SCHEDULED" || stage === "PUBLISHING" ? schedule.date : null,
-      scheduledTime: stage === "SCHEDULED" || stage === "PUBLISHING" ? schedule.time : null,
-      timezone: schedule.tz || "Asia/Kolkata",
+      publishMode: scheduled ? "scheduled" : "now",
+      scheduledDate: scheduled ? schedule.date : null,
+      scheduledTime: scheduled ? schedule.time : null,
+      timezone: schedule.tz || localTimezone(),
+      submittedBy: profile.userName || linkedin.profile?.name ? { name: profile.userName || linkedin.profile?.name, email: profile.userEmail || linkedin.profile?.email || null } : null,
+      linkedinAccessToken: liSettings.sendToken && liSettings.connection?.accessToken ? liSettings.connection.accessToken : undefined,
       media,
       poll: postType === "poll" && assets.poll
         ? { question: assets.poll.question, options: (assets.poll.options || []).filter(Boolean), duration: assets.poll.duration }
@@ -920,31 +1170,6 @@ Page average impressions: 9800, average reactions: 240.
   const [publishKind, setPublishKind] = useState(null);   // why the last send failed, for the recovery UI
   const [publishFramed, setPublishFramed] = useState(false);
 
-  /* Sends this post once and once only, without a readable response. Offered
-     only after the browser refused the normal request, and only on a click. */
-  async function sendAnyway() {
-    const payload = lastPayloadRef.current;
-    if (!payload || publishingRef.current) return;
-    publishingRef.current = true;
-    setPublishState("SENDING"); setStage("PUBLISHING"); setPublishError(null); setPublishKind(null);
-    setAttempts((a) => [...a, { label: "Sending without delivery confirmation", status: "ok" }]);
-    try {
-      const r = await makeLinkedInService.sendUnverified(payload);
-      setSentKeys((k) => (k.includes(payload.postId) ? k : [...k, payload.postId]));
-      setAttempts((a) => [...a, { label: "Sent — delivery not confirmable from the browser", status: "ok" }, { label: "Publishing through LinkedIn", status: "pending" }]);
-      setPublishState("SENT"); setPublishUnverified(true);
-      setPosts((p) => [postRecord({ id: payload.postId, state: "SENT", date: new Date().toISOString().slice(0, 10), viaMake: true, postType: payload.postType, mediaSent: payload.media.length, limits: publishLimits, sentAt: r.at, unverified: true }), ...p.filter((x) => x.id !== payload.postId)]);
-      logAudit("Sent to Make without delivery confirmation");
-      notify("Sent. The browser can't read Make's reply, so check the scenario to confirm it arrived.");
-    } catch (e) {
-      setAttempts((a) => [...a, { label: "This page can't make outside requests", status: "failed" }]);
-      setPublishState("FAILED"); setStage("FAILED"); setPublishKind("sandbox");
-      setPublishError("This preview can't make outside requests, so nothing was sent. Open Unison from its own address (your deployed version) and publish from there.");
-    } finally {
-      publishingRef.current = false;
-    }
-  }
-
   /* Sent in full, with a note where LinkedIn itself constrains what the
      scenario can do with it. These are notes, not blocks — nothing is
      downgraded to another format. */
@@ -954,12 +1179,25 @@ Page average impressions: 9800, average reactions: 240.
     article: "LinkedIn Articles can't be created through the API. The article is sent with the post so the scenario can store or route it, but LinkedIn will only publish the written post.",
   };
 
-  async function publishNow() {
+  /* A dry run that looks like the real thing, used whenever no real
+     publishing route is connected. Nothing leaves the browser. */
+  function simulatePublish(postId) {
+    setStage("PUBLISHING"); setPublishState("SENDING"); setPublishVia("simulated");
+    setAttempts([{ label: "Simulated — nothing was sent", status: "ok", idem: postId }, { label: "Published (simulated)", status: "ok", idem: postId }]);
+    setPublishState("SIMULATED"); setStage("PUBLISHED");
+    setPosts((p) => [postRecord({ id: postId, state: "PUBLISHED", date: todayISO(), simulated: true, publishedAt: new Date().toISOString() }), ...p.filter((x) => x.id !== postId)]);
+    logAudit("Simulated publish — nothing was sent to LinkedIn");
+    notify("Simulated publish — nothing was sent. Connect Make or LinkedIn under Settings to publish for real.", { tone: "warn", ms: 8000 });
+  }
+
+  async function publishNow({ scheduled = false } = {}) {
     if (publishingRef.current || ["PREPARING", "SENDING"].includes(publishState) || stage === "PUBLISHED") return;
-    const idem = "unison-" + Math.random().toString(36).slice(2, 10);
+    const postId = workId || "unison-" + Math.random().toString(36).slice(2, 10);
+    const idem = postId;
+    const startedFor = workRef.current;
+    const live = () => workRef.current === startedFor;
     setAttempts([]); setPublishError(null); setPublishLimits([]); setPublishKind(null); setPublishUnverified(false);
-    const step = (label, status) => setAttempts((a) => [...a, { label, status, idem }]);
-    const postId = workId || idem;
+    const step = (label, status) => live() && setAttempts((a) => [...a, { label, status, idem }]);
 
     /* ---- real publishing through Unison's own API (unchanged) ---- */
     if (liMeta.mode === "real" && conn.status === "connected") {
@@ -978,7 +1216,7 @@ Page average impressions: 9800, average reactions: 240.
         logAudit(`Published to LinkedIn — ${r.post.urn}`);
         notify("Published to LinkedIn.");
         setPosts((p) => [postRecord({ id: r.post.urn, url: r.post.url, state: "PUBLISHED", date: schedule.date, real: true }), ...p]);
-        setTimeout(() => runLearning({ impressions: 0, reactions: 0, comments: 0, shares: 0, clicks: 0 }), 800);
+        setAnalytics(null);   // performance arrives later, from LinkedIn — nothing is invented here
       } catch (e) {
         step(e.code === "cannot_publish" ? "Page permission check" : "LinkedIn rejected the request", "failed");
         setPublishState("FAILED"); setStage("FAILED");
@@ -995,9 +1233,13 @@ Page average impressions: 9800, average reactions: 240.
        post; only an explicit confirmation in Make's reply means LinkedIn has
        it. The stages are reported exactly as far as they are known. */
     const postType = postTypeOf();
+    /* Only a real route may send anything: the Make workflow, or a browser
+       sign-in with a Page selected. A sample Page or no connection is a dry run. */
+    const realRoute = makeLinkedInService.configured() && !linkedin.simulated && (linkedin.viaWorkflow || (liMeta.mode === "browser" && linkedin.connected));
+    if (!realRoute) { simulatePublish(postId); return; }
     if (sentKeys.includes(postId)) {
       setPublishState("SENT");
-      notify("This post has already been sent to Make. It won't be sent again.");
+      notify("This post has already been sent to Make. It won't be sent again — mark it live if you've checked LinkedIn.", { tone: "warn" });
       return;
     }
     publishingRef.current = true;
@@ -1005,18 +1247,28 @@ Page average impressions: 9800, average reactions: 240.
     step("Preparing", "ok");
     try {
       if (failMode) throw Object.assign(new Error("Simulated failure."), { kind: "simulated" });
-      const { payload, limits } = await buildPublishPayload(postId);
+      const { payload, limits } = await buildPublishPayload(postId, { scheduled });
+      if (postType === "video" && !payload.media.some((m) => m.kind === "video")) throw Object.assign(new Error("No video file to send."), { kind: "no-video" });
       if (TYPE_NOTES[postType]) limits.push(TYPE_NOTES[postType]);
+      if (!live()) return;
       setPublishLimits(limits);
       lastPayloadRef.current = payload;
       setPublishState("SENDING");
-      step("Sending to Make", "ok");
+      step(scheduled ? "Handing to Make with the schedule" : "Sending to Make", "ok");
+      /* Snapshot the record before the round trip: if the user opens another
+         draft meanwhile, the result is still filed against the right post. */
+      const baseRecord = postRecord({ id: postId, viaMake: true, postType, mediaSent: payload.media.length, limits, scheduledHandoff: scheduled });
       const r = await makeLinkedInService.publish(payload);
       setSentKeys((k) => (k.includes(postId) ? k : [...k, postId]));
-      step(r.duplicate ? "Already delivered — not sent again" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service", "ok");
+      if (!live()) {
+        setPosts((p) => [{ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null }, ...p.filter((x) => x.id !== postId)]);
+        return;
+      }
+      step(r.duplicate ? "Already delivered — not sent again" : r.unverified ? "Sent — Make's reply couldn't be read from this browser" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service", "ok");
+      if (r.unverified) setPublishUnverified(true);
       const sentRecord = postRecord({
-        id: postId, state: "SENT", date: new Date().toISOString().slice(0, 10), viaMake: true,
-        postType, mediaSent: payload.media.length, limits, sentAt: r.at, reference: r.urn || null, url: r.url || null,
+        id: postId, state: "SENT", date: scheduled ? schedule.date : todayISO(), viaMake: true, scheduledHandoff: scheduled,
+        postType, mediaSent: payload.media.length, limits, sentAt: r.at, reference: r.urn || null, url: r.url || null, unverified: !!r.unverified,
       });
       if (r.published) {
         step("Publishing through LinkedIn", "ok"); step("Published", "ok");
@@ -1025,25 +1277,22 @@ Page average impressions: 9800, average reactions: 240.
         logAudit(`Published to LinkedIn via Make${r.urn ? ` — ${r.urn}` : ""}`);
         notify("Published to LinkedIn.");
       } else {
-        step("Publishing through LinkedIn", "pending");
+        step(scheduled ? `Make will publish on ${schedule.date} at ${schedule.time}` : "Publishing through LinkedIn", "pending");
         setPublishState("SENT");
         setPosts((p) => [sentRecord, ...p.filter((x) => x.id !== postId)]);
-        logAudit(`Sent to Make — ${postType} post${payload.media.length ? `, ${payload.media.length} media file(s)` : ""}`);
-        notify("Sent to Make — LinkedIn publishing is being processed.");
+        logAudit(`Sent to Make — ${postType} post${payload.media.length ? `, ${payload.media.length} media file(s)` : ""}${r.unverified ? " (reply unreadable)" : ""}`);
+        notify(r.unverified ? "Sent to Make. The reply couldn't be read from this browser, so check the scenario before sending again." : scheduled ? "Handed to Make with the schedule." : "Sent to Make — LinkedIn publishing is being processed.", { tone: r.unverified ? "warn" : "ok" });
       }
     } catch (e) {
+      if (!live()) return;
       let kind = e?.kind || null;
       let label = "Make did not accept the post";
       if (kind === "relay-error") label = "The publishing service rejected the post";
-      if (kind === "network") {
-        /* Work out which of the two blocks this actually is before saying
-           anything about it. */
-        const d = await makeLinkedInService.diagnose();
-        kind = d.networkAllowed ? "cors" : "sandbox";
-        label = d.networkAllowed ? "Make's reply couldn't be read" : "This page can't make outside requests";
-        setPublishFramed(!!d.framed);
-      } else if (kind === "timeout") label = "Make didn't respond in time";
+      if (kind === "sandbox") { label = "This page can't make outside requests"; setPublishFramed(!!e.framed); }
+      else if (kind === "timeout") label = "Make didn't respond in time";
       else if (kind === "too-large") label = "Post too large to send";
+      else if (kind === "no-video") label = "No video file to send";
+      else if (kind === "relay-missing") { kind = "sandbox"; label = "No publishing service is deployed here"; }
       step(label, "failed");
       setPublishState("FAILED"); setStage("FAILED");
       setPublishKind(kind);
@@ -1051,6 +1300,7 @@ Page average impressions: 9800, average reactions: 240.
         : kind === "empty" ? "There is no post text to publish."
         : kind === "simulated" ? "Simulated failure (Settings → Simulate a publishing failure). Nothing was sent."
         : kind === "too-large" ? "The post and its media are too large to send in one request. Reduce the media and try again."
+        : kind === "no-video" ? "This is a video post but there is no video file yet. Export the video in the Media step (or upload one), then publish."
         : kind === "timeout" ? "Make didn't answer in time. The post may already have reached it — check the scenario before sending again."
         : kind === "cors" ? "Make received the request but didn't allow this page to read the reply, so Unison can't confirm what happened. Sending without confirmation will get the post through."
         : kind === "sandbox" ? "This preview can't reach the publishing service, so nothing was sent — LinkedIn and Make are fine, the preview just can't make outside requests. Publish from the deployed version and this post will go straight through."
@@ -1073,7 +1323,51 @@ Page average impressions: 9800, average reactions: 240.
 
   /* Real mode: the server confirms the Page. Prototype mode: we mark the
      connection simulated and never call it connected. */
+  /* Browser sign-in helpers handed to the LinkedIn modal. */
+  const browserLinkedIn = {
+    settings: liSettings,
+    begin: () => { try { beginAuthorization(getLinkedInSettings()); } catch (e) { notify(e.message, { tone: "bad" }); } },
+    /* A token pasted from the developer portal's token generator. */
+    useToken: async (token, expiresIn) => {
+      const cur = getLinkedInSettings().connection || {};
+      let connection = connectionFromToken({ accessToken: String(token).trim(), expiresIn: Number(expiresIn) || 60 * 24 * 3600, profile: cur.profile, organizations: cur.organizations, via: "token" });
+      const next = saveLinkedInSettings({ connection });
+      setLiSettings(next); setLiTransient(null);
+      logAudit("LinkedIn access token added manually");
+      if (isBridgeConfigured(next)) {
+        try { const orgs = await fetchOrganizations(connection, next); const n2 = saveLinkedInSettings({ connection: { ...connection, organizations: orgs, selectedUrn: orgs.length === 1 ? orgs[0].urn : connection.selectedUrn } }); setLiSettings(n2); return n2.connection; }
+        catch (e) { notify(`Token saved, but the bridge couldn't list your Pages: ${e.message}`, { tone: "warn", ms: 8000 }); }
+      }
+      return connection;
+    },
+    loadOrgs: async () => {
+      const s = getLinkedInSettings();
+      const orgs = await fetchOrganizations(s.connection, s);
+      const next = saveLinkedInSettings({ connection: { ...s.connection, organizations: orgs } });
+      setLiSettings(next);
+      return orgs;
+    },
+    /* A Page typed in by hand when no bridge can list them. */
+    addOrg: (org) => {
+      const s = getLinkedInSettings();
+      const cur = s.connection || { status: "authorized", organizations: [] };
+      const orgs = [...(cur.organizations || []).filter((o) => o.urn !== org.urn), org];
+      setLiSettings(saveLinkedInSettings({ connection: { ...cur, organizations: orgs } }));
+      return orgs;
+    },
+  };
+
   async function finishConnect(org) {
+    if (liMeta.mode === "browser") {
+      const cur = getLinkedInSettings().connection || { status: "authorized", organizations: [], obtainedAt: new Date().toISOString() };
+      const orgs = (cur.organizations || []).some((o) => o.urn === org.urn) ? cur.organizations : [...(cur.organizations || []), org];
+      const next = saveLinkedInSettings({ connection: { ...cur, organizations: orgs, selectedUrn: org.urn } });
+      setLiSettings(next); setLiTransient(null);
+      if (!makeCompany.name && !makeCompany.urn) setMakeCompany({ name: org.name || "", urn: org.urn || "" });
+      logAudit(`LinkedIn Page selected — ${org.name}`);
+      notify(`${org.name} selected as the Company Page.`, { tone: "ok" });
+      return;
+    }
     if (liMeta.mode === "real") {
       try {
         const r = await linkedinService.select(org.urn);
@@ -1104,13 +1398,72 @@ Page average impressions: 9800, average reactions: 240.
   }
 
   const openLinkedIn = (startAt = 0) => { setLiStart(startAt); setModal("linkedin"); };
-  const manageConnection = () => { setSettingsTab("connections"); setModal("settings"); };
+  const openSettings = (tab) => { setSettingsTab(tab || "workspace"); setModal("settings"); };
+  /* Components call setModal("settings", "ai") to land on a tab. */
+  const openModal = (m, tab) => { if (m === "settings" && tab) setSettingsTab(tab); setModal(m); };
+  /* Something real happens on Publish only on these routes. */
+  const publishReady = makeLinkedInService.configured() && !linkedin.simulated && (linkedin.viaWorkflow || (liMeta.mode === "browser" && linkedin.connected));
+
+  /* Performance numbers are typed in from LinkedIn analytics; the learning
+     engine explains them on request and the explanation lives on the post. */
+  function saveMetrics(post, metrics) {
+    setPosts((p) => p.map((x) => (x.id === post.id ? { ...x, metrics, sample: false, analytics: null } : x)));
+    setOpenPost((o) => (o && o.id === post.id ? { ...o, metrics, sample: false, analytics: null } : o));
+    logAudit(`Performance numbers added — ${post.title}`);
+    notify("Numbers saved.", { tone: "ok" });
+  }
+  async function explainPost(post) {
+    const text = post.content ? `${post.content.hook}\n${post.content.body}` : post.title;
+    const others = posts.filter((x) => x.id !== post.id && x.metrics && Number(x.metrics.impressions) > 0);
+    const avg = (k) => (others.length ? Math.round(others.reduce((a, x) => a + (Number(x.metrics[k]) || 0), 0) / others.length) : null);
+    notify("Asking the learning engine…");
+    const a = await askJSON({
+      system: `You are the learning engine. Explain performance as likely reasons, never as proven cause. ${JSON_RULE}`,
+      user: `Post: ${text.slice(0, 1200)}
+Metrics: ${JSON.stringify(post.metrics)}
+${others.length ? `Page average across ${others.length} other posts: impressions ${avg("impressions")}, reactions ${avg("reactions")}, comments ${avg("comments")}.` : "No other posts have numbers yet, so compare against typical B2B Company Page benchmarks and say so."}
+{"headline":"one sentence with the comparison","why":["likely reason","likely reason","likely reason"],"next":"one recommendation"}`,
+      fallback: fb.performance, track: track("Learning"),
+    });
+    const analytics = { ...a, metrics: post.metrics, at: new Date().toISOString() };
+    setPosts((p) => p.map((x) => (x.id === post.id ? { ...x, analytics } : x)));
+    setOpenPost((o) => (o && o.id === post.id ? { ...o, analytics } : o));
+    if (post.workId && post.workId === workId) setAnalytics(analytics);
+    logAudit(`Performance explained — ${post.title}${a.degraded ? " (sample explanation — AI unavailable)" : ""}`);
+    if (a.degraded) notify("The AI was unavailable, so this is a sample explanation.", { tone: "warn" });
+  }
+  const manageConnection = () => { setSettingsTab("linkedin"); setModal("settings"); };
   const disconnectLinkedIn = async () => {
     if (liMeta.mode === "real") { try { await linkedinService.disconnect(); } catch (e) { /* clear locally anyway */ } }
-    setConn({ ...EMPTY_CONNECTION, mode: liMeta.mode });
+    if (liMeta.mode === "browser") { setLiSettings(disconnectBrowserLinkedIn()); setLiTransient(null); }
+    else setBaseConn({ ...EMPTY_CONNECTION, mode: baseMeta.mode });
     logAudit("LinkedIn disconnected");
-    notify("LinkedIn disconnected. Publishing is locked until you reconnect.");
+    notify("LinkedIn disconnected.");
   };
+
+  /* Portable copy of the team's work — for backups, moving devices, or QA. */
+  function exportSession() {
+    const data = { app: "unison-content-os", version: 2, exportedAt: new Date().toISOString(), posts, drafts, team, profile, voice, schedule, makeCompany, extras, usage, sentKeys };
+    downloadBlob(JSON.stringify(data, null, 2), `unison-session-${todayISO()}.json`, "application/json");
+    notify("Session exported.", { tone: "ok" });
+  }
+  async function importSession(file) {
+    try {
+      const d = JSON.parse(await file.text());
+      if (!d || typeof d !== "object" || (d.app && d.app !== "unison-content-os")) throw new Error("not a Unison export");
+      if (Array.isArray(d.posts)) setPosts(d.posts);
+      if (Array.isArray(d.drafts)) setDrafts(d.drafts);
+      if (Array.isArray(d.team)) setTeam(d.team);
+      if (d.profile) setProfile({ ...DEFAULT_PROFILE, ...d.profile });
+      if (d.voice) setVoice({ ...DEFAULT_VOICE, ...d.voice });
+      if (d.schedule) setSchedule(d.schedule);
+      if (d.makeCompany) setMakeCompany(d.makeCompany);
+      if (d.extras) setExtras({ ...DEFAULT_EXTRAS, ...d.extras });
+      if (Array.isArray(d.sentKeys)) setSentKeys(d.sentKeys);
+      logAudit(`Session imported from ${file.name}`);
+      notify(`Imported ${(d.posts || []).length} posts and ${(d.drafts || []).length} drafts.`, { tone: "ok" });
+    } catch (e) { notify("That file isn't a Unison session export.", { tone: "bad" }); }
+  }
 
   /* "New post": the current work is already saved as a draft, so just clear
      the workspace and go to the composer. */
@@ -1124,8 +1477,9 @@ Page average impressions: 9800, average reactions: 240.
     cacheRef.current = {};
     reset(); setDrafts([]); setOpps(null); setPosts(SEED_POSTS); setTeam(SEED_TEAM); setNotes([]);
     setUsage({ calls: 0, fails: 0, searches: 0, inTok: 0, outTok: 0, byEngine: {} });
-    setConn({ ...EMPTY_CONNECTION, mode: liMeta.mode });
-    setModal(null); notify("Saved session cleared.");
+    setBaseConn({ ...EMPTY_CONNECTION, mode: baseMeta.mode }); setLiTransient(null);
+    setProfile(DEFAULT_PROFILE); setVoice(DEFAULT_VOICE); setExtras(DEFAULT_EXTRAS); setMakeCompany({ name: "", urn: "" }); setSentKeys([]);
+    setModal(null); notify("Saved session cleared. Your AI key and LinkedIn sign-in were kept.", { tone: "ok" });
   }
 
   const appProps = {
@@ -1135,42 +1489,46 @@ Page average impressions: 9800, average reactions: 240.
     makeCarousel, reslide, moveItem, dropItem, editSlide, editDocPage, makePoll, makeArticle, editArticle,
     ingestDocument, attachUpload, exportVideo,
     analytics, busy, tone, setTone, pov, setPov, length, setLength, showDetail, setShowDetail,
-    openClaim, setOpenClaim, linkedin, claimsBlocking, runWriter, approve, reject, confirmSchedule,
-    publishNow, runDiscovery, setDrawer, setModal, reset, cancelWork, setFailMode, undoStack, pushUndo, undo,
-    publishLimits, publishKind, publishFramed, publishUnverified, sendAnyway, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay,
+    openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter, approve, reject, confirmSchedule,
+    publishNow, runDiscovery, setDrawer, reset, cancelWork, setFailMode, undoStack, pushUndo, undo,
+    publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras,
+    setModal: openModal,
   };
 
   return (
     <div className="unison" data-t={theme}>
-      <CursorField theme={theme} />
+      {bg3d && <CursorField theme={theme} />}
 
-      <Header {...{ view, setView, setDrawer, setModal, notes, linkedin, liMeta, relay, theme, setTheme, navOpen, setNavOpen, openLinkedIn, manageConnection, disconnectLinkedIn, draftCount: drafts.length }} />
+      <Header {...{ view, setView, setDrawer, setModal, notes, linkedin, liMeta, relay, theme, setTheme, navOpen, setNavOpen, openLinkedIn, manageConnection, disconnectLinkedIn, draftCount: drafts.length, profile, openSettings }} />
 
       {navOpen && (
         <div className="sheet">
           {NAV.map(([id, label]) => (
             <button key={id} onClick={() => { setNavOpen(false); setView(id); }}>{label}{id === "drafts" && drafts.length ? ` (${drafts.length})` : ""}</button>
           ))}
-          <button onClick={() => { setNavOpen(false); openLinkedIn(linkedin.connected ? 1 : 0); }}>
-            {linkedin.viaWorkflow ? "LinkedIn publishing ready" : linkedin.connected ? `LinkedIn · ${linkedin.org}` : "Connect LinkedIn"}
+          <button onClick={() => { setNavOpen(false); if (linkedin.viaWorkflow || !linkedin.connected && liMeta.mode !== "browser") openSettings("linkedin"); else openLinkedIn(linkedin.connected ? 1 : 0); }}>
+            {linkedin.viaWorkflow ? "LinkedIn · publishing via Make" : linkedin.connected ? `LinkedIn · ${linkedin.org}` : "Connect LinkedIn"}
           </button>
           <button onClick={() => { setNavOpen(false); setModal("voice"); }}>Brand voice</button>
-          <button onClick={() => { setNavOpen(false); setModal("settings"); }}>Settings</button>
+          <button onClick={() => { setNavOpen(false); setTheme(theme === "dark" ? "light" : "dark"); }}>Switch to {theme === "dark" ? "light" : "dark"} theme</button>
+          <button onClick={() => { setNavOpen(false); openSettings(); }}>Settings</button>
         </div>
       )}
 
-      <PipelineScene theme={theme} level={bg3d ? 0.16 : 0} />
+      {bg3d && <Suspense fallback={null}><PipelineScene theme={theme} level={0.16} /></Suspense>}
       {idea && <MobileRail index={railIndex} stages={fmt.stages} />}
       <div className="wrap">
         <Rail index={railIndex} active={busy} started={!!idea} fmt={fmt} />
         <main>
           {view === "home" && (
             <Dashboard
-              posts={posts} linkedin={linkedin} schedule={schedule} setModal={setModal}
+              posts={posts} linkedin={linkedin} schedule={schedule} setModal={setModal} profile={profile}
               drafts={drafts} activeId={idea ? workId : null}
               onEditDraft={openDraft} onRemoveDraft={removeDraft}
               onDiscover={runOpportunities}
-              setView={setView} open={setOpenPost}
+              setView={setView} open={setOpenPost} publish={(p) => openPostInWorkspace(p, { publish: true })}
+              aiInfo={aiInfo} publishReady={publishReady} openSettings={openSettings}
+              setupHidden={setupHidden} hideSetup={() => setSetupHidden(true)}
               composer={
                 <CreateFlow
                   onStart={(f, t) => runDiscovery(t, f)}
@@ -1185,9 +1543,9 @@ Page average impressions: 9800, average reactions: 240.
           )}
           {view === "drafts" && <DraftsList drafts={drafts} activeId={idea ? workId : null} onEdit={openDraft} onRemove={removeDraft} onResume={() => setView("workspace")} onCreate={() => setView("home")} />}
           {view === "workspace" && (idea ? <Workspace {...appProps} /> : <EmptyWorkspace onCreate={() => setView("home")} drafts={drafts.length} onDrafts={() => setView("drafts")} />)}
-          {view === "content" && <ContentList posts={posts} open={setOpenPost} />}
-          {view === "calendar" && <CalendarView posts={posts} open={setOpenPost} start={(t) => { setSeedIdea(t); setView("home"); }} />}
-          {view === "insights" && <Insights posts={posts} analytics={analytics} discover={runOpportunities} />}
+          {view === "content" && <ContentList posts={posts} open={setOpenPost} publish={(p) => openPostInWorkspace(p, { publish: true })} onCreate={() => setView("home")} />}
+          {view === "calendar" && <CalendarView posts={posts} open={setOpenPost} start={(t, iso) => { if (iso) setSchedule((s) => ({ ...s, date: iso })); setSeedIdea(t); setView("home"); }} />}
+          {view === "insights" && <Insights posts={posts} analytics={analytics} discover={runOpportunities} openPost={setOpenPost} />}
         </main>
       </div>
 
@@ -1210,8 +1568,9 @@ Page average impressions: 9800, average reactions: 240.
       )}
 
       {modal === "settings" && (
-        <Modal wide onClose={() => { setModal(null); setSettingsTab("models"); }} title="Settings">
-          <Settings {...{ usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, setModal, searchOn, setSearchOn, failMode, setFailMode, makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify, profile, setProfile, wipe, bg3d, setBg3d, initialTab: settingsTab }} />
+        <Modal wide onClose={() => { setModal(null); setSettingsTab("workspace"); }} title="Settings">
+          <Settings {...{ usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, setModal, searchOn, setSearchOn, failMode, setFailMode, makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify, profile, setProfile, wipe, bg3d, setBg3d, initialTab: settingsTab,
+            aiSettings, updateAI, aiInfo, refreshAI, liSettings, updateLinkedIn, pubSettings, updatePublish, extras, setExtras, exportSession, importSession, storageIssue, posts }} />
         </Modal>
       )}
       {modal === "voice" && (
@@ -1221,7 +1580,8 @@ Page average impressions: 9800, average reactions: 240.
       )}
       {modal === "linkedin" && (
         <Modal onClose={() => setModal(null)} title={liStart === 1 ? "Switch Company Page" : "Connect LinkedIn"}>
-          <LinkedInFlow startAt={liStart} mode={liMeta.mode} connection={conn} scopes={liMeta.scopes}
+          <LinkedInFlow startAt={liStart} mode={liMeta.mode} connection={conn} scopes={liMeta.scopes} browser={browserLinkedIn}
+            openSettings={() => { setSettingsTab("linkedin"); setModal("settings"); }} notify={notify}
             onDone={(org) => { finishConnect(org); setModal(null); }} />
         </Modal>
       )}
@@ -1232,9 +1592,12 @@ Page average impressions: 9800, average reactions: 240.
       )}
       {openPost && (
         <Modal onClose={() => setOpenPost(null)} title={openPost.state === "SCHEDULED" ? "Scheduled post" : openPost.state === "PUBLISHED" ? "Published post" : "Post"}>
-          <PostDetail post={openPost} linkedin={linkedin} cancel={cancelScheduled} confirm={confirmPublished} start={(t) => { setOpenPost(null); runDiscovery(t, "text"); }} />
+          <PostDetail post={openPost} linkedin={linkedin} company={profile.company} cancel={cancelScheduled} confirm={confirmPublished} start={(t) => { setOpenPost(null); runDiscovery(t, "text"); }}
+            open={(p) => openPostInWorkspace(p)} publish={(p) => openPostInWorkspace(p, { publish: true })} remove={(p) => { setPosts((all) => all.filter((x) => x.id !== p.id)); setOpenPost(null); logAudit(`Removed — ${p.title}`); notify("Post removed."); }}
+            saveMetrics={saveMetrics} explain={explainPost} />
         </Modal>
       )}
+      <Toasts items={toasts} dismiss={dismissToast} />
     </div>
   );
 }

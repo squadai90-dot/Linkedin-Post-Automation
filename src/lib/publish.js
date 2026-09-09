@@ -1,3 +1,4 @@
+import { relayAuthHeaders } from "./store.js";
 
 
 /* ============================================================
@@ -9,6 +10,27 @@
    ============================================================ */
 
 export const MAKE_LINKEDIN_WEBHOOK_URL = "https://hook.eu1.make.com/5sva21xc67b9vne5zovgbohnqgbll15k";
+
+/* Publishing settings kept on this device (Settings → LinkedIn). The webhook
+   above is the team's default; it can be swapped without a code change. */
+export const PUBLISH_SETTINGS_KEY = "unison:publish:v1";
+
+const debugOn = () => { try { return (typeof window !== "undefined" && window.UNISON_DEBUG === true) || localStorage.getItem("unison:debug") === "1"; } catch { return false; } };
+export function loadPublishSettings() {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(PUBLISH_SETTINGS_KEY) : null;
+    const s = raw ? JSON.parse(raw) : {};
+    if (typeof s.webhookUrl === "string" && s.webhookUrl.trim()) MAKE_CONFIG.url = s.webhookUrl.trim();
+  } catch { /* first run */ }
+  return snapshotPublishSettings();
+}
+export const snapshotPublishSettings = () => ({ webhookUrl: MAKE_CONFIG.url, defaultWebhookUrl: MAKE_LINKEDIN_WEBHOOK_URL, isDefault: MAKE_CONFIG.url === MAKE_LINKEDIN_WEBHOOK_URL });
+export function savePublishSettings({ webhookUrl } = {}) {
+  const url = String(webhookUrl || "").trim();
+  MAKE_CONFIG.url = url || MAKE_LINKEDIN_WEBHOOK_URL;
+  try { localStorage.setItem(PUBLISH_SETTINGS_KEY, JSON.stringify({ webhookUrl: url && url !== MAKE_LINKEDIN_WEBHOOK_URL ? url : "" })); } catch { /* private mode */ }
+  return snapshotPublishSettings();
+}
 
 /* The relay is the production path: same-origin, so no CORS and no preflight,
    and the webhook URL stays on the server. The direct browser POST is kept
@@ -27,7 +49,7 @@ export const MAKE_CONFIG = {
   company: { name: null, urn: null },
   /* Every post type is handed to Make; the scenario routes on postType. */
   supportedPostTypes: ["text", "image", "multi", "video", "document", "poll", "article", "carousel"],
-  debug: typeof window !== "undefined" && (window.UNISON_DEBUG ?? true),
+  debug: debugOn(),   // console tracing; set localStorage["unison:debug"]="1" to turn on
 };
 
 /* Direct-to-Make bodies. A browser POST with Content-Type: application/json
@@ -48,11 +70,12 @@ export const mkLog = (...a) => { if (MAKE_CONFIG.debug) console.log("[unison:pub
 export function readMakeReply(body) {
   if (!body || typeof body !== "object") return { published: false, urn: null, url: null, message: null };
   const inner = body.make && typeof body.make === "object" ? body.make : body;
-  const urn = inner.urn || inner.postUrn || inner.linkedinUrn || inner.postId || inner.id || null;
-  const url = inner.url || inner.postUrl || null;
+  const cand = [inner.urn, inner.postUrn, inner.linkedinUrn, inner.linkedinPostId, inner.shareUrn, inner.ugcPostUrn].map((x) => (x == null ? "" : String(x))).find((x) => /^urn:li:/.test(x)) || null;
+  const url = [inner.url, inner.postUrl, inner.linkedinUrl].find((x) => typeof x === "string" && /^https?:\/\//.test(x)) || null;
   const st = String(inner.status || inner.result || "").toLowerCase();
-  const published = st === "published" || st === "success" || (st === "ok" && !!urn) || (!!urn && /^urn:li:/.test(String(urn)));
-  return { published: !!published, urn, url, message: inner.message || inner.error || null };
+  /* "Accepted"/"ok"/"success" from a webhook only means Make has it. */
+  const published = st === "published" || !!cand || (!!url && /linkedin\.com/.test(url));
+  return { published, urn: cand, url, message: inner.message || inner.error || null };
 }
 
 export const makeLinkedInService = {
@@ -71,7 +94,7 @@ export const makeLinkedInService = {
     try {
       res = await fetch(MAKE_CONFIG.relay, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Idempotency-Key": payload.idempotencyKey || payload.postId },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": payload.idempotencyKey || payload.postId, ...relayAuthHeaders() },
         body: JSON.stringify(payload),
         signal: ctrl.signal,
       });
@@ -100,55 +123,56 @@ export const makeLinkedInService = {
   },
 
   /* ---- fallback: browser straight to Make ----
-     Only reached when no relay is deployed. Tries the preflight-free
-     transports in order; a transport is only retried with the next one when
-     the browser refused the request outright, which means nothing was sent. */
-  async viaBrowser(payload, { transport } = {}) {
+     Only reached when no relay is deployed. ONE request, ever. A browser POST
+     with text/plain needs no preflight, so the request reaches Make even when
+     the reply cannot be read; when that happens the post is reported as sent
+     but unconfirmed rather than retried, because a retry would post it twice. */
+  async viaBrowser(payload) {
     if (!makeLinkedInService.configured()) throw Object.assign(new Error("Publishing endpoint not configured."), { kind: "unconfigured" });
     const json = JSON.stringify(payload);
     if (json.length > MAKE_CONFIG.maxPayloadBytes) throw Object.assign(new Error("Payload too large."), { kind: "too-large", bytes: json.length });
-
-    const order = transport ? [transport] : MAKE_TRANSPORT_ORDER;
-    let lastErr = null;
-    for (const name of order) {
-      const { headers, body } = MAKE_TRANSPORTS[name](json);
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), MAKE_CONFIG.timeoutMs);
-      const startedAt = Date.now();
-      mkLog("sending direct", { transport: name, postId: payload.postId, postType: payload.postType, bytes: json.length });
-      let res;
-      try {
-        res = await fetch(MAKE_CONFIG.url, { method: "POST", mode: "cors", headers, body, signal: ctrl.signal });
-      } catch (e) {
-        clearTimeout(timer);
-        if (e?.name === "AbortError") {
-          mkLog("timed out", { transport: name, hint: "The post may already have reached Make. Check the scenario history before resending." });
-          throw Object.assign(new Error("Timed out."), { kind: "timeout", transport: name, cause: e });
-        }
-        mkLog("browser refused the request", { transport: name, error: String(e?.message || e), ms: Date.now() - startedAt });
-        lastErr = Object.assign(new Error("Request blocked."), { kind: "network", transport: name, cause: e });
-        continue;
-      }
+    const { headers, body } = MAKE_TRANSPORTS.text(json);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), MAKE_CONFIG.timeoutMs);
+    const startedAt = Date.now();
+    mkLog("sending direct", { transport: "text", postId: payload.postId, postType: payload.postType, bytes: json.length });
+    let res;
+    try {
+      res = await fetch(MAKE_CONFIG.url, { method: "POST", mode: "cors", headers, body, signal: ctrl.signal });
+    } catch (e) {
       clearTimeout(timer);
-      const raw = await res.text().catch(() => "");
-      let parsed = null;
-      try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-      mkLog("response", { transport: name, status: res.status, ok: res.ok, ms: Date.now() - startedAt, body: parsed ?? raw.slice(0, 300) });
-      if (!res.ok) throw Object.assign(new Error(`Make returned ${res.status}.`), { kind: "http", status: res.status, transport: name, body: parsed ?? raw });
-      return { ok: true, delivered: true, confirmed: true, status: res.status, transport: name, raw: parsed ?? raw, ...readMakeReply(parsed), at: new Date().toISOString() };
+      if (e?.name === "AbortError") {
+        mkLog("timed out", { hint: "The post may already have reached Make. Check the scenario history before resending." });
+        throw Object.assign(new Error("Timed out."), { kind: "timeout", transport: "text", cause: e });
+      }
+      /* Either the browser blocked the request before sending, or Make
+         received it and the reply was not readable (no CORS header on the
+         scenario's Webhook Response). Tell them apart before saying anything. */
+      const d = await makeLinkedInService.diagnose();
+      mkLog(d.networkAllowed ? "sent, reply unreadable" : "browser refused the request", { error: String(e?.message || e), ms: Date.now() - startedAt, framed: d.framed });
+      if (d.networkAllowed) {
+        return { ok: true, delivered: null, confirmed: false, unverified: true, status: 0, transport: "text", published: false, urn: null, url: null, message: null, at: new Date().toISOString(), framed: d.framed };
+      }
+      throw Object.assign(new Error("Request blocked."), { kind: "sandbox", transport: "text", framed: d.framed, cause: e });
     }
-    throw lastErr || Object.assign(new Error("Request blocked."), { kind: "network" });
+    clearTimeout(timer);
+    const raw = await res.text().catch(() => "");
+    let parsed = null;
+    try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+    mkLog("response", { status: res.status, ok: res.ok, ms: Date.now() - startedAt, body: parsed ?? raw.slice(0, 300) });
+    if (!res.ok) throw Object.assign(new Error(`Make returned ${res.status}.`), { kind: "http", status: res.status, transport: "text", body: parsed ?? raw });
+    return { ok: true, delivered: true, confirmed: true, status: res.status, transport: "text", raw: parsed ?? raw, ...readMakeReply(parsed), at: new Date().toISOString() };
   },
 
   /* Relay first, browser second. One logical send: the fallback only runs
      when the relay was never there to receive the post. */
-  async publish(payload, opts) {
+  async publish(payload) {
     try {
       return await makeLinkedInService.viaRelay(payload);
     } catch (e) {
       if (e?.kind !== "relay-missing" && e?.kind !== "relay-down") throw e;
       mkLog("no relay available — falling back to a direct request", { reason: e.kind });
-      const r = await makeLinkedInService.viaBrowser(payload, opts);
+      const r = await makeLinkedInService.viaBrowser(payload);
       return { ...r, fallback: true };
     }
   },

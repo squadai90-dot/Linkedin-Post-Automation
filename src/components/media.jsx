@@ -128,9 +128,11 @@ export function VideoPlayer({ src, poster, className }) {
 }
 
 export const svgDataUrl = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+/* An asset is either a rendered SVG or a URL (AI photo). */
+export const srcOf = (x) => (x?.kind === "url" ? x.url : svgDataUrl(x?.svg || ""));
 
-export function SvgFrame({ svg, ratio = "1200 / 630" }) {
-  return <div className="svgframe" style={{ aspectRatio: ratio }}><img src={svgDataUrl(svg)} alt="" /></div>;
+export function SvgFrame({ svg, src, ratio = "1200 / 630" }) {
+  return <div className="svgframe" style={{ aspectRatio: ratio }}><img src={src || svgDataUrl(svg)} alt="" /></div>;
 }
 
 export async function saveAsset(svg, name, w, h) {
@@ -140,6 +142,10 @@ export async function saveAsset(svg, name, w, h) {
   } catch (e) {
     downloadBlob(svg, name + ".svg", "image/svg+xml");
   }
+}
+async function saveUrlAsset(url, name) {
+  try { const blob = await fetch(url, { mode: "cors" }).then((r) => r.blob()); downloadBlob(blob, name + ".jpg"); }
+  catch { window.open(url, "_blank", "noopener"); }
 }
 
 /* ---------- image ---------- */
@@ -159,11 +165,11 @@ export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUploa
           <button className="btn sm" onClick={() => fileRef.current?.click()}>Upload your own</button>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) attachUpload(f); e.target.value = ""; }} />
-          {img && <button className="btn sm" onClick={() => saveAsset(img.svg, "unison-image", 1200, 630)}>Download</button>}
+          {img && <button className="btn sm" onClick={() => (img.kind === "url" ? saveUrlAsset(img.url, "unison-image") : saveAsset(img.svg, "unison-image", 1200, 630))}>Download</button>}
           {(img || assets.upload) && <button className="btn sm" onClick={() => patchAssets({ images: [], upload: null })}>Remove</button>}
         </>}
       />
-      {img && <><SvgFrame svg={img.svg} />{prototypeNote}</>}
+      {img && <><SvgFrame src={srcOf(img)} />{img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div> : prototypeNote}</>}
       {assets.upload && !img && (
         <div className="svgframe" style={{ aspectRatio: "1200 / 630" }}><img src={assets.upload.data} alt={assets.upload.name} /></div>
       )}
@@ -548,11 +554,11 @@ export function AssetPreview({ format: rawFormat, formats, assets, media }) {
       </div>
     );
   } else if (assets.images.length === 1) {
-    attachment = <div className="li-visual"><img src={svgDataUrl(assets.images[0].svg)} alt="" /></div>;
+    attachment = <div className="li-visual"><img src={srcOf(assets.images[0])} alt="" /></div>;
   } else if (assets.images.length > 1) {
     attachment = (
       <div className={"li-mosaic n" + Math.min(4, assets.images.length)}>
-        {assets.images.slice(0, 4).map((t) => <img key={t.id} src={svgDataUrl(t.svg)} alt="" />)}
+        {assets.images.slice(0, 4).map((t) => <img key={t.id} src={srcOf(t)} alt="" />)}
       </div>
     );
   } else if (visual) {
@@ -598,7 +604,7 @@ export function MediaSection(p) {
   const { format } = p;
   const note = (
     <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-      Rendered by Unison's brand renderer. No external image model is connected in this build.
+      Rendered by Unison's brand renderer from the post's own words — consistent, on-brand, and editable. Turn on Pollinations under Settings → Advanced for AI photos.
     </div>
   );
   const shared = { ...p, prototypeNote: note };

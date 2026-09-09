@@ -1,288 +1,376 @@
-import { useState } from "react";
-import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, ollamaProvider } from "../lib/ai.js";
+import { useState, useEffect } from "react";
+import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, HOSTED_MODELS, rateFor, aiRouter } from "../lib/ai.js";
 import { PUBLISH_RELAY_PATH, MAKE_CONFIG } from "../lib/publish.js";
 import { imageProvider, videoProvider } from "../lib/media.js";
+import { TIMEZONES, localTimezone } from "../lib/dates.js";
+import { FREE_APIS, DEFAULT_EXTRAS } from "../lib/freeApis.js";
+import { defaultRedirectUri, authorizationUrl, isLinkedInConfigured, isBridgeConfigured } from "../lib/linkedinAuth.js";
 
-/* ---------- settings ---------- */
+/* ---------- settings ----------
+   Six tabs, plain language, nothing a marketer has to guess at. Anything
+   developer-facing sits under Advanced. */
 
-export const IN_RATE = 3 / 1e6;
-export const OUT_RATE = 15 / 1e6;
-export const CALL_QUOTA = 60;
-export const SEARCH_QUOTA = 25;
+export const TABS = [["workspace", "Workspace"], ["ai", "AI"], ["linkedin", "LinkedIn"], ["publishing", "Publishing"], ["appearance", "Appearance"], ["dev", "Advanced"]];
+const TAB_ALIAS = { models: "ai", connections: "linkedin" };
 
-export function Settings({ usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, setModal, searchOn, setSearchOn, failMode, setFailMode, makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify, profile, setProfile, wipe, bg3d, setBg3d, initialTab }) {
-  const [tab, setTab] = useState(initialTab || "models");
+function Field({ label, hint, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>{label}</div>
+      {children}
+      {hint && <div className="u-muted" style={{ fontSize: 12.5, marginTop: 5 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function Row({ title, sub, children }) {
+  return (
+    <div className="setrow">
+      <div style={{ minWidth: 0 }}><div style={{ fontWeight: 600 }}>{title}</div>{sub && <div className="u-muted" style={{ fontSize: 13 }}>{sub}</div>}</div>
+      {children}
+    </div>
+  );
+}
+
+const Toggle = ({ on, set, label }) => <button className={"toggle " + (on ? "on" : "")} role="switch" aria-checked={!!on} aria-label={label} onClick={() => set(!on)}><i /></button>;
+
+export function Settings(props) {
+  const {
+    usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, searchOn, setSearchOn, failMode, setFailMode,
+    makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify,
+    profile, setProfile, wipe, bg3d, setBg3d, initialTab,
+    aiSettings, updateAI, aiInfo, refreshAI,
+    liSettings, updateLinkedIn, pubSettings, updatePublish,
+    extras = DEFAULT_EXTRAS, setExtras, exportSession, importSession, storageIssue, posts = [],
+  } = props;
+  const [tab, setTab] = useState(TAB_ALIAS[initialTab] || initialTab || "workspace");
   const [invite, setInvite] = useState({ email: "", role: "Creator" });
-  const cost = usage.inTok * IN_RATE + usage.outTok * OUT_RATE;
+  const [showKey, setShowKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+  const [keyDraft, setKeyDraft] = useState(aiSettings?.apiKey || "");
+  useEffect(() => { setKeyDraft(aiSettings?.apiKey || ""); }, [aiSettings?.apiKey]);
+  const [inRate, outRate] = rateFor(aiSettings?.model || AI_CONFIG.hostedModel);
+  const cost = (usage?.inTok || 0) * inRate + (usage?.outTok || 0) * outRate;
+  const setP = (k) => (e) => setProfile({ ...profile, [k]: e.target.value });
+
+  async function testAI() {
+    setTesting(true);
+    try {
+      const t0 = Date.now();
+      const out = await aiRouter.run({ capability: "reasoning", system: "Reply with exactly the word OK.", user: "Say OK." });
+      notify(`AI is working (${Math.round((Date.now() - t0) / 100) / 10}s) — reply: "${String(out).trim().slice(0, 40)}"`, { tone: "ok" });
+    } catch (e) {
+      notify(`AI test failed: ${e?.message || e}`, { tone: "bad", ms: 8000 });
+    } finally { setTesting(false); refreshAI?.(); }
+  }
+
+  const importRef = (el) => { if (el) el.onchange = (e) => { const f = e.target.files?.[0]; if (f) importSession?.(f); e.target.value = ""; }; };
+  const savedBytes = (() => { try { return new Blob([localStorage.getItem("unison:session:v1") || ""]).size; } catch { return 0; } })();
+
   return (
     <div>
-      <div className="tabs">
-        {[["models", "AI & usage"], ["connections", "Connections"], ["workspace", "Workspace"], ["publishing", "Publishing"], ["dev", "Developer"]].map(([k, l]) => (
-          <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
-        ))}
+      <div className="tabs" role="tablist">
+        {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
       </div>
 
-      {tab === "models" && (
+      {/* ================= WORKSPACE ================= */}
+      {tab === "workspace" && (
         <>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Routing</div><div className="u-muted" style={{ fontSize: 13 }}>Chosen automatically per task. Details under Developer.</div></div>
-            <span className="chipflat">{AI_STATUS.local === "reachable" ? "Local models" : "Hosted fallback"}</span>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>Company</div>
+          <div className="grid2">
+            <Field label="Company / Page name" hint="Shown in the post preview and stamped on generated images."><input className="ta" placeholder="e.g. Unison Systems" value={profile.company || ""} onChange={setP("company")} /></Field>
+            <Field label="Website" hint="Used as the footer line on branded images."><input className="ta" placeholder="company.com" value={profile.website || ""} onChange={setP("website")} /></Field>
+            <Field label="Page followers (optional)" hint="Only for a realistic preview."><input className="ta" inputMode="numeric" placeholder="e.g. 12480" value={profile.followers || ""} onChange={setP("followers")} /></Field>
+            <Field label="Your name" hint="Greets you on Home and signs the activity log."><input className="ta" placeholder="e.g. Priya Shah" value={profile.userName || ""} onChange={setP("userName")} /></Field>
           </div>
+
+          <div className="eyebrow" style={{ margin: "18px 0 10px" }}>What discovery watches</div>
+          <div className="grid2">
+            <Field label="Industry"><input className="ta" value={profile.industry || ""} onChange={setP("industry")} /></Field>
+            <Field label="Audience"><input className="ta" value={profile.audience || ""} onChange={setP("audience")} /></Field>
+          </div>
+          <Field label="Watch terms" hint="Comma-separated topics Discover and the trending feed search for."><input className="ta" value={profile.keywords || ""} onChange={setP("keywords")} /></Field>
+
+          <div className="eyebrow" style={{ margin: "18px 0 8px" }}>Team</div>
+          <div className="u-muted" style={{ fontSize: 12.5, marginBottom: 8 }}>A local list for reference — there is no login. Roles are documentation, not enforcement.</div>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead><tr><th>Member</th><th>Role</th><th></th></tr></thead>
+              <tbody>
+                {team.map((m, i) => (
+                  <tr key={m.email}>
+                    <td><div style={{ fontWeight: 600 }}>{m.name}</div><div className="u-muted" style={{ fontSize: 12.5 }}>{m.email}</div></td>
+                    <td>
+                      <select className="ta" style={{ width: 130 }} value={m.role} disabled={m.role === "Owner"} onChange={(e) => setTeam(team.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}>
+                        {["Owner", "Admin", "Creator", "Reviewer"].map((r) => <option key={r}>{r}</option>)}
+                      </select>
+                    </td>
+                    <td>{m.role !== "Owner" && <button className="btn sm" onClick={() => setTeam(team.filter((_, j) => j !== i))}>Remove</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <input className="ta" style={{ flex: 1, minWidth: 200 }} placeholder="name@company.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} />
+            <select className="ta" style={{ width: 130 }} value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>
+              {["Owner", "Admin", "Creator", "Reviewer"].map((r) => <option key={r}>{r}</option>)}
+            </select>
+            <button className="btn acc sm" disabled={!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(invite.email)} onClick={() => {
+              if (team.some((t) => t.email.toLowerCase() === invite.email.toLowerCase())) { notify("That person is already on the list.", { tone: "warn" }); return; }
+              setTeam([...team, { name: invite.email.split("@")[0].replace(/[._-]+/g, " "), email: invite.email, role: invite.role }]);
+              notify(`${invite.email} added to the team list.`); setInvite({ email: "", role: "Creator" });
+            }}>Add</button>
+          </div>
+        </>
+      )}
+
+      {/* ================= AI ================= */}
+      {tab === "ai" && (
+        <>
+          <div className="conn">
+            <Row title="Status" sub={aiInfo ? aiInfo.summary : "Checking…"}>
+              <span className={"dot " + (aiInfo ? (aiInfo.ready ? "g" : "r") : "y")} style={{ flex: "none" }} />
+            </Row>
+            <Row title="Web search" sub="Lets research and discovery pull real sources with links. Hosted calls only.">
+              <Toggle on={searchOn} set={setSearchOn} label="Web search" />
+            </Row>
+          </div>
+
+          <div className="conn">
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Hosted AI (Anthropic)</div>
+            <div className="u-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              {aiInfo?.mode === "relay"
+                ? "This deployment has an AI relay, so the key lives on the server. Nothing to enter here."
+                : "Frontend-only: the key is stored in this browser only (never in the saved session or exports) and calls go straight to Anthropic. Use a key from console.anthropic.com that is scoped to this team."}
+            </div>
+            {aiInfo?.mode !== "relay" && (
+              <Field label="API key">
+                <div className="row">
+                  <input className="ta mono" style={{ flex: 1, minWidth: 220 }} type={showKey ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder="sk-ant-…" value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} onBlur={() => keyDraft !== aiSettings?.apiKey && updateAI({ apiKey: keyDraft })} />
+                  <button className="btn sm" onClick={() => setShowKey(!showKey)}>{showKey ? "Hide" : "Show"}</button>
+                  {keyDraft !== (aiSettings?.apiKey || "") && <button className="btn acc sm" onClick={() => updateAI({ apiKey: keyDraft })}>Save</button>}
+                  {aiSettings?.apiKey && <button className="btn sm" onClick={() => { setKeyDraft(""); updateAI({ apiKey: "" }); }}>Remove</button>}
+                </div>
+              </Field>
+            )}
+            <div className="grid2">
+              <Field label="Model" hint={HOSTED_MODELS.find((m) => m.id === aiSettings?.model)?.note}>
+                <select className="ta" value={aiSettings?.model || AI_CONFIG.hostedModel} onChange={(e) => updateAI({ model: e.target.value })}>
+                  {HOSTED_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label} · ${m.rates[0]} / ${m.rates[1]} per M tokens</option>)}
+                </select>
+              </Field>
+              <Field label="Thinking depth" hint="Low is fastest. Medium is right for drafting. High for the final rewrite.">
+                <select className="ta" value={aiSettings?.effort || "medium"} onChange={(e) => updateAI({ effort: e.target.value })}>
+                  <option value="low">Low — fastest</option><option value="medium">Medium — balanced</option><option value="high">High — most careful</option>
+                </select>
+              </Field>
+            </div>
+            <div className="row">
+              <button className="btn sm" disabled={testing} onClick={testAI}>{testing ? "Testing…" : "Test connection"}</button>
+              <button className="btn sm" onClick={() => refreshAI?.()}>Re-check</button>
+            </div>
+          </div>
+
+          <div className="conn">
+            <Row title="Local models (Ollama)" sub="Free and private. Only works when Unison runs on the same machine as Ollama.">
+              <Toggle on={aiSettings?.useLocal !== false} set={(v) => updateAI({ useLocal: v })} label="Use local models" />
+            </Row>
+            {aiSettings?.useLocal !== false && (
+              <div className="grid2" style={{ marginTop: 8 }}>
+                <Field label="Endpoint"><input className="ta mono" value={aiSettings?.ollamaEndpoint || ""} onChange={(e) => updateAI({ ollamaEndpoint: e.target.value })} /></Field>
+                <Field label="Model tag" hint={`Status: ${AI_STATUS.local}${AI_STATUS.localModels.length ? " · installed: " + AI_STATUS.localModels.slice(0, 4).join(", ") : ""}`}><input className="ta mono" value={aiSettings?.localModel || ""} onChange={(e) => updateAI({ localModel: e.target.value })} /></Field>
+              </div>
+            )}
+          </div>
+
+          <div className="eyebrow" style={{ margin: "18px 0 8px" }}>Usage this session</div>
           <div className="quads">
             {[["Calls", usage.calls], ["Searches", usage.searches], ["Input tokens", usage.inTok.toLocaleString()], ["Output tokens", usage.outTok.toLocaleString()]].map(([l, v]) => (
               <div key={l}><span className="eyebrow">{l}</span><b>{v}</b></div>
             ))}
           </div>
-          <div style={{ marginTop: 22 }}>
-            <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}><span>Session call quota</span><span className="mono">{usage.calls} / {CALL_QUOTA}</span></div>
-            <div className="bar"><i style={{ width: `${Math.min(100, (usage.calls / CALL_QUOTA) * 100)}%` }} /></div>
-            <div className="row" style={{ justifyContent: "space-between", fontSize: 13, marginTop: 14 }}><span>Web search quota</span><span className="mono">{usage.searches} / {SEARCH_QUOTA}</span></div>
-            <div className="bar"><i style={{ width: `${Math.min(100, (usage.searches / SEARCH_QUOTA) * 100)}%` }} /></div>
-            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-              Estimated spend: ${cost.toFixed(4)} · {usage.fails} call{usage.fails === 1 ? "" : "s"} fell back to sample data · research is cached per topic, so repeating one is free.
-            </div>
+          <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+            Estimated spend ${cost.toFixed(3)} at {aiSettings?.model || AI_CONFIG.hostedModel} list prices · {usage.fails} call{usage.fails === 1 ? "" : "s"} fell back to sample data · research is cached per topic for the session.
           </div>
-          <div className="eyebrow" style={{ margin: "26px 0 10px" }}>By engine</div>
-          <table className="tbl">
-            <thead><tr><th>Engine</th><th>Calls</th><th>In</th><th>Out</th><th>Cost</th></tr></thead>
-            <tbody>
-              {Object.keys(usage.byEngine).length === 0 && <tr><td colSpan={5} className="u-muted">No calls yet.</td></tr>}
-              {Object.entries(usage.byEngine).map(([k, v]) => (
-                <tr key={k}>
-                  <td>{k}</td><td className="mono">{v.calls}</td><td className="mono">{v.inTok.toLocaleString()}</td>
-                  <td className="mono">{v.outTok.toLocaleString()}</td><td className="mono">${(v.inTok * IN_RATE + v.outTok * OUT_RATE).toFixed(4)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {Object.keys(usage.byEngine || {}).length > 0 && (
+            <div className="tbl-wrap" style={{ marginTop: 12 }}>
+              <table className="tbl">
+                <thead><tr><th>Engine</th><th>Calls</th><th>In</th><th>Out</th><th>Cost</th></tr></thead>
+                <tbody>
+                  {Object.entries(usage.byEngine).map(([k, v]) => (
+                    <tr key={k}><td>{k}</td><td className="mono">{v.calls}</td><td className="mono">{v.inTok.toLocaleString()}</td><td className="mono">{v.outTok.toLocaleString()}</td><td className="mono">${(v.inTok * inRate + v.outTok * outRate).toFixed(3)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
-      {tab === "connections" && (
+      {/* ================= LINKEDIN ================= */}
+      {tab === "linkedin" && (
         <>
           <div className="conn">
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <div className="row" style={{ gap: 11 }}>
+              <div className="row" style={{ gap: 11, minWidth: 0 }}>
                 <span className="li-chip">in</span>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600 }}>LinkedIn Company Page</div>
                   <div className="u-muted" style={{ fontSize: 13 }}>
-                    {linkedin.viaWorkflow ? `LinkedIn publishing ready via Make · ${MAKE_CONFIG.supportedPostTypes.join(", ")}`
-                      : linkedin.connected
-                      ? `${linkedin.org}${linkedin.role ? " · " + linkedin.role : ""}${linkedin.expires ? " · access to " + linkedin.expires : ""}`
-                      : "Not connected — publishing is blocked"}
+                    {linkedin.connected && linkedin.org ? `${linkedin.org}${linkedin.role ? " · " + linkedin.role : ""}${linkedin.expires ? " · access until " + linkedin.expires : ""}`
+                      : linkedin.status === "authorized" ? "Signed in — choose a Page to finish"
+                      : linkedin.needsAttention ? (linkedin.error || "Needs attention — reconnect")
+                      : linkedin.viaWorkflow ? "Publishing goes through the Make workflow; sign in below to attach your identity and Page."
+                      : "Not connected"}
                   </div>
+                  {linkedin.profile?.name && <div className="u-muted" style={{ fontSize: 12.5 }}>Signed in as {linkedin.profile.name}{linkedin.profile.email ? ` · ${linkedin.profile.email}` : ""}</div>}
                 </div>
               </div>
-              {linkedin.viaWorkflow ? null
-                : linkedin.connected
-                ? <button className="btn sm" onClick={disconnectLinkedIn}>Disconnect</button>
-                : <button className="btn acc sm" onClick={() => openLinkedIn(0)}>Connect</button>}
+              <div className="row">
+                {(linkedin.connected && !linkedin.viaWorkflow) || linkedin.status === "authorized"
+                  ? <><button className="btn sm" onClick={() => openLinkedIn(1)}>Switch Page</button><button className="btn sm" onClick={disconnectLinkedIn}>Disconnect</button></>
+                  : <button className="btn acc sm" onClick={() => openLinkedIn(0)}>{isLinkedInConfigured(liSettings) ? "Sign in with LinkedIn" : "Connect"}</button>}
+              </div>
             </div>
-            <div className="setrow">
-              <span className="u-muted">Authorization</span>
-              <span className={"state " + (liMeta.mode === "real" || linkedin.viaWorkflow ? "pub" : "rev")}>
-                {liMeta.mode === "real" ? "REAL OAUTH" : linkedin.viaWorkflow ? "MAKE WEBHOOK" : liMeta.mode === "misconfigured" ? "MISCONFIGURED" : "PROTOTYPE"}
+            <Row title="Mode">
+              <span className={"state " + (liMeta.mode === "browser" || liMeta.mode === "real" ? "pub" : linkedin.viaWorkflow ? "sch" : "rev")}>
+                {liMeta.mode === "real" ? "SERVER OAUTH" : liMeta.mode === "browser" ? "BROWSER OAUTH" : linkedin.viaWorkflow ? "MAKE WORKFLOW" : "PROTOTYPE"}
               </span>
+            </Row>
+          </div>
+
+          <div className="conn">
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Sign in with LinkedIn (no backend)</div>
+            <div className="u-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              Create an app at linkedin.com/developers, add this page's address as an authorised redirect URL, and paste the Client ID. The browser can send people to LinkedIn and get an authorisation code back; exchanging it for a token needs your Client Secret, which must never sit in a web page. Point the bridge at a Make webhook that does the exchange (contract in the README), or skip the bridge and paste a token from the developer portal's token generator.
             </div>
-            {linkedin.viaWorkflow && (
-              <>
-                <div className="setrow"><span className="u-muted">Publishing via</span><span>Unison API → LinkedIn workflow → Company Page</span></div>
-                <div className="setrow">
-                  <span className="u-muted">Publishing service</span>
-                  <span>{relay?.relay ? `Connected${relay.webhookConfigured === false ? " · webhook not set on the server" : ""}` : relay?.checked ? "Not reachable from this preview" : "Checking…"}</span>
-                </div>
-                <div className="setrow"><span className="u-muted">Endpoint</span><span className="mono" style={{ fontSize: 11.5 }}>{PUBLISH_RELAY_PATH}</span></div>
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontWeight: 600 }}>Company Page details</div>
-                  <div className="u-muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Sent with every post. Make still decides which Page it publishes to.</div>
-                  <div className="row">
-                    <input className="ta" style={{ flex: 1 }} placeholder="Page name" value={makeCompany.name} onChange={(e) => setMakeCompany({ ...makeCompany, name: e.target.value })} />
-                    <input className="ta mono" style={{ flex: 1 }} placeholder="urn:li:organization:…" value={makeCompany.urn} onChange={(e) => setMakeCompany({ ...makeCompany, urn: e.target.value })} />
-                  </div>
-                </div>
-              </>
-            )}
-            <div className="setrow">
-              <span className="u-muted">Unison API</span>
-              <span>{liMeta.reachable ? "Reachable" : "Not running"}</span>
+            <div className="grid2">
+              <Field label="Client ID"><input className="ta mono" spellCheck={false} placeholder="86xxxxxxxxxxxx" value={liSettings?.clientId || ""} onChange={(e) => updateLinkedIn({ clientId: e.target.value })} /></Field>
+              <Field label="Redirect URL" hint="Add exactly this in the LinkedIn app's OAuth settings.">
+                <div className="row"><input className="ta mono" style={{ flex: 1, minWidth: 180 }} value={liSettings?.redirectUri || defaultRedirectUri()} onChange={(e) => updateLinkedIn({ redirectUri: e.target.value })} /><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(liSettings?.redirectUri || defaultRedirectUri()); notify("Redirect URL copied."); }}>Copy</button></div>
+              </Field>
             </div>
-            {liMeta.apiVersion && (
-              <div className="setrow"><span className="u-muted">LinkedIn API version</span><span className="mono">{liMeta.apiVersion}</span></div>
-            )}
-            {liMeta.scopes?.length > 0 && (
-              <div className="u-muted mono" style={{ fontSize: 11.5, marginTop: 8 }}>{liMeta.scopes.join("   ")}</div>
-            )}
-            {liMeta.mode !== "real" && !linkedin.viaWorkflow && (
-              <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-                Real authorization needs the Unison API running with LinkedIn credentials and Community Management API access. See docs/linkedin-integration.md.
-              </div>
+            <Field label="Token bridge URL (optional)" hint={isBridgeConfigured(liSettings) ? "Configured. The bridge receives {action:\"exchange\", code, redirect_uri, client_id} and must return {access_token, expires_in, profile, organizations} with an Access-Control-Allow-Origin header." : "A Make webhook (or any endpoint) that exchanges the code for a token and lists your Pages. Without it, sign-in stops at 'authorised' and you can paste a token instead."}>
+              <input className="ta mono" spellCheck={false} placeholder="https://hook.eu1.make.com/…" value={liSettings?.bridgeUrl || ""} onChange={(e) => updateLinkedIn({ bridgeUrl: e.target.value })} />
+            </Field>
+            <Field label="Scopes"><input className="ta mono" spellCheck={false} value={liSettings?.scopes || ""} onChange={(e) => updateLinkedIn({ scopes: e.target.value })} /></Field>
+            {isLinkedInConfigured(liSettings) && (
+              <details className="brief"><summary>Consent URL this will open</summary><div className="mono" style={{ wordBreak: "break-all", fontSize: 11.5 }}>{authorizationUrl(liSettings, "STATE")}</div></details>
             )}
           </div>
 
           <div className="conn">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>Web search</div>
-                <div className="u-muted" style={{ fontSize: 13 }}>Powers discovery and every source link. {usage.searches} used.</div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Publishing through Make</div>
+            <div className="u-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              Approved posts are sent to a Make scenario that owns the LinkedIn posting step. This works with no LinkedIn sign-in at all; sign-in just adds who you are and which Page to the payload.
+            </div>
+            <Row title="Publishing service (relay)" sub={relay?.relay ? `Deployed at ${PUBLISH_RELAY_PATH}${relay.webhookConfigured === false ? " · webhook not set on the server" : ""}` : relay?.checked ? "Not deployed — the browser posts to the webhook directly." : "Checking…"}>
+              <span className={"dot " + (relay?.relay ? "g" : relay?.checked ? "y" : "y")} style={{ flex: "none" }} />
+            </Row>
+            <Field label="Make webhook URL" hint={pubSettings?.isDefault ? "Using the team default webhook." : "Custom webhook in use."}>
+              <div className="row">
+                <input className="ta mono" style={{ flex: 1, minWidth: 220 }} spellCheck={false} value={pubSettings?.webhookUrl || ""} onChange={(e) => updatePublish({ webhookUrl: e.target.value })} />
+                {!pubSettings?.isDefault && <button className="btn sm" onClick={() => updatePublish({ webhookUrl: "" })}>Reset</button>}
               </div>
-              <button className={"toggle " + (searchOn ? "on" : "")} onClick={() => setSearchOn(!searchOn)}><i /></button>
+            </Field>
+            <div className="grid2">
+              <Field label="Company Page name" hint="Sent with every post so the scenario can route it."><input className="ta" placeholder="Page name" value={makeCompany.name} onChange={(e) => setMakeCompany({ ...makeCompany, name: e.target.value })} /></Field>
+              <Field label="Company Page URN"><input className="ta mono" placeholder="urn:li:organization:…" value={makeCompany.urn} onChange={(e) => setMakeCompany({ ...makeCompany, urn: e.target.value })} /></Field>
             </div>
-          </div>
-          <div className="conn">
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Typefaces</div>
-            <div className="u-muted" style={{ fontSize: 13, marginBottom: 10 }}>Google Fonts. Free, no key, falls back to system faces offline.</div>
-            {[["Sora", "Display and headings"], ["Inter Tight", "Interface and body"], ["IBM Plex Mono", "Labels, numbers, identifiers"]].map(([f, use]) => (
-              <div className="setrow" key={f}><div><span style={{ fontWeight: 600 }}>{f}</span><div className="u-muted" style={{ fontSize: 12.5 }}>{use}</div></div><span className="chipflat">loaded</span></div>
-            ))}
-          </div>
-          <div className="conn">
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Not connected here</div>
-            <div className="u-muted" style={{ fontSize: 13 }}>
-              No database, object store, job queue or image model. LinkedIn has no free public API for trending content and scraping breaks their terms, so discovery uses public web search instead. Publishing and analytics are simulated in the browser.
-            </div>
+            <Row title="Send my LinkedIn token with posts" sub="Only if the Make scenario should post with your access instead of its own connection. Off by default.">
+              <Toggle on={!!liSettings?.sendToken} set={(v) => updateLinkedIn({ sendToken: v })} label="Send token" />
+            </Row>
+            <Row title="Post types the scenario receives"><span className="u-muted" style={{ fontSize: 12.5, textAlign: "right" }}>{MAKE_CONFIG.supportedPostTypes.join(", ")}</span></Row>
           </div>
         </>
       )}
 
-      {tab === "workspace" && (
+      {/* ================= PUBLISHING ================= */}
+      {tab === "publishing" && (
         <>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>What discovery watches</div>
-          {[["industry", "Industry"], ["audience", "Audience"], ["keywords", "Watch terms"]].map(([k, l]) => (
-            <div key={k} style={{ marginBottom: 10 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>{l}</div>
-              <input className="ta" value={profile[k]} onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} />
-            </div>
-          ))}
-          <table className="tbl" style={{ marginTop: 20 }}>
-            <thead><tr><th>Member</th><th>Role</th><th></th></tr></thead>
-            <tbody>
-              {team.map((m, i) => (
-                <tr key={m.email}>
-                  <td><div style={{ fontWeight: 600 }}>{m.name}</div><div className="u-muted" style={{ fontSize: 12.5 }}>{m.email}</div></td>
-                  <td>
-                    <select className="ta" style={{ width: 130 }} value={m.role} disabled={m.role === "Owner"}
-                      onChange={(e) => setTeam(team.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}>
-                      {["Owner", "Admin", "Creator", "Reviewer"].map((r) => <option key={r}>{r}</option>)}
-                    </select>
-                  </td>
-                  <td>{m.role !== "Owner" && <button className="btn sm" onClick={() => setTeam(team.filter((_, j) => j !== i))}>Remove</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="eyebrow" style={{ margin: "22px 0 8px" }}>Invite someone</div>
-          <div className="row">
-            <input className="ta" style={{ flex: 1, minWidth: 200 }} placeholder="name@company.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} />
-            <select className="ta" style={{ width: 130 }} value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>
-              {["Admin", "Creator", "Reviewer"].map((r) => <option key={r}>{r}</option>)}
+          <Row title="Default timezone" sub="Stored with every scheduled post and sent to Make.">
+            <select className="ta" style={{ width: 220 }} value={schedule.tz} onChange={(e) => setSchedule({ ...schedule, tz: e.target.value })}>
+              {!TIMEZONES.includes(schedule.tz) && <option value={schedule.tz}>{schedule.tz}</option>}
+              {TIMEZONES.map((z) => <option key={z} value={z}>{z}{z === localTimezone() ? " (this device)" : ""}</option>)}
             </select>
-            <button className="btn acc sm" disabled={!invite.email.includes("@")} onClick={() => {
-              setTeam([...team, { name: invite.email.split("@")[0], email: invite.email, role: invite.role }]);
-              notify(`Invite sent to ${invite.email}.`); setInvite({ email: "", role: "Creator" });
-            }}>Send invite</button>
-          </div>
-          <div className="conn" style={{ marginTop: 22 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>What each role can do</div>
-            {[["Owner", "Everything, including billing"], ["Admin", "Settings, connections, team"], ["Creator", "Create and edit, cannot approve"], ["Reviewer", "Approve, reject, schedule"]].map(([r, d]) => (
-              <div className="setrow" key={r}><span style={{ fontWeight: 600 }}>{r}</span><span className="u-muted" style={{ fontSize: 13 }}>{d}</span></div>
-            ))}
-          </div>
+          </Row>
+          <Row title="Approval required before publishing" sub="Always on. A human approves before anything is sent."><button className="toggle on" disabled aria-label="Approval required" role="switch" aria-checked="true"><i /></button></Row>
+          <Row title="Scheduled posts" sub="Nothing runs in the background of a browser app. A due post is flagged on Home and in Content; publishing it is one click, or let the Make scenario schedule from the date and time in the payload." />
+          <Row title="Retry policy" sub="Manual retry only. Nothing is resent automatically, and every send carries an idempotency key." />
+          <Row title="Simulate a publishing failure" sub="The next publish fails before anything is sent. For testing the failure UI.">
+            <Toggle on={failMode} set={setFailMode} label="Simulate failure" />
+          </Row>
+
+          <div className="eyebrow" style={{ margin: "22px 0 8px" }}>Data on this device</div>
+          <Row title="Saved session" sub={`${(savedBytes / 1024).toFixed(0)} KB used · ${posts.length} posts${storageIssue === "failed" ? " · saving is FAILING — storage full" : storageIssue === "partial" ? " · media on older posts was dropped to fit" : ""}`}>
+            <div className="row">
+              <button className="btn sm" onClick={exportSession}>Export JSON</button>
+              <label className="btn sm" style={{ cursor: "pointer" }}>Import<input ref={importRef} type="file" accept="application/json,.json" style={{ display: "none" }} /></label>
+            </div>
+          </Row>
+          <Row title="Notifications" sub={`${notes.length} in the drawer.`}><button className="btn sm" onClick={() => setNotes([])}>Clear</button></Row>
+          <Row title="Clear saved data" sub="Removes posts, drafts, settings and the team list from this browser. The AI key and LinkedIn sign-in are kept.">
+            {confirmWipe
+              ? <div className="row"><button className="btn bad sm" onClick={() => { setConfirmWipe(false); wipe(); }}>Yes, clear everything</button><button className="btn sm" onClick={() => setConfirmWipe(false)}>Keep</button></div>
+              : <button className="btn sm" onClick={() => setConfirmWipe(true)}>Clear…</button>}
+          </Row>
         </>
       )}
 
+      {/* ================= APPEARANCE ================= */}
+      {tab === "appearance" && (
+        <>
+          <Row title="Theme" sub={`Currently ${theme}.`}>
+            <div className="row">
+              <button className={"chip " + (theme === "dark" ? "on" : "")} onClick={() => setTheme("dark")}>Dark</button>
+              <button className={"chip " + (theme === "light" ? "on" : "")} onClick={() => setTheme("light")}>Light</button>
+            </div>
+          </Row>
+          <Row title="Ambient effects" sub="A scroll-driven 3D scene and a soft cursor glow behind the interface. Off by default — it costs GPU and battery.">
+            <Toggle on={bg3d} set={setBg3d} label="Ambient effects" />
+          </Row>
+        </>
+      )}
+
+      {/* ================= ADVANCED ================= */}
       {tab === "dev" && (
         <>
-          <div className="u-muted" style={{ fontSize: 13.5, marginBottom: 16 }}>
-            Nothing on this tab appears in the creation workflow. Users never pick a model.
-          </div>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Free public APIs</div>
+          <div className="u-muted" style={{ fontSize: 13, marginBottom: 8 }}>Keyless services that add real data around the AI. Each one is optional and fails quietly if it can't be reached.</div>
           <div className="conn">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>Local model endpoint</div>
-                <div className="u-muted" style={{ fontSize: 13 }}>Ollama. Probed once per session.</div>
-              </div>
-              <span className={"chipflat " + (AI_STATUS.local === "reachable" ? "" : "")}>{AI_STATUS.local}</span>
-            </div>
-            <input className="ta" style={{ marginTop: 10 }} defaultValue={AI_CONFIG.ollamaEndpoint}
-              onChange={(e) => { AI_CONFIG.ollamaEndpoint = e.target.value; ollamaProvider.reset(); }} />
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn sm" onClick={async () => { ollamaProvider.reset(); const ok = await ollamaProvider.available(); notify(ok ? "Local models reachable." : "Local models unreachable — using the hosted fallback."); }}>
-                Re-probe
-              </button>
-              {AI_STATUS.localModels.length > 0 && <span className="u-muted mono" style={{ fontSize: 11.5 }}>{AI_STATUS.localModels.slice(0, 4).join("  ")}</span>}
-            </div>
-            {AI_STATUS.local === "unreachable" && (
-              <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-                Browser sandboxes can't reach localhost. Run this build from your own machine to use the local models.
-              </div>
-            )}
+            {Object.values(FREE_APIS).map((a) => (
+              <Row key={a.id} title={a.label} sub={a.note}>
+                <Toggle on={extras[a.id] !== false && (a.id !== "pollinations" || extras.pollinations === true)} set={(v) => setExtras({ ...extras, [a.id]: v })} label={a.label} />
+              </Row>
+            ))}
           </div>
 
-          <div className="eyebrow" style={{ margin: "20px 0 10px" }}>Capability routing</div>
-          <table className="tbl">
-            <thead><tr><th>Capability</th><th>Intended</th><th>Actually used</th></tr></thead>
-            <tbody>
-              {Object.entries(MODEL_REGISTRY).map(([k, v]) => (
-                <tr key={k}>
-                  <td>{k}</td>
-                  <td className="u-muted">{v.label}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>{AI_STATUS.routed[k] || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="eyebrow" style={{ margin: "18px 0 8px" }}>Routing</div>
+          <div className="u-muted" style={{ fontSize: 13, marginBottom: 8 }}>Capabilities route to the local model when it is reachable, otherwise to the hosted model. Nobody picks a model in the creation flow.</div>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead><tr><th>Capability</th><th>Intended</th><th>Actually used</th></tr></thead>
+              <tbody>
+                {Object.entries(MODEL_REGISTRY).map(([k, v]) => (
+                  <tr key={k}><td>{k}</td><td className="u-muted">{v.provider === "ollama" ? `Local · ${AI_CONFIG.localModel} → hosted` : v.label}</td><td className="mono" style={{ fontSize: 12 }}>{AI_STATUS.routed[k] || "—"}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div className="conn" style={{ marginTop: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Media providers</div>
             {[["Image", imageProvider], ["Video", videoProvider]].map(([n, pv]) => (
-              <div className="setrow" key={n}>
-                <div><span style={{ fontWeight: 600 }}>{n}</span><div className="u-muted" style={{ fontSize: 12.5 }}>{pv.label}</div></div>
-                <span className="chipflat">{pv.configured ? "provider" : "prototype"}</span>
-              </div>
+              <Row key={n} title={n} sub={pv.label}><span className="chipflat">{n === "Image" && extras.pollinations ? "Pollinations + renderer" : pv.configured ? "provider" : "brand renderer"}</span></Row>
             ))}
-            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
-              No external image or video model is configured. Assets are rendered locally and labelled as such.
-            </div>
           </div>
-        </>
-      )}
-
-      {tab === "publishing" && (
-        <>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Default timezone</div><div className="u-muted" style={{ fontSize: 13 }}>Stored with every scheduled post.</div></div>
-            <select className="ta" style={{ width: 180 }} value={schedule.tz} onChange={(e) => setSchedule({ ...schedule, tz: e.target.value })}>
-              <option>Asia/Kolkata</option><option>America/New_York</option><option>Europe/London</option><option>Asia/Dubai</option>
-            </select>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Retry policy</div><div className="u-muted" style={{ fontSize: 13 }}>Applied to failed publishing jobs.</div></div>
-            <span className="chipflat">manual retry only · nothing is resent automatically</span>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Approval required before publishing</div><div className="u-muted" style={{ fontSize: 13 }}>Locked on in the MVP.</div></div>
-            <button className="toggle on" disabled><i /></button>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Simulate a publishing failure</div><div className="u-muted" style={{ fontSize: 13 }}>The next publish fails before anything is sent to Make. For testing the failure UI.</div></div>
-            <button className={"toggle " + (failMode ? "on" : "")} onClick={() => setFailMode(!failMode)}><i /></button>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Appearance</div><div className="u-muted" style={{ fontSize: 13 }}>Currently {theme}.</div></div>
-            <button className="btn sm" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>Switch to {theme === "dark" ? "light" : "dark"}</button>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Notifications</div><div className="u-muted" style={{ fontSize: 13 }}>{notes.length} unread.</div></div>
-            <button className="btn sm" onClick={() => setNotes([])}>Clear all</button>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Background 3D</div><div className="u-muted" style={{ fontSize: 13 }}>The scroll-driven pipeline scene. Turn it off on slower machines.</div></div>
-            <button className={"toggle " + (bg3d ? "on" : "")} onClick={() => setBg3d(!bg3d)}><i /></button>
-          </div>
-          <div className="setrow">
-            <div><div style={{ fontWeight: 600 }}>Saved session</div><div className="u-muted" style={{ fontSize: 13 }}>Your draft, sources and settings are saved and survive a refresh.</div></div>
-            <button className="btn sm" onClick={wipe}>Clear saved data</button>
+          <div className="conn">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Endpoints</div>
+            <Row title="AI relay" sub={AI_CONFIG.aiRelayEndpoint}><span className="chipflat">{aiInfo?.mode === "relay" ? "deployed" : "absent"}</span></Row>
+            <Row title="Publishing relay" sub={PUBLISH_RELAY_PATH}><span className="chipflat">{relay?.relay ? "deployed" : "absent"}</span></Row>
+            <Row title="Console tracing" sub={'localStorage["unison:debug"] = "1" then reload.'}><span className="chipflat">{MAKE_CONFIG.debug ? "on" : "off"}</span></Row>
           </div>
         </>
       )}

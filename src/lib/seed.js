@@ -61,4 +61,7 @@ export const SEED_TEAM = [
   { name: "Daniel R.", email: "daniel@acme.systems", role: "Reviewer" },
 ];
 
-export const DEFAULT_PROFILE = { industry: "Enterprise software", audience: "Marketing and RevOps leaders", keywords: "AI agents, automation, buying process" };
+export const DEFAULT_PROFILE = {
+  company: "", website: "", followers: "", userName: "",
+  industry: "Enterprise software", audience: "Marketing and RevOps leaders", keywords: "AI agents, automation, buying process",
+};

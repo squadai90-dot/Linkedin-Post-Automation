@@ -1,23 +1,63 @@
 import { useState, useEffect, useRef } from "react";
 import { FORMATS, toggleFormat, labelFor } from "../lib/formats.js";
+import { greeting, relativeTime } from "../lib/dates.js";
+import { postDue } from "./views.jsx";
 
 /* ============================================================
    DASHBOARD — the first screen. A command centre, not a pitch.
    ============================================================ */
 
-export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditDraft, onRemoveDraft, onDiscover, setView, open, setModal, composer }) {
+/* What a new team still has to set up. Disappears once done or dismissed. */
+function SetupCard({ profile, aiInfo, publishReady, linkedin, openSettings, onDismiss }) {
+  const items = [
+    { ok: !!profile.company, label: "Name your company", sub: "Shown in previews and stamped on images.", tab: "workspace" },
+    { ok: !!aiInfo?.ready, label: "Connect the AI", sub: aiInfo ? aiInfo.summary : "Checking…", tab: "ai" },
+    { ok: publishReady, label: "Connect publishing", sub: publishReady ? (linkedin.org || "Make workflow ready") : "Make webhook or LinkedIn sign-in — until then publishing is a dry run.", tab: "linkedin" },
+  ];
+  const left = items.filter((i) => !i.ok).length;
+  if (!left) return null;
+  return (
+    <div className="card setup">
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+        <div><span className="eyebrow">Set up Unison</span><div style={{ fontWeight: 600, marginTop: 4 }}>{left} of {items.length} steps left</div></div>
+        <button className="btn sm" onClick={onDismiss}>Hide for now</button>
+      </div>
+      {items.map((i) => (
+        <button key={i.tab} className="dash-row" onClick={() => openSettings(i.tab)}>
+          <span className={"dot " + (i.ok ? "g" : "y")} />
+          <span style={{ minWidth: 0 }}><span style={{ fontWeight: 600 }}>{i.label}</span><span className="u-muted" style={{ display: "block", fontSize: 12.5, whiteSpace: "normal" }}>{i.sub}</span></span>
+          <span className="u-muted">{i.ok ? "Done" : "Set up →"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditDraft, onRemoveDraft, onDiscover, setView, open, publish, setModal, composer, profile = {}, aiInfo, publishReady, openSettings, setupHidden, hideSetup }) {
   const review = posts.filter((p) => p.state === "HUMAN_REVIEW");
-  const scheduled = posts.filter((p) => p.state === "SCHEDULED");
+  const scheduled = posts.filter((p) => p.state === "SCHEDULED").sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
+  const due = scheduled.filter(postDue);
+  const sent = posts.filter((p) => p.state === "SENT");
   const recent = posts.filter((p) => p.state === "PUBLISHED").slice(0, 3);
+  const firstName = String(profile.userName || "").trim().split(/\s+/)[0];
 
   return (
     <div className="dash">
       <div className="dash-head">
         <div>
-          <div className="eyebrow">Acme Systems</div>
-          <h1 className="disp">Good morning, Jaynil.</h1>
+          <div className="eyebrow">{profile.company || "Your workspace"}</div>
+          <h1 className="disp">{greeting()}{firstName ? `, ${firstName}` : ""}.</h1>
         </div>
       </div>
+
+      {!setupHidden && <SetupCard profile={profile} aiInfo={aiInfo} publishReady={publishReady} linkedin={linkedin} openSettings={openSettings} onDismiss={hideSetup} />}
+
+      {due.length > 0 && (
+        <div className="notice warn" style={{ marginBottom: 14 }}>
+          <div><b>{due.length === 1 ? `"${due[0].title.slice(0, 48)}" is due.` : `${due.length} scheduled posts are due.`}</b> Unison only publishes while it's open — press Publish now.</div>
+          <button className="btn sm acc" onClick={() => publish(due[0])}>Publish now</button>
+        </div>
+      )}
 
       {composer}
 
@@ -42,7 +82,7 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
             <button className="dash-row" key={p.id} onClick={() => open(p)}>
               <span className="dot y" />
               <span style={{ minWidth: 0 }}>{p.title}</span>
-              <span className="mono u-muted">{p.date.slice(5)}</span>
+              <span className="mono u-muted">{String(p.date || "").slice(5)}</span>
             </button>
           ))}
           {review.length > 0 && <button className="btn sm" style={{ marginTop: 12 }} onClick={() => setView("content")}>Open review queue</button>}
@@ -50,7 +90,24 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
 
         <div className="card">
           <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-            <span className="eyebrow">Recent content</span>
+            <span className="eyebrow">Scheduled</span>
+            <span className="mono u-muted">{scheduled.length}</span>
+          </div>
+          {scheduled.length === 0 && <div className="u-muted" style={{ fontSize: 13.5 }}>Nothing scheduled.</div>}
+          {scheduled.slice(0, 4).map((p) => (
+            <button className="dash-row" key={p.id} onClick={() => open(p)}>
+              <span className={"dot " + (postDue(p) ? "y" : "b")} />
+              <span style={{ minWidth: 0 }}>{p.title}</span>
+              <span className="mono u-muted">{postDue(p) ? "due" : `${String(p.date || "").slice(5)} ${p.time || ""}`}</span>
+            </button>
+          ))}
+          {sent.length > 0 && <div className="dash-stat" style={{ marginTop: 8 }}><span className="dot y" /><span>{sent.length} sent to Make, awaiting LinkedIn</span></div>}
+          {(scheduled.length > 0 || sent.length > 0) && <button className="btn sm" style={{ marginTop: 12 }} onClick={() => setView("calendar")}>Open calendar</button>}
+        </div>
+
+        <div className="card">
+          <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+            <span className="eyebrow">Recently published</span>
             <span className="mono u-muted">{recent.length}</span>
           </div>
           {recent.length === 0 && <div className="u-muted" style={{ fontSize: 13.5 }}>Nothing published yet.</div>}
@@ -58,7 +115,7 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
             <button className="dash-row" key={p.id} onClick={() => open(p)}>
               <span className="dot g" />
               <span style={{ minWidth: 0 }}>{p.title}</span>
-              <span className="mono u-muted">{p.metrics ? `${(p.metrics.impressions / 1000).toFixed(1)}k` : p.date.slice(5)}</span>
+              <span className="mono u-muted">{p.metrics?.impressions ? `${(p.metrics.impressions / 1000).toFixed(1)}k` : p.simulated ? "sim" : String(p.date || "").slice(5)}</span>
             </button>
           ))}
           {recent.length > 0 && <button className="btn sm" style={{ marginTop: 12 }} onClick={() => setView("insights")}>See performance</button>}
@@ -67,20 +124,14 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
         <div className="card">
           <div className="eyebrow" style={{ marginBottom: 12 }}>Status</div>
           <div className="dash-stat">
-            <span className={"dot " + (linkedin.connected ? "g" : "r")} />
-            <span>{linkedin.viaWorkflow ? "LinkedIn publishing connected" : linkedin.connected ? `${linkedin.org} connected` : "No Company Page connected"}</span>
-            {!linkedin.connected && <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => setModal("linkedin")}>Connect</button>}
+            <span className={"dot " + (publishReady ? "g" : linkedin.connected ? "y" : "r")} />
+            <span>{publishReady ? (linkedin.viaWorkflow && !linkedin.org ? "Publishing via Make" : `${linkedin.org || "Company Page"} connected`) : linkedin.simulated ? "Sample Page — publishing is simulated" : "Publishing not connected"}</span>
+            {!publishReady && <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => openSettings("linkedin")}>Connect</button>}
           </div>
-          {posts.some((p) => p.state === "SENT") && (
-            <div className="dash-stat">
-              <span className="dot y" />
-              <span>{posts.filter((p) => p.state === "SENT").length} sent to Make, awaiting LinkedIn</span>
-            </div>
-          )}
           <div className="dash-stat">
-            <span className="dot b" />
-            <span>{scheduled.length} scheduled</span>
-            {scheduled.length > 0 && <span className="mono u-muted" style={{ marginLeft: "auto" }}>next {scheduled[0].date.slice(5)}</span>}
+            <span className={"dot " + (aiInfo?.ready ? "g" : "r")} />
+            <span>{aiInfo ? (aiInfo.ready ? (aiInfo.local ? "AI ready · local model" : "AI ready") : "AI not configured — sample data") : "Checking AI…"}</span>
+            {aiInfo && !aiInfo.ready && <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => openSettings("ai")}>Set up</button>}
           </div>
           <div className="dash-stat">
             <span className="dot b" />
@@ -100,11 +151,7 @@ export const stageWord = (s) => ({
   AI_REVIEW: "checking", HUMAN_REVIEW: "ready to review", APPROVED: "approved, not scheduled", FAILED: "publish failed",
 }[s] || String(s || "").toLowerCase().replace(/_/g, " "));
 
-export const ago = (iso) => {
-  if (!iso) return "";
-  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
-};
+export const ago = relativeTime;
 
 export function DraftRow({ d, active, onEdit, onRemove }) {
   const [confirm, setConfirm] = useState(false);
@@ -119,7 +166,7 @@ export function DraftRow({ d, active, onEdit, onRemove }) {
       <div className="row" style={{ flex: "none" }}>
         {confirm ? (
           <>
-            <button className="btn sm" onClick={() => { setConfirm(false); onRemove(d.id); }}>Yes, remove</button>
+            <button className="btn sm bad" onClick={() => { setConfirm(false); onRemove(d.id); }}>Yes, remove</button>
             <button className="btn sm" onClick={() => setConfirm(false)}>Keep</button>
           </>
         ) : (
@@ -171,7 +218,7 @@ export function CreateFlow({ onStart, recommend, recommending, recommended, seed
   const [formats, setFormats] = useState(["text"]);
   const [text, setText] = useState(seed || "");
   const inputRef = useRef(null);
-  useEffect(() => { if (seed) { setText(seed); inputRef.current?.focus(); clearSeed?.(); } }, [seed]);
+  useEffect(() => { if (seed) { setText(seed); inputRef.current?.focus(); clearSeed?.(); } }, [seed]);  
   const go = () => text.trim() && onStart(formats, text.trim());
   const pick = (id) => setFormats((f) => toggleFormat(f, id));
   const starter = (t) => {
@@ -184,7 +231,7 @@ export function CreateFlow({ onStart, recommend, recommending, recommended, seed
     <div className="create">
       <div className="composer">
         <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()}
-          placeholder="What is this post about?" />
+          placeholder="What is this post about?" aria-label="What is this post about?" />
         <button className="btn pri" onClick={go} disabled={!text.trim()}>Start</button>
       </div>
 
@@ -210,7 +257,7 @@ export function CreateFlow({ onStart, recommend, recommending, recommended, seed
                 <span className="fmt-label">{f.label}</span>
                 <span className={"fmt-check " + (on ? "on" : "")}>{on ? "✓" : ""}</span>
               </span>
-              <span className="u-muted">{base ? "Always included — the written post." : f.hint}</span>
+              <span className="u-muted fmt-hint">{base ? "Always included — the written post." : f.hint}</span>
               {recList.includes(f.id) && !base && <span className="eyebrow" style={{ marginTop: 6 }}>Recommended</span>}
             </button>
           );

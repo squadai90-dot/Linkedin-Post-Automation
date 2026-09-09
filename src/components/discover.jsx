@@ -45,10 +45,12 @@ export function Discover({ opps, busy, rerun, start, profile, setProfile }) {
       {opps?.degraded && (
         <div className="badge warn" style={{ marginBottom: 12 }}>
           {opps.degraded === "sample" ? "The engine didn't respond — these rows are placeholders."
+            : opps.degraded === "hn-only" ? "The AI didn't respond, so these are trending stories from Hacker News — real links, not ranked against your Page."
             : opps.degraded === "off" ? "Web search is off, so these come from the model's own knowledge and have no links."
             : "Live search didn't return usable results, so these come from the model's own knowledge and have no links."}
         </div>
       )}
+      {opps?.trending > 0 && opps.degraded !== "hn-only" && <div className="u-muted" style={{ fontSize: 12.5, marginBottom: 12 }}>{opps.trending} trending stor{opps.trending === 1 ? "y" : "ies"} from Hacker News are mixed in — they carry a "Trending" tag and real links.</div>}
 
       {items.map((o, i) => (
         <div className="opp" key={i}>
@@ -58,7 +60,7 @@ export function Discover({ opps, busy, rerun, start, profile, setProfile }) {
           </div>
           <div style={{ minWidth: 0 }}>
             <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-              <span className={"gap " + (GAP[o.gap]?.[1] || "gap-adj")}>{GAP[o.gap]?.[0] || "Unclear"}</span>
+              <span className={"gap " + (GAP[o.gap]?.[1] || "gap-adj")}>{o.via === "hn" ? "Trending" : GAP[o.gap]?.[0] || "Unclear"}</span>
               <span className="eyebrow">{o.angle}</span>
               {o.date && <span className="eyebrow">{o.date}</span>}
             </div>
@@ -68,6 +70,7 @@ export function Discover({ opps, busy, rerun, start, profile, setProfile }) {
             <div className="row" style={{ marginTop: 14 }}>
               <button className="btn acc sm" onClick={() => start(o.headline)}>Create from this</button>
               {o.url && <a className="btn sm" href={o.url} target="_blank" rel="noreferrer">{o.publisher || host(o.url)} ↗</a>}
+              {o.discussion && <a className="btn sm" href={o.discussion} target="_blank" rel="noreferrer">Discussion ↗</a>}
               {!o.url && <span className="u-muted" style={{ fontSize: 12.5 }}>{o.publisher || "no link"}</span>}
             </div>
           </div>

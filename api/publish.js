@@ -18,7 +18,8 @@ const WEBHOOK_URL =
   process.env.MAKE_LINKEDIN_WEBHOOK_URL ||
   "https://hook.eu1.make.com/5sva21xc67b9vne5zovgbohnqgbll15k";
 
-const FORWARD_TIMEOUT_MS = Number(process.env.PUBLISH_TIMEOUT_MS || 60000);
+const FORWARD_TIMEOUT_MS = Number(process.env.PUBLISH_TIMEOUT_MS || 55000);
+const RELAY_TOKEN = process.env.UNISON_RELAY_TOKEN || "";
 const POST_TYPES = ["text", "image", "multi", "video", "document", "poll", "article", "carousel"];
 
 /**
@@ -94,6 +95,7 @@ export default async function handler(req, res) {
       service: "unison-publish-relay",
       version: 1,
       webhookConfigured: /^https:\/\/hook\.[a-z0-9.-]+\.make\.com\//.test(WEBHOOK_URL),
+      tokenRequired: !!RELAY_TOKEN,
       supportedPostTypes: POST_TYPES,
       cachedDeliveries: DELIVERED.size,
     });
@@ -104,6 +106,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed." });
   }
 
+  if (RELAY_TOKEN && req.headers["x-unison-token"] !== RELAY_TOKEN) {
+    return res.status(401).json({ error: "This relay requires a team token. Add it under Settings → Advanced.", delivered: false });
+  }
   if (!/^https:\/\/hook\.[a-z0-9.-]+\.make\.com\//.test(WEBHOOK_URL)) {
     return res.status(500).json({ error: "Publishing is not configured on the server." });
   }
@@ -184,4 +189,4 @@ export default async function handler(req, res) {
 function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
 /* Media payloads are large. Vercel's default body limit is 1 MB. */
-export const config = { api: { bodyParser: { sizeLimit: "8mb" } } };
+export const config = { api: { bodyParser: { sizeLimit: "8mb" } }, maxDuration: 60 };

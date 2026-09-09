@@ -6,6 +6,16 @@
 export const BRAND = { bg: "#0A0F1A", panel: "#111A2B", acc: "#7C8CFF", acc2: "#39D3C7", ink: "#EEF2F8", mute: "#8B95AB", rule: "#26314A" };
 export const FONT = 'Inter, Helvetica, Arial, sans-serif';
 
+/* The company name and site stamped on every rendered asset. App keeps this in
+   sync with the workspace profile so templates never carry a placeholder. */
+export const BRAND_TEXT = { name: "", site: "" };
+export function setBrandText({ name, site } = {}) {
+  BRAND_TEXT.name = String(name || "").trim();
+  BRAND_TEXT.site = String(site || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+const brandName = () => BRAND_TEXT.name || "";
+const brandSite = () => BRAND_TEXT.site || BRAND_TEXT.name || "";
+
 export const esc = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export function wrapText(str, max) {
@@ -46,7 +56,7 @@ ${h.map((l, i) => `<text x="90" y="${330 + i * 96}" fill="${BRAND.ink}" font-fam
 <rect x="90" y="${360 + h.length * 96}" width="90" height="5" fill="${BRAND.acc}"/>
 ${b.map((l, i) => `<text x="90" y="${450 + h.length * 96 + i * 54}" fill="${BRAND.mute}" font-family="${FONT}" font-size="38">${esc(l)}</text>`).join("")}
 ${Array.from({ length: total }).map((_, i) => `<rect x="${90 + i * 34}" y="1070" width="24" height="6" rx="3" fill="${i < n ? BRAND.acc : BRAND.rule}"/>`).join("")}
-<text x="1110" y="1080" text-anchor="end" fill="${BRAND.mute}" font-family="${FONT}" font-size="22" letter-spacing="4">ACME SYSTEMS</text>
+<text x="1110" y="1080" text-anchor="end" fill="${BRAND.mute}" font-family="${FONT}" font-size="22" letter-spacing="4">${esc(brandName()).toUpperCase()}</text>
 </svg>`;
 }
 
@@ -58,7 +68,7 @@ export function tplTile(label, stat) {
 <text x="90" y="480" fill="${BRAND.acc}" font-family="${FONT}" font-size="190" font-weight="700">${esc(stat)}</text>
 <rect x="90" y="540" width="110" height="6" fill="${BRAND.acc2}"/>
 ${l.map((x, i) => `<text x="90" y="${650 + i * 68}" fill="${BRAND.ink}" font-family="${FONT}" font-size="52" font-weight="500">${esc(x)}</text>`).join("")}
-<text x="90" y="1110" fill="${BRAND.mute}" font-family="${FONT}" font-size="24" letter-spacing="4">ACME SYSTEMS</text>
+<text x="90" y="1110" fill="${BRAND.mute}" font-family="${FONT}" font-size="24" letter-spacing="4">${esc(brandName()).toUpperCase()}</text>
 </svg>`;
 }
 
@@ -70,7 +80,7 @@ export function tplPoster(title) {
 <circle cx="600" cy="250" r="74" fill="none" stroke="${BRAND.acc}" stroke-width="5"/>
 <path d="M580 218 L630 250 L580 282 Z" fill="${BRAND.acc}"/>
 ${lines.map((l, i) => `<text x="600" y="${406 + i * 52}" text-anchor="middle" fill="${BRAND.ink}" font-family="${FONT}" font-size="44" font-weight="600">${esc(l)}</text>`).join("")}
-<text x="600" y="572" text-anchor="middle" fill="${BRAND.mute}" font-family="${FONT}" font-size="20" letter-spacing="4">ACME SYSTEMS</text>
+<text x="600" y="572" text-anchor="middle" fill="${BRAND.mute}" font-family="${FONT}" font-size="20" letter-spacing="4">${esc(brandName()).toUpperCase()}</text>
 </svg>`;
 }
 
@@ -124,7 +134,7 @@ export function drawScene(ctx, W, H, scene, i, total, t, brief) {
   ctx.fillRect(90, H - 60, (W - 180) * ((i + t) / total), 3);
   ctx.fillStyle = BRAND.mute;
   ctx.font = "500 20px Inter, Helvetica, Arial, sans-serif";
-  ctx.fillText("ACME SYSTEMS", 90, H - 90);
+  ctx.fillText(brandName().toUpperCase(), 90, H - 90);
 }
 
 /* ---------- image layouts ----------
@@ -133,8 +143,8 @@ export function drawScene(ctx, W, H, scene, i, total, t, brief) {
 
 export function renderBrandImage(brief, variant = 0) {
   const b = brief || {};
-  const title = b.headline || b.subject || "Acme Systems";
-  const kicker = b.kicker || "Acme Systems";
+  const title = b.headline || b.subject || brandName() || "Untitled";
+  const kicker = b.kicker || brandName();
   const support = b.support || "";
   const v = ((variant % 4) + 4) % 4;
 
@@ -171,7 +181,7 @@ ${lines.map((l, i) => `<text x="80" y="${186 + i * 66}" fill="${BRAND.ink}" font
 ${lines.map((l, i) => `<text x="80" y="${200 + i * 64}" fill="${BRAND.ink}" font-family="${FONT}" font-size="56" font-weight="700">${esc(l)}</text>`).join("")}
 </svg>`;
   }
-  return tplCard(kicker, title, support || "acme.systems");
+  return tplCard(kicker, title, support || brandSite());
 }
 
 /* ---------- rasterise so assets are LinkedIn-uploadable ---------- */
