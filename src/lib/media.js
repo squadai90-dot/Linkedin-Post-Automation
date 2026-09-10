@@ -120,7 +120,7 @@ export const videoProvider = {
 
 /* ---------- the engine ---------- */
 
-export function createMediaEngine({ track, log }) {
+export function createMediaEngine({ track, log, onNotice }) {
   const brief = async (kind, ctx, signal) => {
     // the reasoning capability writes the creative brief…
     const r = await askJSON({
@@ -139,7 +139,7 @@ ${ctx.body || ""}
       fallback: () => (kind === "video"
         ? { title: ctx.hook?.slice(0, 60) || "Video", concept: "A short explainer built from the post.", audience: "Marketing leaders", style: "Dark, typographic, restrained", motion: "Slow drift between titles", aspect: "16:9", scenes: [{ label: "HOOK", line: ctx.hook || "", note: "" }, { label: "PROBLEM", line: "What actually slows teams down", note: "" }, { label: "INSIGHT", line: "The part nobody automates", note: "" }, { label: "CTA", line: "What would you fix first?", note: "" }], avoid: "stock footage clichés" }
         : { subject: ctx.hook || "", headline: (ctx.hook || "").slice(0, 60), message: "", audience: "Marketing leaders", composition: "Type-led with one geometric motif", kicker: BRAND_TEXT.name, support: BRAND_TEXT.site || BRAND_TEXT.name, aspect: "1.91:1", avoid: "stock photography" }),
-      track, signal,
+      track, onNotice, signal,
     });
     return r;
   };
@@ -152,7 +152,7 @@ ${ctx.body || ""}
         system: "You turn a creative brief into a single detailed generation prompt. Output the prompt only — no preamble, no lists, no quotes. Professional B2B brand imagery only.",
         user: `Brief: ${JSON.stringify(b)}
 Write one prompt of 40-70 words describing subject, composition, lighting, palette and mood for a ${kind === "video" ? "short brand video" : "brand image"}. Avoid: ${b.avoid || "clichés"}.`,
-        track,
+        track, onNotice,
         signal,
       });
       return txt.trim().slice(0, 600);
@@ -181,7 +181,7 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
 Post: ${ctx.hook} ${ctx.body || ""}
 {"tiles":[{"stat":"a number or short figure, under 6 characters","label":"under 8 words"}]}`,
         fallback: () => ({ tiles: [{ stat: "01", label: "The problem" }, { stat: "02", label: "What changed" }, { stat: "03", label: "What to do" }] }),
-        track, signal,
+        track, onNotice, signal,
       });
       let tiles = arr(r.tiles).filter((t) => t && (t.label || t.stat)).slice(0, count);
       if (!tiles.length) tiles = [{ stat: "01", label: "The problem" }, { stat: "02", label: "What changed" }, { stat: "03", label: "What to do" }].slice(0, count);
@@ -200,7 +200,7 @@ Post: ${ctx.hook} ${ctx.body || ""}
 Rewrite this single tile so it says something different but still fits the set. Current: ${JSON.stringify(tile.meta || {})}
 {"stat":"under 6 characters","label":"under 8 words"}`,
         fallback: () => ({ stat: tile.meta?.stat || "02", label: "A different angle on the same point" }),
-        track, signal,
+        track, onNotice, signal,
       });
       return { ...tile, svg: tplTile(r.label, r.stat), meta: r, id: tile.id };
     },
@@ -253,7 +253,7 @@ ${ctx.body || ""}
             { heading: "The takeaway", body: "What this means for your team." },
           ],
         }),
-        track, signal,
+        track, onNotice, signal,
       });
       let pgs = arr(r.pages).filter((x) => x && x.heading).slice(0, 8);
       if (!pgs.length) pgs = [
@@ -286,7 +286,7 @@ Use this arc: hook, problem, insight, framework, example, conclusion.
             { role: "Conclusion", heading: "The takeaway", body: "What to do on Monday." },
           ],
         }),
-        track, signal,
+        track, onNotice, signal,
       });
       let sl = arr(r.slides).filter((x) => x && x.heading).slice(0, 10);
       if (!sl.length) sl = [
@@ -310,7 +310,7 @@ Rewrite only this slide (${slide.role}), keeping its job in the story but changi
 Current: ${JSON.stringify({ heading: slide.heading, body: slide.body })}
 {"heading":"under 6 words","body":"under 18 words"}`,
         fallback: () => ({ heading: slide.heading, body: slide.body }),
-        track, signal,
+        track, onNotice, signal,
       });
       return { ...slide, ...r, svg: tplPage(index + 1, total, r.heading, r.body) };
     },

@@ -605,6 +605,7 @@ Score 0-100 for how worth posting each is this week. gap = "open" if the Page ha
       // pass 1 — live search
       const oppMeta = {};
       let r = searchOn && hosted ? await askJSON({
+        capability: "research",
         meta: oppMeta,
         system: `You are the content opportunity engine. ${JSON_RULE}`,
         user: `Find 4 real stories this company could post about this week. Search the web and return each real URL.
@@ -619,6 +620,7 @@ Be terse. The whole reply must fit in 400 words.`,
       // pass 2 — no search, so nothing competes for the response budget
       if (!r || !(r.items || []).length) {
         r = await askJSON({
+          capability: "research",
           system: `You are the content opportunity engine. ${JSON_RULE}`,
           user: `List 5 themes this company could post about this week, from what you already know. Leave url empty.
 ${brief}
@@ -685,6 +687,7 @@ Tier 1 = official/primary, 2 = major publication, 3 = industry press, 4 = blogs/
       const meta = {};
       if (!r && searchOn && hosted) {
         r = await askJSON({
+          capability: "research",
           meta,
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
           user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}".
@@ -698,6 +701,7 @@ Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 4
       }
       if (!r || !(r.sources || []).length) {
         r = await askJSON({
+          capability: "research",
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
           user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}", from what you already know. Leave url empty.
 ${shape}
@@ -723,6 +727,7 @@ Give 3 sources, 2 claims, 3 insights. Be terse.`,
       logAudit(`Discovery returned ${(r.sources || []).length} sources${cached ? " (cached)" : ""}`);
 
       const a = await askJSON({
+        capability: "reasoning",
         system: `You are the content intelligence engine. ${JSON_RULE}`,
         user: `Topic: "${topic}".
 Insights: ${JSON.stringify((r.insights || []).slice(0, 3))}
@@ -749,6 +754,7 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
 
     try {
       const dRaw = await askJSON({
+        capability: "writing",
         system: `You are the brand writer engine. ${JSON_RULE}`,
         user: `Write a LinkedIn company page post.
 Topic: ${idea}
@@ -779,6 +785,7 @@ Claims must be quoted verbatim from the post text so they can be highlighted.
         ...checkJobs(d, signal),
       ];
       if (!keepMedia) jobs.push(askJSON({
+        capability: "reasoning",
         system: `You are the media engine. ${JSON_RULE}`,
         user: `Suggest a format for this post. Answer with one id from: text, image, video, document, multi, poll, article, carousel.
 Post: ${d.hook} ${d.body}
@@ -804,6 +811,7 @@ Post: ${d.hook} ${d.body}
   function checkJobs(d, signal) {
     return [
       askJSON({
+        capability: "verification",
         system: `You are the trust engine. ${JSON_RULE}`,
         user: `Check each claim against the sources. Copy each claim exactly as it appears in the post.
 Post claims: ${JSON.stringify(d.claims || [])}
@@ -814,6 +822,7 @@ green = clearly supported by a listed source, yellow = plausible but not directl
         fallback: fb.verify, onNotice, track: track("Trust"), signal,
       }),
       askJSON({
+        capability: "quality",
         system: `You are the content quality engine. ${JSON_RULE}`,
         user: `Assess this LinkedIn post.
 Hook: ${d.hook}
@@ -1575,6 +1584,7 @@ Give up to 4 of each. Only include what the document actually says.`,
     const avg = (k) => (others.length ? Math.round(others.reduce((a, x) => a + (Number(x.metrics[k]) || 0), 0) / others.length) : null);
     notify("Asking the learning engine…");
     const a = await askJSON({
+      capability: "reasoning",
       system: `You are the learning engine. Explain performance as likely reasons, never as proven cause. ${JSON_RULE}`,
       user: `Post: ${text.slice(0, 1200)}
 Metrics: ${JSON.stringify(post.metrics)}
