@@ -317,8 +317,9 @@ describe("aiRouter", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(noRelay())
       .mockResolvedValueOnce(okRes({ choices: [{ message: { content: "OK" } }] })));
-    await aiRouter.run({ capability: "writing", user: "hi" });
-    expect(AI_STATUS.routed.writing).toBe("groq · llama-3.3-70b-versatile");
+    // "quality" sits on the standard tier, so this is the picker's model.
+    await aiRouter.run({ capability: "quality", user: "hi" });
+    expect(AI_STATUS.routed.quality).toBe("groq · llama-3.3-70b-versatile");
   });
 
   it("reports the search model when the call searches", async () => {

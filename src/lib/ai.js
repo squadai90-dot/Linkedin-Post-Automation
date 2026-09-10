@@ -45,6 +45,10 @@ export const AI_CONFIG = {
   /* Groq runs web search inside the compound models rather than as a tool,
      so a search call swaps the model instead of attaching one. */
   searchModel: "groq/compound",
+  /* Per-tier overrides; empty means "use TIER_DEFAULTS". */
+  tiers: { groq: { fast: "", strong: "" }, anthropic: { fast: "", strong: "" } },
+  useTiers: true,        // route each capability to its tier rather than one model
+  autoDowngrade: true,   // when the day's allowance for a model is spent, drop a tier instead of giving up
   effort: "medium",              // low | medium | high — Anthropic thinking depth
   temperature: 0.6,
   /* Deployed with the optional relay, AI calls go through Unison's own API,
@@ -86,8 +90,41 @@ export const MODELS = {
   ],
 };
 
-/* Ids the picker learned from GET /models this session, merged over MODELS. */
+/* Ids the picker learned from GET /models this session, merged over MODELS.
+   Tied to the key that produced it: a different key is a different account
+   with a different entitlement list, so keeping the old one would let a
+   stale list veto models the new key can use. */
 const discovered = { groq: null };
+
+export const resetDiscovered = () => { discovered.groq = null; };
+
+/* ---------- model tiers (#3) ----------
+   One model for every job wastes the free allowance on rewrites and
+   under-serves the draft, which is the one output a human actually reads.
+   Capabilities name a tier; the tier resolves to a model per provider.
+
+   "standard" is whatever the Model picker is set to, so the visible control
+   still means what it says. The other two are derived from it and can be
+   overridden in Settings. */
+export const TIERS = ["fast", "standard", "strong"];
+
+export const TIER_DEFAULTS = {
+  groq:      { fast: "llama-3.1-8b-instant", strong: "openai/gpt-oss-120b" },
+  anthropic: { fast: "claude-haiku-4-5", strong: "claude-opus-5" },
+};
+
+export function modelForTier(tier, provider = AI_CONFIG.provider) {
+  if (tier === "standard" || !TIERS.includes(tier)) return AI_CONFIG.models[provider] || "";
+  const chosen = AI_CONFIG.tiers?.[provider]?.[tier];
+  if (chosen) return chosen;
+  const fallback = TIER_DEFAULTS[provider]?.[tier];
+  /* A tier model the key cannot use is worse than no tiering at all, so fall
+     back to the standard model whenever the list says it is gone. */
+  if (!fallback) return AI_CONFIG.models[provider] || "";
+  const live = discovered[provider];
+  if (live && !live.includes(fallback)) return AI_CONFIG.models[provider] || "";
+  return fallback;
+}
 
 export function modelsFor(provider = AI_CONFIG.provider) {
   const base = MODELS[provider] || [];
@@ -133,6 +170,16 @@ export function loadAISettings() {
     if (typeof s.model === "string" && s.model.startsWith("claude")) AI_CONFIG.models.anthropic = s.model;
 
     if (typeof s.searchModel === "string" && s.searchModel.trim()) AI_CONFIG.searchModel = s.searchModel.trim();
+    if (s.tiers && typeof s.tiers === "object") {
+      for (const p of Object.keys(PROVIDERS)) {
+        for (const t of ["fast", "strong"]) {
+          const v = s.tiers[p]?.[t];
+          if (typeof v === "string") AI_CONFIG.tiers[p][t] = v.trim();
+        }
+      }
+    }
+    if (typeof s.useTiers === "boolean") AI_CONFIG.useTiers = s.useTiers;
+    if (typeof s.autoDowngrade === "boolean") AI_CONFIG.autoDowngrade = s.autoDowngrade;
     if (["low", "medium", "high"].includes(s.effort)) AI_CONFIG.effort = s.effort;
     if (typeof s.localModel === "string" && s.localModel.trim()) AI_CONFIG.localModel = s.localModel.trim();
     if (typeof s.ollamaEndpoint === "string" && s.ollamaEndpoint.trim()) AI_CONFIG.ollamaEndpoint = s.ollamaEndpoint.trim();
@@ -146,6 +193,9 @@ export const snapshotAISettings = () => ({
   keys: { ...AI_CONFIG.keys },
   models: { ...AI_CONFIG.models },
   searchModel: AI_CONFIG.searchModel,
+  tiers: { groq: { ...AI_CONFIG.tiers.groq }, anthropic: { ...AI_CONFIG.tiers.anthropic } },
+  useTiers: AI_CONFIG.useTiers,
+  autoDowngrade: AI_CONFIG.autoDowngrade,
   effort: AI_CONFIG.effort,
   localModel: AI_CONFIG.localModel,
   ollamaEndpoint: AI_CONFIG.ollamaEndpoint,
@@ -156,7 +206,12 @@ export function saveAISettings(patch = {}) {
   /* keys and models are per-provider maps, so a partial patch has to merge
      into them — a plain spread would drop the provider you did not touch. */
   const cur = snapshotAISettings();
-  const next = { ...cur, ...patch, keys: { ...cur.keys, ...(patch.keys || {}) }, models: { ...cur.models, ...(patch.models || {}) } };
+  const mergeTiers = () => {
+    const out = {};
+    for (const p of Object.keys(PROVIDERS)) out[p] = { ...cur.tiers[p], ...(patch.tiers?.[p] || {}) };
+    return out;
+  };
+  const next = { ...cur, ...patch, keys: { ...cur.keys, ...(patch.keys || {}) }, models: { ...cur.models, ...(patch.models || {}) }, tiers: mergeTiers() };
   AI_CONFIG.provider = PROVIDERS[next.provider] ? next.provider : "groq";
   for (const p of Object.keys(PROVIDERS)) {
     AI_CONFIG.keys[p] = String(next.keys?.[p] || "").trim();
@@ -164,11 +219,17 @@ export function saveAISettings(patch = {}) {
     if (m) AI_CONFIG.models[p] = m;
   }
   AI_CONFIG.searchModel = String(next.searchModel || "groq/compound").trim();
+  for (const p of Object.keys(PROVIDERS)) {
+    for (const t of ["fast", "strong"]) AI_CONFIG.tiers[p][t] = String(next.tiers?.[p]?.[t] || "").trim();
+  }
+  AI_CONFIG.useTiers = next.useTiers !== false;
+  AI_CONFIG.autoDowngrade = next.autoDowngrade !== false;
   AI_CONFIG.effort = ["low", "medium", "high"].includes(next.effort) ? next.effort : "medium";
   AI_CONFIG.localModel = String(next.localModel || "nemotron3").trim();
   AI_CONFIG.ollamaEndpoint = String(next.ollamaEndpoint || "http://localhost:11434").trim();
   AI_CONFIG.useLocal = next.useLocal === true;
   try { localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(snapshotAISettings())); } catch { /* private mode */ }
+  if (AI_CONFIG.provider !== cur.provider || AI_CONFIG.keys[AI_CONFIG.provider] !== cur.keys[AI_CONFIG.provider]) resetDiscovered();
   ollamaProvider.reset(); hostedProvider.reset();
   return snapshotAISettings();
 }
@@ -176,14 +237,17 @@ export function saveAISettings(patch = {}) {
 /* Intended model per capability. Swap a value here and the whole product
    follows — no component references a model name directly. */
 export const MODEL_REGISTRY = {
-  reasoning:             { provider: "text", label: "Text model" },
-  writing:               { provider: "text", label: "Text model" },
-  research:              { provider: "text", label: "Text model", search: true },
-  verification:          { provider: "text", label: "Text model" },
-  quality:               { provider: "text", label: "Text model" },
-  documentUnderstanding: { provider: "text", label: "Text model" },
-  imagePrompt:           { provider: "text", label: "Text model" },
-  videoPrompt:           { provider: "text", label: "Text model" },
+  /* tier: what the job is worth. The draft and the evidence check are what a
+     human reads and what carries risk, so they get the strongest model; a
+     prompt for the image renderer does not. */
+  reasoning:             { provider: "text", label: "Text model", tier: "standard" },
+  writing:               { provider: "text", label: "Text model", tier: "strong" },
+  research:              { provider: "text", label: "Text model", tier: "standard", search: true },
+  verification:          { provider: "text", label: "Text model", tier: "strong" },
+  quality:               { provider: "text", label: "Text model", tier: "standard" },
+  documentUnderstanding: { provider: "text", label: "Text model", tier: "standard" },
+  imagePrompt:           { provider: "text", label: "Text model", tier: "fast" },
+  videoPrompt:           { provider: "text", label: "Text model", tier: "fast" },
   imageGeneration:       { provider: "image", model: null, label: "Image provider" },
   videoGeneration:       { provider: "video", model: null, label: "Video provider" },
 };
@@ -191,7 +255,7 @@ export const MODEL_REGISTRY = {
 /* Developer-facing only. Surfaced in Settings under Developer, never in the
    creation workflow. quota is whatever the provider last told us about the
    daily allowance, so the team can see what is left before it runs out. */
-export const AI_STATUS = { local: "unknown", localModels: [], lastError: null, routed: {}, calls: 0, hostedVia: null, quota: null };
+export const AI_STATUS = { local: "unknown", localModels: [], lastError: null, routed: {}, calls: 0, hostedVia: null, quota: null, blocked: null };
 
 export const friendlyError = (e) => {
   const m = String(e?.message || e || "");
@@ -263,15 +327,51 @@ const stripReasoning = (text) => String(text || "").replace(/<think>[\s\S]*?<\/t
 
 /* Turn any non-2xx into an Error the UI can explain. code drives the copy in
    friendlyError; status is kept for the developer panel. */
-export function providerError(status, body) {
+export function providerError(status, body, res) {
   const raw = body?.error?.message || body?.error || body?.message || `HTTP ${status}`;
   const msg = String(raw);
   let code = "api";
   if (status === 401 || status === 403) code = "bad-key";
   else if (status === 404 || /model_not_found|decommissioned|does not exist/i.test(msg)) code = "no-model";
   else if (status === 429) code = /per day|TPD|RPD/i.test(msg) ? "daily-limit" : "rate";
-  return Object.assign(new Error(msg), { status, code });
+  /* "try again in 2m59s" appears in the message; the headers carry the same
+     thing more reliably. Either beats assuming a full day. */
+  const resetHint = res?.headers?.get?.("retry-after")
+    || res?.headers?.get?.("x-ratelimit-reset-tokens")
+    || res?.headers?.get?.("x-ratelimit-reset-requests")
+    || (msg.match(/try again in ([\dhms.]+)/i) || [])[1]
+    || null;
+  return Object.assign(new Error(msg), { status, code, resetHint });
 }
+
+/* Models whose daily allowance is spent, and when each becomes usable again.
+   Remembered for the session so a second call does not have to rediscover a
+   429 the first one already paid for. */
+const spentUntil = new Map();
+
+const RESET_MS = (v) => {
+  /* Groq reports "2m59.56s", "7h12m" and friends rather than a timestamp. */
+  const m = String(v || "").match(/(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?/);
+  if (!m) return null;
+  const [, h, mi, sec] = m;
+  const ms = (Number(h || 0) * 3600 + Number(mi || 0) * 60 + Number(sec || 0)) * 1000;
+  return ms > 0 ? ms : null;
+};
+
+export function markSpent(model, resetHint) {
+  if (!model) return;
+  spentUntil.set(model, Date.now() + (RESET_MS(resetHint) || 24 * 3600 * 1000));
+}
+
+export function isSpent(model) {
+  const until = spentUntil.get(model);
+  if (!until) return false;
+  if (until > Date.now()) return true;
+  spentUntil.delete(model);
+  return false;
+}
+
+export const clearSpent = () => spentUntil.clear();
 
 /* Groq reports the remaining daily allowance on every response. Keeping it
    means Settings can show what is left instead of only reporting the 429. */
@@ -294,7 +394,24 @@ function readQuota(res) {
    refusal, and the two need different advice, so say what is knowable. */
 const asNetworkError = (e) => {
   if (e?.name === "AbortError" || e?.status) return e;
+  /* fetch rejects with a bare TypeError for a dead network and for a browser
+     that refused the cross-origin call. They are indistinguishable from
+     script, so record it and let the UI offer both remedies. */
+  AI_STATUS.blocked = { at: Date.now(), provider: AI_CONFIG.provider, message: String(e?.message || e) };
   return Object.assign(new Error(String(e?.message || e)), { code: "blocked" });
+};
+
+/* What to do about a blocked call, in the order worth trying. */
+export const blockedRemedy = () => {
+  const p = activeProvider();
+  return {
+    provider: p.label,
+    steps: [
+      `Check this machine can reach ${p.label} at all — a VPN, a corporate proxy or an offline laptop all look identical from here.`,
+      "Deploy api/ai.js (one Vercel function, no server to run) with GROQ_API_KEY set. Calls then leave from the server, where no browser rule applies.",
+      "Or run a local model: turn on Ollama under Settings → AI.",
+    ],
+  };
 };
 
 /* ---------- request builders, one per wire format ---------- */
@@ -322,6 +439,71 @@ export function anthropicBody({ system, user, model, search }) {
   if (system) body.system = system;
   if (search) body.tools = [WEB_SEARCH_TOOL];
   return body;
+}
+
+/* ---------- what the model actually looked at (#2) ----------
+   A model writing a URL into JSON is generating text; the URL may not exist.
+   The compound models also report the searches they really ran, and those
+   URLs came out of a search index. Collecting them lets the app tell a
+   retrieved link from an invented one instead of presenting both as sources.
+
+   The field has moved between shapes across releases, so read defensively and
+   return nothing rather than guess. */
+export function searchedUrls(data) {
+  const out = new Set();
+  const visit = (v, depth = 0) => {
+    if (!v || depth > 6) return;
+    if (typeof v === "string") {
+      const m = v.match(/https?:\/\/[^\s"'<>)\]]+/g);
+      if (m) m.forEach((u) => out.add(u));
+      return;
+    }
+    if (Array.isArray(v)) return v.forEach((x) => visit(x, depth + 1));
+    if (typeof v === "object") for (const k of Object.keys(v)) visit(v[k], depth + 1);
+  };
+  const msg = data?.choices?.[0]?.message;
+  /* Only the tool-execution record, never the message content — the content
+     is exactly the generated text whose links we are trying to check. */
+  visit(msg?.executed_tools ?? msg?.tool_calls ?? data?.search_results ?? null);
+  return [...out];
+}
+
+/* Two URLs point at the same page often enough that a strict compare would
+   flag real sources. Compare host plus a normalised path instead. */
+export const sameTarget = (a, b) => {
+  const norm = (u) => {
+    try {
+      const x = new URL(u);
+      return x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/+$/, "").toLowerCase();
+    } catch { return null; }
+  };
+  const na = norm(a), nb = norm(b);
+  return !!na && na === nb;
+};
+
+/* Domains that mean "the model had nothing". Never a real source. */
+const PLACEHOLDER_HOSTS = /(^|\.)(example|test|localhost|invalid|domain|yoursite|website|placeholder)\.(com|org|net|invalid|local)$|^example\./i;
+
+export const isPlaceholderUrl = (u) => {
+  try { return PLACEHOLDER_HOSTS.test(new URL(u).hostname); } catch { return true; }
+};
+
+/* Mark each source: "retrieved" if the model's own search returned it,
+   "unconfirmed" if it only wrote it down, "placeholder" if it is fake on its
+   face. The caller decides how loudly to say so. */
+export function corroborateSources(sources, urls) {
+  const list = Array.isArray(sources) ? sources : [];
+  const checked = Array.isArray(urls) && urls.length > 0;
+  return list.map((src) => {
+    if (!src || typeof src !== "object") return src;
+    if (!src.url) return { ...src, link: "none" };
+    if (isPlaceholderUrl(src.url)) return { ...src, link: "placeholder" };
+    if (src.uploaded || src.background) return { ...src, link: "retrieved" };
+    /* With no record of what was searched we cannot claim either way, and
+       inventing a verdict is the thing this function exists to prevent. */
+    if (!checked) return { ...src, link: "unknown" };
+    return { ...src, link: urls.some((u) => sameTarget(u, src.url)) ? "retrieved" : "unconfirmed" };
+  });
 }
 
 export const readGroq = (data) => {
@@ -375,7 +557,7 @@ export const hostedProvider = {
       res = await fetch(`${PROVIDERS.groq.endpoint}/models`, { headers: { Authorization: `Bearer ${key}` }, signal });
     } catch (e) { throw asNetworkError(e); }
     const data = await res.json().catch(() => null);
-    if (!res.ok) throw providerError(res.status, data);
+    if (!res.ok) throw providerError(res.status, data, res);
     const ids = (data?.data || [])
       .filter((m) => m?.active !== false && !/whisper|tts|guard|prompt-guard/i.test(m.id || ""))
       .map((m) => m.id)
@@ -383,10 +565,10 @@ export const hostedProvider = {
     if (ids.length) discovered.groq = ids;
     return ids;
   },
-  async chat({ system, user, search, json, signal }) {
+  async chat({ system, user, search, json, model: wanted, signal, meta }) {
     const mode = await this.resolve();
     const provider = AI_CONFIG.provider;
-    const model = activeModel();
+    const model = wanted || activeModel();
     const body = provider === "groq"
       ? groqBody({ system, user, model, json, search })
       : anthropicBody({ system, user, model, search });
@@ -415,9 +597,15 @@ export const hostedProvider = {
     try {
       res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
     } catch (e) { throw asNetworkError(e); }
+    AI_STATUS.blocked = null;
     readQuota(res);
     const data = await res.json().catch(() => null);
-    if (!res.ok || data?.error) throw providerError(res.status, data);
+    if (!res.ok || data?.error) throw providerError(res.status, data, res);
+    if (meta) {
+      meta.model = model;
+      meta.provider = provider;
+      if (search) meta.searchedUrls = provider === "groq" ? searchedUrls(data) : [];
+    }
     return provider === "groq" ? readGroq(data) : readAnthropic(data);
   },
 };
@@ -431,8 +619,11 @@ export async function describeAI() {
   const where = mode === "relay" ? "via the deployed relay" : "directly from this browser";
   return {
     local, mode, hosted, provider: p.id, free: p.free,
+    blocked: AI_STATUS.blocked,
     ready: local || hosted,
-    summary: local ? `Local model (${AI_CONFIG.localModel}) with ${p.label} as fallback${hosted ? "" : ` — ${p.label} not configured`}`
+    summary: AI_STATUS.blocked && !local
+      ? `This browser could not reach ${p.label}. Nothing was wrong with the key — see Settings → AI for the two ways round it.`
+      : local ? `Local model (${AI_CONFIG.localModel}) with ${p.label} as fallback${hosted ? "" : ` — ${p.label} not configured`}`
       : hosted ? `${p.label} ${where} · ${activeModel()}${p.free ? " · free tier" : ""}`
       : mode === "relay" ? `The AI relay is deployed but has no ${p.label} key on the server`
       : `Not configured — add a free ${p.label} key under Settings → AI. Until then, engines return sample data.`,
@@ -442,8 +633,26 @@ export async function describeAI() {
 /* ---------- the router ---------- */
 
 export const aiRouter = {
-  async run({ capability = "reasoning", system, user, search, json, signal, timeoutMs = 90000 }) {
+  /* Which model a capability should use right now, given its tier, whether
+     the call searches, and whether that model's day is already spent. */
+  plan(capability, search) {
     const entry = MODEL_REGISTRY[capability] || MODEL_REGISTRY.reasoning;
+    if (search && AI_CONFIG.provider === "groq") return { model: AI_CONFIG.searchModel, tier: "search", entry };
+    const tier = AI_CONFIG.useTiers ? (entry.tier || "standard") : "standard";
+    return { model: modelForTier(tier), tier, entry };
+  },
+
+  /* When the day's allowance for a model is gone, the choice is a weaker
+     model or sample data. A weaker real answer beats a placeholder, so step
+     down the tiers rather than give up — once, and only downwards. */
+  fallbackChain(tier) {
+    if (!AI_CONFIG.autoDowngrade) return [];
+    const order = { strong: ["standard", "fast"], standard: ["fast"], fast: [], search: ["standard", "fast"] };
+    return (order[tier] || []).map((t) => modelForTier(t)).filter(Boolean);
+  },
+
+  async run({ capability = "reasoning", system, user, search, json, signal, timeoutMs = 90000, onNotice, meta }) {
+    const { model, tier, entry } = this.plan(capability, search);
     AI_STATUS.calls += 1;
 
     /* Every call gets a ceiling, whether or not the caller passed a signal. */
@@ -465,25 +674,47 @@ export const aiRouter = {
           AI_STATUS.lastError = friendlyError(e);
         }
       }
-      const named = search && AI_CONFIG.provider === "groq" ? AI_CONFIG.searchModel : activeModel();
-      AI_STATUS.routed[capability] = `${AI_CONFIG.provider} · ${named}${search ? " + search" : ""}`;
-      try {
-        return await hostedProvider.chat({ system, user, search, json, signal: sig });
-      } catch (e) {
-        if (e?.name === "AbortError" && !signal?.aborted) throw Object.assign(new Error("The AI service took too long."), { code: "timeout" });
-        AI_STATUS.lastError = friendlyError(e);
-        throw e;
+
+      /* Skip a model already known to be out of allowance today rather than
+         spending a round trip to be told again. */
+      const chain = [model, ...this.fallbackChain(tier)].filter((m, i, a) => m && a.indexOf(m) === i);
+      const usable = chain.filter((m) => !isSpent(m));
+      const queue = usable.length ? usable : [chain[0]];
+
+      let lastErr;
+      for (let i = 0; i < queue.length; i++) {
+        const m = queue[i];
+        AI_STATUS.routed[capability] = `${AI_CONFIG.provider} · ${m}${search ? " + search" : ""}${i ? " (stepped down)" : ""}`;
+        try {
+          const out = await hostedProvider.chat({ system, user, search, json, model: m, signal: sig, meta });
+          if (i > 0) onNotice?.({ kind: "downgraded", from: queue[0], to: m });
+          return out;
+        } catch (e) {
+          if (e?.name === "AbortError" && !signal?.aborted) throw Object.assign(new Error("The AI service took too long."), { code: "timeout" });
+          if (e?.name === "AbortError") throw e;
+          lastErr = e;
+          AI_STATUS.lastError = friendlyError(e);
+          /* Only a spent daily allowance is worth retrying on another model.
+             A bad key or a blocked browser fails the same way every time. */
+          if (e?.code !== "daily-limit") throw e;
+          markSpent(m, e.resetHint);
+          onNotice?.({ kind: "spent", model: m });
+        }
       }
+      throw lastErr;
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener?.("abort", onAbort);
     }
   },
+
   describe(capability) {
     const e = MODEL_REGISTRY[capability];
     if (!e) return "—";
     if (e.provider !== "text") return e.label;
-    return AI_CONFIG.useLocal ? `Local · ${AI_CONFIG.localModel}` : `${activeProvider().label} · ${activeModel()}`;
+    if (AI_CONFIG.useLocal) return `Local · ${AI_CONFIG.localModel}`;
+    const { model, tier } = this.plan(capability, e.search);
+    return `${model}${tier !== "standard" ? ` · ${tier}` : ""}`;
   },
 };
 
@@ -525,10 +756,10 @@ export function repairJSON(t) {
   throw new Error("Response could not be parsed");
 }
 
-export async function askJSON({ capability = "reasoning", system, user, search, fallback, track, signal }) {
+export async function askJSON({ capability = "reasoning", system, user, search, fallback, track, signal, onNotice, meta }) {
   const inChars = (system || "").length + (user || "").length;
   try {
-    const text = await aiRouter.run({ capability, system, user, search, json: true, signal });
+    const text = await aiRouter.run({ capability, system, user, search, json: true, signal, onNotice, meta });
     track?.({ inChars, outChars: text.length, ok: true, searched: !!search });
     return extractJSON(text);
   } catch (err) {
@@ -544,9 +775,9 @@ export async function askJSON({ capability = "reasoning", system, user, search, 
   }
 }
 
-export async function askText({ capability = "reasoning", system, user, signal, track }) {
+export async function askText({ capability = "reasoning", system, user, signal, track, onNotice }) {
   const inChars = (system || "").length + (user || "").length;
-  const text = await aiRouter.run({ capability, system, user, json: false, signal });
+  const text = await aiRouter.run({ capability, system, user, json: false, signal, onNotice });
   track?.({ inChars, outChars: text.length, ok: true, searched: false });
   return text;
 }

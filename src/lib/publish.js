@@ -1,4 +1,5 @@
 import { relayAuthHeaders } from "./store.js";
+import { bridge, bridgeHealth, isBridgeConfigured, getLinkedInSettings } from "./linkedinAuth.js";
 
 
 /* ============================================================
@@ -164,7 +165,7 @@ export const makeLinkedInService = {
     return { ok: true, delivered: true, confirmed: true, status: res.status, transport: "text", raw: parsed ?? raw, ...readMakeReply(parsed), at: new Date().toISOString() };
   },
 
-  /* Relay first, browser second. One logical send: the fallback only runs
+/* Relay first, browser second. One logical send: the fallback only runs
      when the relay was never there to receive the post. */
   async publish(payload) {
     try {
@@ -223,3 +224,76 @@ export const makeLinkedInService = {
     return { ok: true, delivered: null, confirmed: false, status: 0, transport: "no-cors", published: false, urn: null, url: null, at: new Date().toISOString() };
   },
 };
+
+/* ---------- straight to LinkedIn (#6) ----------
+ With the bridge deployed (api/linkedin.js) and a signed-in Page, a text or
+ article post needs no Make scenario at all: the bridge holds the token and
+ posts through LinkedIn's own API, and LinkedIn confirms the post id in the
+ reply.
+
+ Media is deliberately not handled here. An image, video or document post
+ has to be registered and uploaded to LinkedIn before the post can reference
+ it, which is several round trips and exactly the part a Make scenario
+ already does well. Those keep going to Make. */
+export const DIRECT_POST_TYPES = ["text", "article"];
+
+export const directLinkedInService = {
+supports: (postType) => DIRECT_POST_TYPES.includes(postType),
+
+/* Can this post go direct right now? Requires a bridge, a token and a Page. */
+async available(payload) {
+  if (!directLinkedInService.supports(payload?.postType)) return false;
+  await bridgeHealth();
+  const li = getLinkedInSettings();
+  return !!(isBridgeConfigured(li) && li.connection?.accessToken && (payload?.companyUrn || li.connection?.selectedUrn));
+},
+
+async publish(payload) {
+  const li = getLinkedInSettings();
+  const author = payload.companyUrn || li.connection?.selectedUrn;
+  if (!author) throw Object.assign(new Error("No Company Page selected."), { kind: "unconfigured" });
+
+  mkLog("sending direct to LinkedIn", { postId: payload.postId, author, postType: payload.postType });
+  let r;
+  try {
+    r = await bridge("publish", {
+      access_token: li.connection.accessToken,
+      author,
+      text: payload.content,
+      link: payload.article?.url || undefined,
+      linkTitle: payload.article?.title || undefined,
+      linkDescription: payload.article?.description || undefined,
+    }, li, { timeoutMs: MAKE_CONFIG.timeoutMs });
+  } catch (e) {
+    /* An expired token is worth saying plainly — it is the one failure the
+       team can fix in ten seconds by signing in again. */
+    if (e?.status === 401) throw Object.assign(new Error("LinkedIn rejected the token. Reconnect under Settings → LinkedIn."), { kind: "li-auth", cause: e });
+    if (e?.status === 403) throw Object.assign(new Error("This LinkedIn account cannot post to that Page."), { kind: "li-permission", cause: e });
+    throw Object.assign(new Error(e?.message || "LinkedIn refused the post."), { kind: e?.kind || "li-error", cause: e });
+  }
+  mkLog("linkedin accepted", r);
+  return {
+    ok: true, delivered: true, confirmed: true, published: true, status: 200, transport: "linkedin",
+    urn: r.urn || null, url: r.url || null, message: null, raw: r, at: r.at || new Date().toISOString(),
+  };
+},
+};
+
+/* Which way this post will go, so the UI can say so before it goes. */
+export async function publishRoute(payload) {
+if (await directLinkedInService.available(payload)) return "linkedin";
+const h = await makeLinkedInService.health();
+if (h.relay) return "relay";
+return makeLinkedInService.configured() ? "make" : "none";
+}
+
+/* One entry point. Direct when it can be, Make otherwise — and a direct
+ failure never silently re-sends through Make, because the post may already
+ be live. */
+export async function publishPost(payload) {
+if (await directLinkedInService.available(payload)) {
+  return { ...(await directLinkedInService.publish(payload)), route: "linkedin" };
+}
+return { ...(await makeLinkedInService.publish(payload)), route: "make" };
+}
+

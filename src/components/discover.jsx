@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { host } from "../lib/util.js";
+import { LinkBadge } from "./linkbadge.jsx";
 
 export const GAP = { open: ["Not covered", "gap-open"], adjacent: ["Loosely covered", "gap-adj"], covered: ["Already covered", "gap-cov"] };
 
@@ -63,6 +64,7 @@ export function Discover({ opps, busy, rerun, start, profile, setProfile }) {
               <span className={"gap " + (GAP[o.gap]?.[1] || "gap-adj")}>{o.via === "hn" ? "Trending" : GAP[o.gap]?.[0] || "Unclear"}</span>
               <span className="eyebrow">{o.angle}</span>
               {o.date && <span className="eyebrow">{o.date}</span>}
+              <LinkBadge state={o.link} />
             </div>
             <div className="opp-h">{o.headline}</div>
             {o.summary && <div className="u-muted" style={{ fontSize: 14, marginTop: 6 }}>{o.summary}</div>}

@@ -121,6 +121,26 @@ available. Switch provider at the top of the tab; each provider keeps its own
 key and model, so switching back loses nothing. Thinking depth applies to
 Anthropic only.
 
+**Matching the model to the job.** One model for every task wastes the free
+allowance on throwaway prompts and under-serves the draft. On by default:
+
+| Job | Tier | Default on Groq |
+|---|---|---|
+| Drafting, evidence checks | Strong | `openai/gpt-oss-120b` |
+| Research, angles, health score | Standard | whatever **Model** is set to |
+| Image and video prompts | Fast | `llama-3.1-8b-instant` |
+
+Both ends are overridable in Settings → AI, and the whole thing switches off
+with one toggle if you would rather everything used the model you picked.
+
+**When the daily allowance runs out.** A long session can exhaust one model's
+free quota. Rather than dropping to sample data mid-post, Unison steps down a
+tier, carries on, and tells you once — output gets shorter and plainer, but the
+work continues. It remembers which model is spent for the rest of the day, so
+no later call wastes a round trip rediscovering it, and it reads the provider's
+own reset time instead of assuming a full 24 hours. Turn it off in Settings if
+you would rather be stopped than served by a lighter model.
+
 **Test connection** proves it works before you rely on it. If the free daily
 allowance is visible, it appears under the buttons — some providers do not
 expose those numbers to a browser, in which case nothing is shown rather than a
@@ -129,7 +149,20 @@ guess.
 ### 3. Publishing (Settings → LinkedIn)
 
 LinkedIn has no browser-callable posting API, so the post has to leave through
-something. Two routes, and they combine:
+something. Three routes, tried in this order:
+
+**Straight to LinkedIn (no Make needed).** Deploy `api/linkedin.js` and set
+`LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`. That function is the half a
+browser cannot do: it exchanges the OAuth code for a token, lists the Pages the
+account administers, and posts through LinkedIn's own API. Sign in under
+Settings → LinkedIn and text and article posts go direct, with LinkedIn's own
+post id in the reply. Nothing to configure in the app — it finds the endpoint
+itself.
+
+Image, video, document, poll and carousel posts still go through Make. Those
+need LinkedIn's upload handshake before the post can reference the asset, which
+is several round trips and exactly what a Make scenario already does well.
+Unison picks the route per post and the progress log names which one it used.
 
 **Make (recommended, works with no LinkedIn sign-in).** A Make.com scenario owns
 the LinkedIn connection. Unison POSTs the finished post to its webhook. Paste the
@@ -200,10 +233,12 @@ Nothing in the app claims more than it can prove. This table is the whole truth.
 | Holidays | Nager.Date, free and keyless | Country inferred from the chosen timezone |
 | Images | Real, downloadable PNG/SVG from brand templates; optionally AI photos via Pollinations | No commercial image model is wired in |
 | Video | A real, playable WebM encoded in the browser from the storyboard | Not the output of a video model, and the UI says so |
-| Publishing | Real when a Make webhook is set | With nothing connected it is a **dry run**, labelled everywhere |
+| Publishing | Real when a Make webhook is set, or straight to LinkedIn with `api/linkedin.js` deployed | With nothing connected it is a **dry run**, labelled everywhere |
+| Source links | Marked **Retrieved** when the model's own search returned that URL | Marked **Unconfirmed link** when the model wrote it but the search did not return it, and **Not a real link** for a placeholder domain. With no search record, nothing is claimed either way |
+| Shared work | Real when `api/workspace.js` is deployed with a store behind it | Otherwise everything is local to one browser and Settings says so |
 | Performance | The numbers you enter from LinkedIn analytics, explained by the model | Not pulled automatically — the Make route has no read-back |
 | Scheduling | A real date, time and timezone, sent to Make | **A browser cannot run while closed.** A due post is flagged on Home and in Content; you press Publish, or hand it to Make to publish at that time |
-| Team list | A local list for reference | Not a login. Roles are documentation, not enforcement |
+| Team list | A local list, shared when a workspace is deployed | Not a login. Roles are documentation, not enforcement |
 
 Sample rows that ship with the app are tagged `sample` and can be removed from
 Content. Clearing the saved session (Settings → Publishing) restores them.
@@ -227,12 +262,19 @@ Settings → Advanced.
 
 ## Optional serverless relays
 
-`api/ai.js` and `api/publish.js` are Vercel functions. They are **not required** —
-the app detects them and adapts. Deploy them if you want keys off the browser:
+`api/ai.js`, `api/publish.js`, `api/linkedin.js` and `api/workspace.js` are
+Vercel functions. None is **required** — the app detects each one and adapts.
+Deploy them to keep keys off the browser, post to LinkedIn without Make, and
+share a workspace across the team:
 
 | Variable | Used by | Purpose |
 |---|---|---|
 | `GROQ_API_KEY` | `api/ai.js` | Holds the free AI key server-side (default provider) |
+| `LINKEDIN_CLIENT_ID` | `api/linkedin.js` | The app's public id; the browser pre-fills it |
+| `LINKEDIN_CLIENT_SECRET` | `api/linkedin.js` | Never reaches the browser |
+| `UPSTASH_REDIS_REST_URL` | `api/workspace.js` | Shared workspace store (free tier, no SDK) |
+| `UPSTASH_REDIS_REST_TOKEN` | `api/workspace.js` | Its token |
+| `UNISON_WORKSPACE_KEY` | `api/workspace.js` | Optional; the key the document is stored under |
 | `ANTHROPIC_API_KEY` | `api/ai.js` | Optional; only if the team also uses Anthropic |
 | `MAKE_LINKEDIN_WEBHOOK_URL` | `api/publish.js` | Holds the webhook server-side |
 | `UNISON_RELAY_TOKEN` | both | Optional shared secret; set the same value in the browser under `localStorage["unison:relay-token"]` |
@@ -317,6 +359,32 @@ Then walk this by hand with nothing configured:
 
 Then configure a free Groq key and a Make webhook and repeat the last three steps of
 the journey with a real post.
+
+---
+
+## Sharing work across the team
+
+By default Unison is one browser: posts, calendar, approvals, the team list and
+the audit trail live in `localStorage` and nobody else can see them. **Export
+JSON** under Settings → Advanced is the way to hand work over.
+
+Deploy `api/workspace.js` with an [Upstash Redis](https://upstash.com) free
+database behind it and those become one shared document instead. Everyone reads
+it on load and writes back a few seconds after a change.
+
+- **Shared:** published and scheduled posts, calendar, team list, audit trail,
+  company profile, brand voice.
+- **Not shared, deliberately:** API keys and the LinkedIn token (per-person by
+  design), the draft someone is mid-sentence in (two people would fight over
+  it), and uploaded media (far too large for one document).
+- **Two people saving at once:** the second save is refused rather than allowed
+  to overwrite. Unison merges — posts and audit lines are unioned so nobody
+  loses an afternoon — and saves again, telling you whose changes it merged.
+- **Set `UNISON_RELAY_TOKEN`.** Without it, anyone who knows the URL can read
+  and write the workspace.
+
+Settings → Advanced always states which of the two you are in. It never
+pretends to have shared something it did not.
 
 ---
 

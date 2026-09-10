@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
 import { STORE_KEY, persistentStore, sanitizeSession } from "./lib/store.js";
 import { P, S } from "./lib/pointer.js";
-import { friendlyError, askJSON, JSON_RULE, fb, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
+import { friendlyError, askJSON, JSON_RULE, fb, corroborateSources, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
 import { EMPTY_CONNECTION, withDerived, linkedinService, readCallbackParams } from "./lib/linkedin.js";
-import { MAKE_CONFIG, makeLinkedInService } from "./lib/publish.js";
+import { MAKE_CONFIG, makeLinkedInService, publishPost, publishRoute } from "./lib/publish.js";
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
 import { SEED_POSTS, NAV, DEFAULT_VOICE, SEED_TEAM, DEFAULT_PROFILE } from "./lib/seed.js";
 import { now } from "./lib/util.js";
@@ -18,6 +18,7 @@ import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js"
 import { downloadBlob } from "./lib/brand.js";
 import { todayISO, isDue } from "./lib/dates.js";
 import { loadPublishSettings, savePublishSettings } from "./lib/publish.js";
+import { workspaceHealth, pull as pullShared, push as pushShared, mergeShared, syncSummary, SYNC, resetWorkspaceProbe } from "./lib/sync.js";
 import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources, fetchImageAsDataUrl } from "./lib/freeApis.js";
 import {
   loadLinkedInSettings, saveLinkedInSettings, getLinkedInSettings, isLinkedInConfigured, isBridgeConfigured, toAppConnection,
@@ -248,6 +249,15 @@ export default function UnisonContentOS() {
   const saveTimer = useRef(null);
   const storageWarnedRef = useRef(false);
   const [storageIssue, setStorageIssue] = useState(null);   // null | "partial" | "failed"
+
+  /* ---------- optional shared workspace ----------
+     When api/workspace.js is deployed, the parts of a session that belong to
+     the team are one document everyone reads and writes. When it is not,
+     every call below reports "off" and nothing changes. */
+  const [sync, setSync] = useState({ status: "unknown", summary: "" });
+  const syncTimer = useRef(null);
+  const pushedRef = useRef("");
+  const refreshSync = useCallback(() => setSync({ status: SYNC.status, summary: syncSummary(), version: SYNC.version, updatedBy: SYNC.updatedBy, updatedAt: SYNC.updatedAt }), []);
   useEffect(() => { setBrandText({ name: profile.company, site: profile.website }); }, [profile.company, profile.website]);
   useEffect(() => {
     if (!restored) return;
@@ -279,6 +289,75 @@ export default function UnisonContentOS() {
   }, [restored, theme, idea, stage, steps, research, angles, angle, draft, verification, quality,
       media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany, posts, team, notes, audit, usage, opps, searchOn, bg3d, extras, assets,
       tone, pov, length, publishState, publishVia, attempts, publishError, publishLimits, publishKind, publishUnverified, setupHidden]);
+
+  /* Adopt whatever the team already has, once, on the way in. Merged rather
+     than replaced: a post this browser made offline is not thrown away
+     because the shared copy predates it. */
+  useEffect(() => {
+    if (!restored) return;
+    let cancelled = false;
+    (async () => {
+      if (!(await workspaceHealth())) { if (!cancelled) refreshSync(); return; }
+      const theirs = await pullShared();
+      if (cancelled) return;
+      if (theirs) {
+        const merged = mergeShared({ posts, schedule, team, audit, profile, voice, makeCompany }, theirs);
+        if ((merged.posts || []).length !== posts.length) setPosts(merged.posts);
+        if ((merged.team || []).length !== team.length) setTeam(merged.team);
+        if ((merged.audit || []).length !== audit.length) setAudit(merged.audit);
+        if (theirs.schedule && !schedule.date) setSchedule(theirs.schedule);
+        if (theirs.makeCompany?.urn && !makeCompany.urn) setMakeCompany(theirs.makeCompany);
+        /* Someone else's company profile should not overwrite a name this
+           person just typed, so only fill what is empty. */
+        if (theirs.profile && !profile.company) setProfile((cur) => ({ ...theirs.profile, ...cur }));
+        pushedRef.current = JSON.stringify({ posts: merged.posts, team: merged.team });
+      }
+      refreshSync();
+      notify(SYNC.status === "ready" ? "Shared workspace connected." : "Working locally — no shared workspace.", { tone: SYNC.status === "ready" ? "ok" : undefined, ms: 4000 });
+    })();
+    return () => { cancelled = true; };
+    // Runs once when the local session is ready; later changes go through the push below.
+  }, [restored]);
+
+  /* Send the team's half up when it changes. Debounced hard: this is a
+     network write, not a keystroke log. */
+  useEffect(() => {
+    if (!restored || SYNC.status === "off" || SYNC.status === "unknown") return;
+    const shared = { posts, schedule, team, audit, profile, voice, makeCompany };
+    const fingerprint = JSON.stringify({ posts, team, schedule });
+    if (fingerprint === pushedRef.current) return;
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      const who = profile.userName || profile.userEmail || null;
+      let r = await pushShared(shared, who);
+      if (r.reason === "conflict") {
+        /* Someone saved first. Merge their version under ours and try once
+           more — never twice, or two browsers can ping-pong forever. */
+        const merged = mergeShared(shared, r.theirs || {});
+        setPosts(merged.posts); setTeam(merged.team); setAudit(merged.audit);
+        r = await pushShared(merged, who);
+        if (r.ok) notify(`Merged with ${r.by || "a teammate"}'s changes.`, { tone: "warn", ms: 6000 });
+      }
+      if (r.ok) pushedRef.current = fingerprint;
+      else if (r.reason === "error") notify("Couldn't reach the shared workspace — your work is still saved in this browser.", { tone: "warn", ms: 6000 });
+      refreshSync();
+    }, 2500);
+    return () => clearTimeout(syncTimer.current);
+  }, [restored, posts, team, schedule, audit, profile, voice, makeCompany]);
+
+  /* Settings offers this so nobody has to reload to see a teammate's post. */
+  const syncNow = useCallback(async () => {
+    resetWorkspaceProbe();
+    if (!(await workspaceHealth({ force: true }))) { refreshSync(); notify("No shared workspace is deployed.", { tone: "warn" }); return; }
+    const theirs = await pullShared();
+    if (theirs) {
+      const merged = mergeShared({ posts, schedule, team, audit, profile, voice, makeCompany }, theirs);
+      setPosts(merged.posts); setTeam(merged.team); setAudit(merged.audit);
+      pushedRef.current = "";
+      notify("Workspace refreshed from your team.", { tone: "ok" });
+    } else notify(SYNC.lastError ? `Shared workspace error: ${SYNC.lastError}` : "Nothing shared yet.", { tone: SYNC.lastError ? "bad" : undefined });
+    refreshSync();
+  }, [posts, schedule, team, audit, profile, voice, makeCompany, refreshSync]);
 
   /* ---------- drafts ----------
      Anything in progress is a draft until it is scheduled or published. The
@@ -448,6 +527,17 @@ export default function UnisonContentOS() {
     setToasts((t) => [...t.slice(-4), { id, text, ...opts }]);
   };
 
+  /* Told once. Six engines hitting the same daily wall is one piece of news,
+     not six toasts. */
+  const noticedRef = useRef(new Set());
+  const onNotice = useCallback((n) => {
+    const key = n.kind + (n.model || n.to || "");
+    if (noticedRef.current.has(key)) return;
+    noticedRef.current.add(key);
+    if (n.kind === "downgraded") notify(`Daily limit reached on ${n.from} — continuing on ${n.to}. Output may be shorter or plainer until it resets.`, { tone: "warn", ms: 9000 });
+    if (n.kind === "spent") logAudit(`Daily allowance spent on ${n.model}`);
+  }, []);
+
   const track = (name) => ({ inChars, outChars, ok, searched }) =>
     setUsage((u) => {
       const inTok = Math.round(inChars / 4), outTok = Math.round(outChars / 4);
@@ -513,14 +603,16 @@ Score 0-100 for how worth posting each is this week. gap = "open" if the Page ha
 
     try {
       // pass 1 — live search
+      const oppMeta = {};
       let r = searchOn && hosted ? await askJSON({
+        meta: oppMeta,
         system: `You are the content opportunity engine. ${JSON_RULE}`,
         user: `Find 4 real stories this company could post about this week. Search the web and return each real URL.
 ${brief}
 ${shape}
 Be terse. The whole reply must fit in 400 words.`,
         search: true,
-        fallback: () => null, track: track("Discovery"), signal,
+        fallback: () => null, onNotice, track: track("Discovery"), signal,
       }) : null;
       if (id !== oppRunRef.current) return;
 
@@ -532,7 +624,7 @@ Be terse. The whole reply must fit in 400 words.`,
 ${brief}
 ${shape}
 Be terse.`,
-          fallback: () => fb.opportunities(), track: track("Discovery"), signal,
+          fallback: () => fb.opportunities(), onNotice, track: track("Discovery"), signal,
         });
         if (id !== oppRunRef.current) return;
         if (!r.degraded) r.degraded = searchOn ? "no-search" : "off";
@@ -540,9 +632,11 @@ Be terse.`,
 
       const hn = await hnPromise;
       if (id !== oppRunRef.current) return;
-      const aiItems = r.degraded === "sample" ? [] : (r.items || []);
+      /* Same rule as research: a story link the model wrote is not evidence
+         it exists. Hacker News rows come from a real feed, so they are. */
+      const aiItems = corroborateSources(r.degraded === "sample" ? [] : (r.items || []), oppMeta.searchedUrls);
       const seen = new Set(aiItems.map((x) => x.url).filter(Boolean));
-      const trending = hnToOpportunities(hn).filter((x) => !seen.has(x.url));
+      const trending = hnToOpportunities(hn).map((x) => ({ ...x, link: "retrieved" })).filter((x) => !seen.has(x.url));
       const merged = { ...r, items: [...aiItems, ...trending], trending: trending.length, degraded: aiItems.length ? (r.degraded === "sample" ? undefined : r.degraded) : trending.length ? "hn-only" : r.degraded };
       setOpps(merged);
       logAudit(`Opportunity scan returned ${aiItems.length} stories${trending.length ? ` + ${trending.length} trending from Hacker News` : ""}`);
@@ -588,15 +682,17 @@ Be terse.`,
 Tier 1 = official/primary, 2 = major publication, 3 = industry press, 4 = blogs/social (discovery only).`;
 
       let r = cached;
+      const meta = {};
       if (!r && searchOn && hosted) {
         r = await askJSON({
+          meta,
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
           user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}".
 Search the web and return the real URL of every source. Prefer sources from the last 90 days.
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 400 words.`,
           search: true,
-          fallback: () => null, track: track("Discovery"), signal,
+          fallback: () => null, onNotice, track: track("Discovery"), signal,
         });
         if (id !== runRef.current) return;
       }
@@ -606,12 +702,15 @@ Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 4
           user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}", from what you already know. Leave url empty.
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse.`,
-          fallback: () => fb.research(topic), track: track("Discovery"), signal,
+          fallback: () => fb.research(topic), onNotice, track: track("Discovery"), signal,
         });
         if (id !== runRef.current) return;
         if (!r.degraded) r.degraded = searchOn ? "no-search" : "off";
       }
       r = normalizeResearch(r);
+      /* A link the model wrote down is not the same as a link it retrieved.
+         Mark each one before anyone treats a T1 row as evidence. */
+      r = { ...r, sources: corroborateSources(r.sources, meta.searchedUrls) };
       if (!cached && !r.degraded) cacheRef.current[key] = r;
       /* Background reading from Wikipedia — clearly labelled, never evidence for a claim. */
       const wiki = await wikiPromise;
@@ -629,7 +728,7 @@ Give 3 sources, 2 claims, 3 insights. Be terse.`,
 Insights: ${JSON.stringify((r.insights || []).slice(0, 3))}
 Produce 4 distinct LinkedIn content angles and recommend exactly one.
 {"angles":[{"type":"Contrarian|Educational|Industry insight|Data-driven","headline":"under 14 words","rationale":"one line","recommended":false}],"reason":"why the recommended angle, 1-2 sentences"}`,
-        fallback: () => fb.angles(topic), track: track("Intelligence"), signal,
+        fallback: () => fb.angles(topic), onNotice, track: track("Intelligence"), signal,
       });
       if (id !== runRef.current) return;
       setAngles(normalizeAngles(a, topic)); setStep("angles", "done"); setStage("RESEARCH_COMPLETE");
@@ -667,7 +766,7 @@ ${feedback ? `Reviewer feedback to fix: ${feedback}` : ""}
 No corporate clichés, no motivational filler, no headings.
 Claims must be quoted verbatim from the post text so they can be highlighted.
 {"hook":"one line","body":"2-4 short paragraphs separated by \\n\\n","cta":"one line","hashtags":["#Tag"],"claims":[{"text":"sentence copied exactly from the post","sourceIndex":0}]}`,
-        fallback: () => fb.draft(idea), track: track("Brand writer"), signal,
+        fallback: () => fb.draft(idea), onNotice, track: track("Brand writer"), signal,
       });
       if (id !== runRef.current) return;
 
@@ -684,7 +783,7 @@ Claims must be quoted verbatim from the post text so they can be highlighted.
         user: `Suggest a format for this post. Answer with one id from: text, image, video, document, multi, poll, article, carousel.
 Post: ${d.hook} ${d.body}
 {"format":"","reason":"one sentence","concept":"one sentence describing the visual"}`,
-        fallback: fb.media, track: track("Media"), signal,
+        fallback: fb.media, onNotice, track: track("Media"), signal,
       }));
 
       const [ver, q, m] = await Promise.all(jobs);
@@ -712,7 +811,7 @@ Sources: ${JSON.stringify((research?.sources || []).filter((x) => !x.background)
 Research claims (with the source index they came from): ${JSON.stringify((research?.claims || []).slice(0, 8))}
 green = clearly supported by a listed source, yellow = plausible but not directly supported (needs human review), red = unsupported or contradicted. Placeholder sources with no URL support nothing.
 {"claims":[{"claim":"","status":"green","source":"publisher name","url":"source url or empty","confidence":"High|Medium|Low","note":"one line"}],"unresolved":["one line"]}`,
-        fallback: fb.verify, track: track("Trust"), signal,
+        fallback: fb.verify, onNotice, track: track("Trust"), signal,
       }),
       askJSON({
         system: `You are the content quality engine. ${JSON_RULE}`,
@@ -725,7 +824,7 @@ Previously published titles: ${JSON.stringify(posts.map((p) => p.title))}
 "slop":["specific phrase to fix"],"duplicate":{"similar":false,"days":0,"title":""},
 "detail":{"hook":0,"readability":0,"brand":0,"originality":0,"evidence":0}}
 Scores 0-100. "Evidence verified" passes only if every factual statement is one of the listed claims. "No duplicate content" compares against the previously published titles. Only list slop phrases that are really present.`,
-        fallback: fb.quality, track: track("Trust"), signal,
+        fallback: fb.quality, onNotice, track: track("Trust"), signal,
       }),
     ];
   }
@@ -761,7 +860,7 @@ At most one of image, multi, video, document. Prefer nothing extra over a weak f
 Rules of thumb: a debatable question or a choice → poll; a number or a single claim → image; a step-by-step or a list → document or carousel; a deep explanation → article; a demo or a story → video.
 {"formats":["poll"],"why":"one short sentence"}`,
       fallback: () => ({ formats: [], why: "A written post is the safest default." }),
-      track: track("Intelligence"),
+      onNotice, track: track("Intelligence"),
     });
     const picked = normalizeFormats((r.formats || (r.format ? [r.format] : [])).filter((f) => FORMAT_BY_ID[f]));
     setRecFormat(picked);
@@ -776,7 +875,7 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
      never touches slides 1, 2 or 4. */
 
   const engineRef = useRef(null);
-  if (!engineRef.current) engineRef.current = createMediaEngine({ track: track("Media"), log: logAudit });
+  if (!engineRef.current) engineRef.current = createMediaEngine({ onNotice, track: track("Media"), log: logAudit });
   const engine = engineRef.current;
 
   const ctxOf = () => ({ hook: draft?.hook || idea, body: draft?.body || "" });
@@ -900,7 +999,7 @@ ${draft ? `${draft.hook}\n${draft.body}\n${draft.cta}` : "(not written yet)"}
 The question must be under 140 characters and read naturally. Give 3 or 4 options, each 30 characters or fewer. No "Other" and no "All of the above".
 {"question":"","options":["",""]}`,
       fallback: () => ({ question: "What actually slows your content down?", options: ["Finding a topic", "Getting approval", "Checking the facts", "Finding the time"] }),
-      track: track("Writing"),
+      onNotice, track: track("Writing"),
     });
     const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map((o) => String(o).slice(0, 30)).filter(Boolean);
     if (!live()) return;
@@ -928,7 +1027,7 @@ Four sections, each body 50-70 words. No headings inside the body text.
         sections: [{ heading: "The problem", body: "" }, { heading: "What changed", body: "" }, { heading: "How to think about it", body: "" }, { heading: "What to do", body: "" }],
         conclusion: "", cta: "",
       }),
-      track: track("Writing"),
+      onNotice, track: track("Writing"),
     });
     const sections = (Array.isArray(r.sections) ? r.sections : []).filter((x) => x && x.heading);
     if (!live()) return;
@@ -1014,7 +1113,7 @@ ${clipped}
 {"summary":"under 25 words","facts":["under 18 words"],"stats":["figure with context, under 14 words"],"insights":["under 18 words"],"claims":["a claim the document supports, under 18 words"]}
 Give up to 4 of each. Only include what the document actually says.`,
       fallback: undefined,
-      track: track("Document"),
+      onNotice, track: track("Document"),
     });
     const doc = { name: file.name, size: file.size, chars: text.length, ...r, at: now() };
     if (!live()) return;
@@ -1309,27 +1408,31 @@ Give up to 4 of each. Only include what the document actually says.`,
       setPublishLimits(limits);
       lastPayloadRef.current = payload;
       setPublishState("SENDING");
-      step(scheduled ? "Handing to Make with the schedule" : "Sending to Make", "ok");
+      /* Decided before the send so the progress copy names the path the post
+         actually takes, rather than naming Make for one that never sees it. */
+      const route = await publishRoute(payload);
+      step(route === "linkedin" ? "Posting to LinkedIn" : scheduled ? "Handing to Make with the schedule" : "Sending to Make", "ok");
       /* Snapshot the record before the round trip: if the user opens another
          draft meanwhile, the result is still filed against the right post. */
-      const baseRecord = postRecord({ id: postId, viaMake: true, postType, mediaSent: payload.media.length, limits, scheduledHandoff: scheduled });
-      const r = await makeLinkedInService.publish(payload);
+      const baseRecord = postRecord({ id: postId, viaMake: route !== "linkedin", postType, mediaSent: payload.media.length, limits, scheduledHandoff: scheduled });
+      const r = await publishPost(payload);
+      const viaLinkedIn = r.route === "linkedin";
       setSentKeys((k) => (k.includes(postId) ? k : [...k, postId]));
       if (!live()) {
         setPosts((p) => [{ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         return;
       }
-      step(r.duplicate ? "Already delivered — not sent again" : r.unverified ? "Sent — Make's reply couldn't be read from this browser" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service", "ok");
+      step(viaLinkedIn ? "LinkedIn accepted the post" : r.duplicate ? "Already delivered — not sent again" : r.unverified ? "Sent — Make's reply couldn't be read from this browser" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service", "ok");
       if (r.unverified) setPublishUnverified(true);
       const sentRecord = postRecord({
-        id: postId, state: "SENT", date: scheduled ? schedule.date : todayISO(), viaMake: true, scheduledHandoff: scheduled,
+        id: postId, state: "SENT", date: scheduled ? schedule.date : todayISO(), viaMake: !viaLinkedIn, scheduledHandoff: scheduled,
         postType, mediaSent: payload.media.length, limits, sentAt: r.at, reference: r.urn || null, url: r.url || null, unverified: !!r.unverified,
       });
       if (r.published) {
         step("Publishing through LinkedIn", "ok"); step("Published", "ok");
         setPublishState("PUBLISHED"); setStage("PUBLISHED");
         setPosts((p) => [{ ...sentRecord, state: "PUBLISHED", publishedAt: r.at }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
-        logAudit(`Published to LinkedIn via Make${r.urn ? ` — ${r.urn}` : ""}`);
+        logAudit(`Published to LinkedIn${viaLinkedIn ? " directly" : " via Make"}${r.urn ? ` — ${r.urn}` : ""}`);
         notify("Published to LinkedIn.");
       } else {
         step(scheduled ? `Make will publish on ${schedule.date} at ${schedule.time}` : "Publishing through LinkedIn", "pending");
@@ -1477,7 +1580,7 @@ Give up to 4 of each. Only include what the document actually says.`,
 Metrics: ${JSON.stringify(post.metrics)}
 ${others.length ? `Page average across ${others.length} other posts: impressions ${avg("impressions")}, reactions ${avg("reactions")}, comments ${avg("comments")}.` : "No other posts have numbers yet, so compare against typical B2B Company Page benchmarks and say so."}
 {"headline":"one sentence with the comparison","why":["likely reason","likely reason","likely reason"],"next":"one recommendation"}`,
-      fallback: fb.performance, track: track("Learning"),
+      fallback: fb.performance, onNotice, track: track("Learning"),
     });
     const analytics = { ...a, metrics: post.metrics, at: new Date().toISOString() };
     setPosts((p) => p.map((x) => (x.id === post.id ? { ...x, analytics } : x)));
@@ -1624,7 +1727,8 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
       {modal === "settings" && (
         <Modal wide onClose={() => { setModal(null); setSettingsTab("workspace"); }} title="Settings">
           <Settings {...{ usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, setModal, searchOn, setSearchOn, failMode, setFailMode, makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify, profile, setProfile, wipe, bg3d, setBg3d, initialTab: settingsTab,
-            aiSettings, updateAI, aiInfo, refreshAI, liSettings, updateLinkedIn, pubSettings, updatePublish, extras, setExtras, exportSession, importSession, storageIssue, posts }} />
+            aiSettings, updateAI, aiInfo, refreshAI, liSettings, updateLinkedIn, pubSettings, updatePublish, extras, setExtras, exportSession, importSession, storageIssue, posts,
+            sync, syncNow }} />
         </Modal>
       )}
       {modal === "voice" && (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, PROVIDERS, MODELS, modelsFor, rateFor, aiRouter, hostedProvider, activeProvider, friendlyError } from "../lib/ai.js";
+import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, PROVIDERS, MODELS, modelsFor, rateFor, aiRouter, hostedProvider, activeProvider, friendlyError, blockedRemedy, modelForTier, TIER_DEFAULTS } from "../lib/ai.js";
 import { PUBLISH_RELAY_PATH, MAKE_CONFIG } from "../lib/publish.js";
 import { imageProvider, videoProvider } from "../lib/media.js";
 import { TIMEZONES, localTimezone } from "../lib/dates.js";
@@ -42,6 +42,7 @@ export function Settings(props) {
     aiSettings, updateAI, aiInfo, refreshAI,
     liSettings, updateLinkedIn, pubSettings, updatePublish,
     extras = DEFAULT_EXTRAS, setExtras, exportSession, importSession, storageIssue, posts = [],
+    sync, syncNow,
   } = props;
   const [tab, setTab] = useState(TAB_ALIAS[initialTab] || initialTab || "workspace");
   const [invite, setInvite] = useState({ email: "", role: "Creator" });
@@ -200,7 +201,7 @@ export function Settings(props) {
 
             <div className="grid2">
               <Field label="Model" hint={modelErr || modelOptions.find((m) => m.id === model)?.note}>
-                <select className="ta" value={model} onChange={(e) => updateAI({ models: { [provider]: e.target.value } })}>
+                <select className="ta" aria-label="Model" value={model} onChange={(e) => updateAI({ models: { [provider]: e.target.value } })}>
                   {modelOptions.map((m) => (
                     <option key={m.id} value={m.id}>{m.label}{m.rates[0] ? ` · $${m.rates[0]} / $${m.rates[1]} per M tokens` : " · free"}</option>
                   ))}
@@ -208,7 +209,7 @@ export function Settings(props) {
               </Field>
               {meta.free ? (
                 <Field label="Search model" hint="Used only when Web search is on. Runs its own web lookups.">
-                  <select className="ta" value={aiSettings?.searchModel || AI_CONFIG.searchModel} onChange={(e) => updateAI({ searchModel: e.target.value })}>
+                  <select className="ta" aria-label="Search model" value={aiSettings?.searchModel || AI_CONFIG.searchModel} onChange={(e) => updateAI({ searchModel: e.target.value })}>
                     {(searchModels.length ? searchModels : [{ id: "groq/compound", label: "Compound (web search)" }, { id: "groq/compound-mini", label: "Compound mini (web search)" }]).map((m) => (
                       <option key={m.id} value={m.id}>{m.label}</option>
                     ))}
@@ -216,7 +217,7 @@ export function Settings(props) {
                 </Field>
               ) : (
                 <Field label="Thinking depth" hint="Low is fastest. Medium is right for drafting. High for the final rewrite.">
-                  <select className="ta" value={aiSettings?.effort || "medium"} onChange={(e) => updateAI({ effort: e.target.value })}>
+                  <select className="ta" aria-label="Thinking depth" value={aiSettings?.effort || "medium"} onChange={(e) => updateAI({ effort: e.target.value })}>
                     <option value="low">Low — fastest</option><option value="medium">Medium — balanced</option><option value="high">High — most careful</option>
                   </select>
                 </Field>
@@ -236,6 +237,39 @@ export function Settings(props) {
                 {quota.requests.reset ? ` · resets in ${quota.requests.reset}` : ""}
               </div>
             )}
+
+            {aiInfo?.blocked && (
+              <div className="badge warn" style={{ marginTop: 12, display: "block", lineHeight: 1.6 }}>
+                <b>This browser could not reach {blockedRemedy().provider}.</b> The key was never sent, so there is nothing
+                wrong with it. In order of what usually works:
+                <ol style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+                  {blockedRemedy().steps.map((t, i) => <li key={i} style={{ marginBottom: 4 }}>{t}</li>)}
+                </ol>
+              </div>
+            )}
+          </div>
+
+          <div className="conn">
+            <Row title="Match the model to the job"
+                 sub="Drafting and evidence checks get the strongest free model; image and video prompts get the fastest. Off, everything uses the model above.">
+              <Toggle on={aiSettings?.useTiers !== false} set={(v) => updateAI({ useTiers: v })} label="Match the model to the job" />
+            </Row>
+            {aiSettings?.useTiers !== false && (
+              <div className="grid2" style={{ marginTop: 8 }}>
+                {[["strong", "Strong — drafting, evidence"], ["fast", "Fast — prompts, short rewrites"]].map(([tier, label]) => (
+                  <Field key={tier} label={label} hint={`Now: ${modelForTier(tier, provider)}`}>
+                    <select className="ta" aria-label={label} value={aiSettings?.tiers?.[provider]?.[tier] || ""} onChange={(e) => updateAI({ tiers: { [provider]: { [tier]: e.target.value } } })}>
+                      <option value="">Default — {TIER_DEFAULTS[provider]?.[tier] || model}</option>
+                      {modelOptions.filter((m) => !/compound/.test(m.id)).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                    </select>
+                  </Field>
+                ))}
+              </div>
+            )}
+            <Row title="Keep going when the daily limit runs out"
+                 sub="On a free tier a long session can exhaust one model. Rather than dropping to sample data mid-post, step down to a lighter model and say so once.">
+              <Toggle on={aiSettings?.autoDowngrade !== false} set={(v) => updateAI({ autoDowngrade: v })} label="Step down instead of stopping" />
+            </Row>
           </div>
 
           <div className="conn">
@@ -368,19 +402,6 @@ export function Settings(props) {
             <Toggle on={failMode} set={setFailMode} label="Simulate failure" />
           </Row>
 
-          <div className="eyebrow" style={{ margin: "22px 0 8px" }}>Data on this device</div>
-          <Row title="Saved session" sub={`${(savedBytes / 1024).toFixed(0)} KB used · ${posts.length} posts${storageIssue === "failed" ? " · saving is FAILING — storage full" : storageIssue === "partial" ? " · media on older posts was dropped to fit" : ""}`}>
-            <div className="row">
-              <button className="btn sm" onClick={exportSession}>Export JSON</button>
-              <label className="btn sm" style={{ cursor: "pointer" }}>Import<input ref={importRef} type="file" accept="application/json,.json" style={{ display: "none" }} /></label>
-            </div>
-          </Row>
-          <Row title="Notifications" sub={`${notes.length} in the drawer.`}><button className="btn sm" onClick={() => setNotes([])}>Clear</button></Row>
-          <Row title="Clear saved data" sub="Removes posts, drafts, settings and the team list from this browser. The AI key and LinkedIn sign-in are kept.">
-            {confirmWipe
-              ? <div className="row"><button className="btn bad sm" onClick={() => { setConfirmWipe(false); wipe(); }}>Yes, clear everything</button><button className="btn sm" onClick={() => setConfirmWipe(false)}>Keep</button></div>
-              : <button className="btn sm" onClick={() => setConfirmWipe(true)}>Clear…</button>}
-          </Row>
         </>
       )}
 
@@ -402,6 +423,33 @@ export function Settings(props) {
       {/* ================= ADVANCED ================= */}
       {tab === "dev" && (
         <>
+          <div className="eyebrow" style={{ margin: "22px 0 8px" }}>Where your work lives</div>
+          <Row title="Shared team workspace" sub={sync?.summary || "Checking…"}>
+            <div className="row">
+              <span className={"dot " + (sync?.status === "ready" ? "g" : sync?.status === "error" || sync?.status === "conflict" ? "r" : "y")} style={{ flex: "none" }} />
+              <button className="btn sm" onClick={() => syncNow?.()}>Sync now</button>
+            </div>
+          </Row>
+          {sync?.status !== "ready" && (
+            <div className="u-muted" style={{ fontSize: 12.5, margin: "-4px 0 14px", lineHeight: 1.6 }}>
+              Posts, calendar, team and the audit trail are held in this browser only, so a teammate cannot see them.
+              To share them, deploy <code className="mono">api/workspace.js</code> with a store behind it — the README has the two
+              environment variables. Until then, <b>Export JSON</b> below is the way to hand work over.
+            </div>
+          )}
+          <Row title="Saved session" sub={`${(savedBytes / 1024).toFixed(0)} KB used · ${posts.length} posts${storageIssue === "failed" ? " · saving is FAILING — storage full" : storageIssue === "partial" ? " · media on older posts was dropped to fit" : ""}`}>
+            <div className="row">
+              <button className="btn sm" onClick={exportSession}>Export JSON</button>
+              <label className="btn sm" style={{ cursor: "pointer" }}>Import<input ref={importRef} type="file" accept="application/json,.json" style={{ display: "none" }} /></label>
+            </div>
+          </Row>
+          <Row title="Notifications" sub={`${notes.length} in the drawer.`}><button className="btn sm" onClick={() => setNotes([])}>Clear</button></Row>
+          <Row title="Clear saved data" sub="Removes posts, drafts, settings and the team list from this browser. The AI key and LinkedIn sign-in are kept.">
+            {confirmWipe
+              ? <div className="row"><button className="btn bad sm" onClick={() => { setConfirmWipe(false); wipe(); }}>Yes, clear everything</button><button className="btn sm" onClick={() => setConfirmWipe(false)}>Keep</button></div>
+              : <button className="btn sm" onClick={() => setConfirmWipe(true)}>Clear…</button>}
+          </Row>
+
           <div className="eyebrow" style={{ marginBottom: 8 }}>Free public APIs</div>
           <div className="u-muted" style={{ fontSize: 13, marginBottom: 8 }}>Keyless services that add real data around the AI. Each one is optional and fails quietly if it can't be reached.</div>
           <div className="conn">

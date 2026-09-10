@@ -292,6 +292,14 @@ select.ta{cursor:pointer;} select.ta option{background:var(--bg); color:var(--in
 .seg.on{color:var(--ink); border-color:var(--accent); background:rgba(124,140,255,.12);}
 .seg .u-muted{font-weight:500;}
 
+/* Link trust — how a source URL was obtained. Small enough to sit inline in a
+   source row, loud enough that nobody cites an unconfirmed link by accident. */
+.lk{display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    padding:1px 6px; border-radius:999px; border:1px solid transparent; white-space:nowrap; vertical-align:1px;}
+.lk-ok{background:rgba(79,214,156,.14); border-color:rgba(79,214,156,.34); color:var(--ok, #4FD69C);}
+.lk-warn{background:rgba(255,183,77,.14); border-color:rgba(255,183,77,.36); color:#FFB74D;}
+.lk-bad{background:rgba(255,122,102,.14); border-color:rgba(255,122,102,.36); color:#FF7A66;}
+
 .diff{font-size:14.5px; line-height:1.7; white-space:pre-wrap; border:1px solid var(--line); border-radius:14px; padding:18px; background:var(--panel);}
 .diff .same{opacity:.55;}
 .diff .add{background:rgba(79,214,156,.2); border-radius:3px;}

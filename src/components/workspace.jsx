@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from "react";
+import { LinkBadge } from "./linkbadge.jsx";
 import { FORMAT_BY_ID } from "../lib/formats.js";
 import { REJECT_REASONS } from "../lib/seed.js";
 import { pad, tierLabel, host, LI_LIMIT, LI_FOLD } from "../lib/util.js";
@@ -287,7 +288,7 @@ export function Workspace(p) {
                     <span className={"tier t" + (s.tier || 4)}>{s.background ? "Background" : `T${s.tier} · ${tierLabel(s.tier)}`}</span>
                     <div style={{ minWidth: 0 }}>
                       {s.url ? <a className="srclink" href={s.url} target="_blank" rel="noreferrer">{s.title} <span className="ext">↗</span></a> : <div style={{ fontWeight: 600 }}>{s.title}</div>}
-                      <div className="u-muted" style={{ fontSize: 13 }}>{s.publisher} · {s.date}{s.uploaded ? " · your upload" : s.url ? ` · ${host(s.url)}` : " · no link available"}</div>
+                      <div className="u-muted" style={{ fontSize: 13 }}>{s.publisher} · {s.date}{s.uploaded ? " · your upload" : s.url ? ` · ${host(s.url)}` : " · no link available"} <LinkBadge state={s.link} /></div>
                       <div className="u-muted" style={{ fontSize: 13, marginTop: 3 }}>{s.note}</div>
                     </div>
                   </div>

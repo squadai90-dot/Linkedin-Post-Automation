@@ -26,16 +26,16 @@ const quiet = async (page) => {
 /* Replies the app asks for, keyed by the shape each engine expects. */
 const replyFor = (prompt) => {
   if (/opportunity engine/i.test(prompt)) {
-    return { items: [{ headline: "Groq wired in", summary: "Live reply", publisher: "Test", url: "https://example.com/a", date: "2026-09-01", score: 91, whyNow: "Proves the path", gap: "open", angle: "Educational" }] };
+    return { items: [{ headline: "Groq wired in", summary: "Live reply", publisher: "Test", url: "https://news.acme-industry.com/ai-budgets", date: "2026-09-01", score: 91, whyNow: "Proves the path", gap: "open", angle: "Educational" }] };
   }
   if (/discovery engine/i.test(prompt)) {
-    return { sources: [{ title: "A real source", publisher: "Test", date: "2026-09-01", tier: 1, note: "From the model", url: "https://example.com/s" }], claims: [{ text: "A checked claim", sourceIndex: 0 }], insights: ["An insight from Groq"], freshness: "Recent", risks: [] };
+    return { sources: [{ title: "A real source", publisher: "Test", date: "2026-09-01", tier: 1, note: "From the model", url: "https://news.acme-industry.com/report" }], claims: [{ text: "A checked claim", sourceIndex: 0 }], insights: ["An insight from Groq"], freshness: "Recent", risks: [] };
   }
   return { angles: [], hook: "", body: "", cta: "", hashtags: [] };
 };
 
 const captured = [];
-const mockGroq = (page, { status = 200, body = null, exposeQuota = true } = {}) =>
+const mockGroq = (page, { status = 200, body = null, exposeQuota = true, searchedFor = null, placeholderSource = false } = {}) =>
   page.route(GROQ, async (route) => {
     const req = route.request();
     if (req.url().endsWith("/models")) {
@@ -45,6 +45,7 @@ const mockGroq = (page, { status = 200, body = null, exposeQuota = true } = {}) 
     captured.push({ headers: req.headers(), body: sent });
     if (status !== 200) return route.fulfill({ status, json: body });
     const prompt = JSON.stringify(sent.messages);
+    const executed = searchedFor ? { executed_tools: [{ type: "search", output: `Result: ${searchedFor}` }] } : {};
     return route.fulfill({
       headers: {
         "x-ratelimit-limit-requests": "1000", "x-ratelimit-remaining-requests": "994", "x-ratelimit-reset-requests": "7h12m",
@@ -52,12 +53,15 @@ const mockGroq = (page, { status = 200, body = null, exposeQuota = true } = {}) 
            them here. Without it the numbers are invisible to any frontend. */
         ...(exposeQuota ? { "access-control-expose-headers": "x-ratelimit-limit-requests, x-ratelimit-remaining-requests, x-ratelimit-reset-requests" } : {}),
       },
-      json: { choices: [{ message: { content: JSON.stringify(replyFor(prompt)) }, finish_reason: "stop" }] },
+      json: { choices: [{ message: { content: JSON.stringify(replyFor(prompt)).replace(placeholderSource ? /news\.acme-industry\.com/g : /(?!)/g, "example.com"), ...executed }, finish_reason: "stop" }] },
     });
   });
 
-/* Put a key in before the app boots, so it starts configured. */
+/* Put a key in before the app boots, so it starts configured.
+   Seeded only when nothing is there: this runs on every navigation, and
+   overwriting on reload would wipe whatever the test just saved. */
 const withKey = (page) => page.addInitScript(() => {
+  if (localStorage.getItem("unison:ai:v1")) return;
   localStorage.setItem("unison:ai:v1", JSON.stringify({ provider: "groq", keys: { groq: "gsk_e2e_key", anthropic: "" }, models: { groq: "llama-3.3-70b-versatile", anthropic: "claude-opus-5" }, useLocal: false }));
 });
 
@@ -172,5 +176,92 @@ test.describe("Groq", () => {
     await page.getByRole("button", { name: "Start" }).click();
     // A spent quota must not read as a real result.
     await expect(page.getByText(/these are placeholders, not real sources/)).toBeVisible({ timeout: 40_000 });
+  });
+
+  test("marks a link the model wrote but never retrieved", async ({ page }) => {
+    // The research reply cites https://example.com/s. The search reports a
+    // different URL, so the citation was written, not retrieved — and a row
+    // that reads "T1 · Primary" must not pass for evidence on that basis.
+    await quiet(page);
+    await withKey(page);
+    await mockGroq(page, { searchedFor: "https://something-else.test/page" });
+    await page.goto("/");
+
+    await page.getByPlaceholder("What is this post about?").fill("Anything at all");
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.getByText("A real source")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("Unconfirmed link").first()).toBeVisible();
+  });
+
+  test("marks a link the search actually returned", async ({ page }) => {
+    await quiet(page);
+    await withKey(page);
+    await mockGroq(page, { searchedFor: "https://news.acme-industry.com/report" });
+    await page.goto("/");
+
+    await page.getByPlaceholder("What is this post about?").fill("Anything at all");
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.getByText("A real source")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("Retrieved").first()).toBeVisible();
+    await expect(page.getByText("Unconfirmed link")).toHaveCount(0);
+  });
+
+  test("says nothing about a link when there is no search record", async ({ page }) => {
+    // Silence is the right answer here: no record of the search is not the
+    // same as evidence against the link.
+    await quiet(page);
+    await withKey(page);
+    await mockGroq(page);
+    await page.goto("/");
+
+    await page.getByPlaceholder("What is this post about?").fill("Anything at all");
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.getByText("A real source")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("Unconfirmed link")).toHaveCount(0);
+    await expect(page.getByText("Retrieved")).toHaveCount(0);
+  });
+
+  test("calls out a placeholder domain as not a real link", async ({ page }) => {
+    await quiet(page);
+    await withKey(page);
+    await mockGroq(page, { placeholderSource: true });
+    await page.goto("/");
+
+    await page.getByPlaceholder("What is this post about?").fill("Anything at all");
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.getByText("Not a real link").first()).toBeVisible({ timeout: 40_000 });
+  });
+
+  test("offers tier controls and remembers them", async ({ page }) => {
+    await quiet(page);
+    await withKey(page);
+    await mockGroq(page);
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "AI" }).click();
+    await expect(page.getByText("Match the model to the job")).toBeVisible();
+    await expect(page.getByLabel("Strong — drafting, evidence")).toBeVisible();
+    await expect(page.getByLabel("Fast — prompts, short rewrites")).toBeVisible();
+
+    await page.getByLabel("Strong — drafting, evidence").selectOption("qwen/qwen3-32b");
+    await page.reload();
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "AI" }).click();
+    await expect(page.getByLabel("Strong — drafting, evidence")).toHaveValue("qwen/qwen3-32b");
+  });
+
+  test("says plainly that work is local when no shared workspace is deployed", async ({ page }) => {
+    await quiet(page);
+    await withKey(page);
+    await mockGroq(page);
+    await page.route("**/api/workspace**", (r) => r.fulfill({ status: 404, json: {} }));
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "Advanced" }).click();
+    await expect(page.getByText("Shared team workspace")).toBeVisible();
+    await expect(page.getByText(/Local to this browser/)).toBeVisible();
+    await expect(page.getByText(/a teammate cannot see them/)).toBeVisible();
   });
 });

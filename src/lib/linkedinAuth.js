@@ -1,3 +1,5 @@
+import { relayAuthHeaders } from "./store.js";
+
 /* ============================================================
    LINKEDIN SIGN-IN FROM THE BROWSER
    What a browser can do on its own: send the user to LinkedIn's consent
@@ -15,6 +17,37 @@ export const LI_AUTH_KEY = "unison:linkedin:v1";
 export const LI_AUTHORIZE_URL = "https://www.linkedin.com/oauth/v2/authorization";
 export const DEFAULT_SCOPES = ["openid", "profile", "email", "w_member_social", "r_organization_social", "w_organization_social", "rw_organization_admin"];
 const STATE_KEY = "unison:linkedin:state";
+
+/* Deployed alongside the app, api/linkedin.js is the bridge and needs no
+   configuration at all — it is same-origin, so no CORS applies and the client
+   secret never leaves the server. A Make.com scenario or any other URL still
+   works; an explicit bridgeUrl always wins over the built-in one. */
+export const LI_RELAY_PATH = (typeof window !== "undefined" && window.UNISON_LINKEDIN_API) || "/api/linkedin";
+
+let relayInfo = null;   // null = not probed yet, false = absent
+
+export async function bridgeHealth({ force = false } = {}) {
+  if (relayInfo !== null && !force) return relayInfo;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(LI_RELAY_PATH, { headers: { Accept: "application/json" }, cache: "no-store", signal: ctrl.signal });
+    clearTimeout(t);
+    const body = await res.json().catch(() => null);
+    relayInfo = res.ok && body?.service === "unison-linkedin-bridge" ? body : false;
+  } catch { relayInfo = false; }
+  return relayInfo;
+}
+
+export const resetBridgeProbe = () => { relayInfo = null; };
+
+/* Which URL a bridge call will actually use, and why. */
+export function bridgeTarget(s = current) {
+  const explicit = String(s.bridgeUrl || "").trim();
+  if (/^https?:\/\//.test(explicit)) return { url: explicit, kind: "custom" };
+  if (relayInfo && relayInfo.configured) return { url: LI_RELAY_PATH, kind: "built-in" };
+  return { url: null, kind: "none" };
+}
 
 const EMPTY_SETTINGS = { clientId: "", redirectUri: "", scopes: DEFAULT_SCOPES.join(" "), bridgeUrl: "", sendToken: false, connection: null };
 
@@ -42,7 +75,7 @@ export function saveLinkedInSettings(patch) {
 }
 export const getLinkedInSettings = () => ({ ...current });
 export const isLinkedInConfigured = (s = current) => !!String(s.clientId || "").trim();
-export const isBridgeConfigured = (s = current) => /^https?:\/\//.test(String(s.bridgeUrl || ""));
+export const isBridgeConfigured = (s = current) => bridgeTarget(s).kind !== "none";
 
 const randomState = () => {
   const a = new Uint8Array(16);
@@ -92,12 +125,18 @@ export function readAuthCallback(loc = typeof window !== "undefined" ? window.lo
    not answer CORS preflights) receives it. The reply is readable only if the
    scenario's Webhook Response sets Access-Control-Allow-Origin. */
 export async function bridge(action, payload, s = current, { timeoutMs = 30000 } = {}) {
-  if (!isBridgeConfigured(s)) throw Object.assign(new Error("No LinkedIn bridge URL configured."), { kind: "unconfigured" });
+  await bridgeHealth();
+  const target = bridgeTarget(s);
+  if (!target.url) throw Object.assign(new Error("No LinkedIn bridge is available. Deploy api/linkedin.js, or set a bridge URL under Settings → LinkedIn."), { kind: "unconfigured" });
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const init = target.kind === "built-in"
+    ? { headers: { "Content-Type": "application/json", ...relayAuthHeaders() } }
+    /* text/plain needs no preflight, which a Make webhook cannot answer. */
+    : { mode: "cors", headers: { "Content-Type": "text/plain;charset=UTF-8" } };
   let res;
   try {
-    res = await fetch(s.bridgeUrl, { method: "POST", mode: "cors", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify({ action, source: "unison-content-os", ...payload }), signal: ctrl.signal });
+    res = await fetch(target.url, { method: "POST", ...init, body: JSON.stringify({ action, source: "unison-content-os", ...payload }), signal: ctrl.signal });
   } catch (e) {
     clearTimeout(timer);
     throw Object.assign(new Error(e?.name === "AbortError" ? "The bridge did not respond in time." : "The bridge could not be reached from this browser."), { kind: e?.name === "AbortError" ? "timeout" : "network", cause: e });
