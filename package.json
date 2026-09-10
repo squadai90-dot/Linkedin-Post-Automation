@@ -6,7 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --port 4173 --strictPort",
+    "lint": "eslint src api tests e2e scripts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "VITE_GROQ_API_KEY= VITE_ANTHROPIC_API_KEY= playwright test",
+    "check": "npm run lint && npm run test && npm run build",
+    "build:preview": "VITE_GROQ_API_KEY= VITE_ANTHROPIC_API_KEY= vite build --config vite.artifact.config.js && node scripts/build-preview.mjs --sandbox",
+    "build:standalone": "VITE_GROQ_API_KEY= VITE_ANTHROPIC_API_KEY= vite build --config vite.artifact.config.js && node scripts/build-preview.mjs"
   },
   "dependencies": {
     "mammoth": "1.8.0",
@@ -15,7 +22,17 @@
     "three": "0.128.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.63.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
     "@vitejs/plugin-react": "4.3.4",
-    "vite": "5.4.11"
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "jsdom": "^30.0.1",
+    "vite": "5.4.11",
+    "vitest": "^2.1.9"
   }
 }
