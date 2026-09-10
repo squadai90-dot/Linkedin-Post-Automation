@@ -39,7 +39,7 @@ const mockGroq = (page, { status = 200, body = null, exposeQuota = true, searche
   page.route(GROQ, async (route) => {
     const req = route.request();
     if (req.url().endsWith("/models")) {
-      return route.fulfill({ json: { data: [{ id: "llama-3.3-70b-versatile" }, { id: "openai/gpt-oss-120b" }, { id: "whisper-large-v3" }] } });
+      return route.fulfill({ json: { data: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b", "groq/compound", "whisper-large-v3"].map((id) => ({ id })) } });
     }
     const sent = req.postDataJSON();
     captured.push({ headers: req.headers(), body: sent });
@@ -149,9 +149,13 @@ test.describe("Groq", () => {
     await page.getByRole("tab", { name: "AI" }).click();
     await page.getByRole("button", { name: "Refresh model list" }).click();
 
-    const options = page.locator("select").first().locator("option");
-    await expect(options).toHaveCount(2, { timeout: 15_000 });   // the speech model is dropped
-    await expect(options.first()).toHaveText(/Llama 3.3 70B/);
+    const options = page.getByLabel("Model", { exact: true }).locator("option");
+    // Four chat models offered; the speech model is dropped because no text
+    // feature can use it.
+    await expect(options).toHaveCount(4, { timeout: 15_000 });
+    const listed = await options.allTextContents();
+    expect(listed.join(" ")).not.toMatch(/whisper/i);
+    expect(listed.join(" ")).toMatch(/Llama 3\.3 70B/);
   });
 
   test("explains a rejected key instead of failing silently", async ({ page }) => {
@@ -240,7 +244,10 @@ test.describe("Groq", () => {
 
     await page.getByRole("button", { name: "Settings", exact: true }).first().click();
     await page.getByRole("tab", { name: "AI" }).click();
+    // Opening the tab kicks off a model check; let it settle before touching
+    // the controls, or the assertion races the list it repopulates.
     await expect(page.getByText("Match the model to the job")).toBeVisible();
+    await page.waitForTimeout(1500);
     await expect(page.getByLabel("Strong — drafting, evidence")).toBeVisible();
     await expect(page.getByLabel("Fast — prompts, short rewrites")).toBeVisible();
 
@@ -263,5 +270,38 @@ test.describe("Groq", () => {
     await expect(page.getByText("Shared team workspace")).toBeVisible();
     await expect(page.getByText(/Local to this browser/)).toBeVisible();
     await expect(page.getByText(/a teammate cannot see them/)).toBeVisible();
+  });
+
+  test("recovers on its own when the saved model was retired", async ({ page }) => {
+    /* The failure a real key actually produced: Groq answering "The model
+       `llama-3.3-70b-versatile` does not exist or you do not have access to
+       it." The key is fine; the shipped default went stale. Nobody should
+       have to decode that. */
+    const AVAILABLE = ["openai/gpt-oss-120b", "llama-3.1-8b-instant", "groq/compound"];
+    await quiet(page);
+    await page.addInitScript(() => localStorage.setItem("unison:ai:v1", JSON.stringify({
+      provider: "groq", keys: { groq: "gsk_e2e_key" },
+      models: { groq: "llama-3.3-70b-versatile" }, searchModel: "groq/compound", useLocal: false,
+    })));
+    await page.route(GROQ, async (route) => {
+      const req = route.request();
+      if (req.url().endsWith("/models")) return route.fulfill({ json: { data: AVAILABLE.map((id) => ({ id })) } });
+      const b = req.postDataJSON();
+      if (!AVAILABLE.includes(b.model)) {
+        return route.fulfill({ status: 404, json: { error: { message: `The model \`${b.model}\` does not exist or you do not have access to it.`, code: "model_not_found" } } });
+      }
+      return route.fulfill({ json: { choices: [{ finish_reason: "stop", message: { content: "OK" } }] } });
+    });
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "AI" }).click();
+
+    // Said plainly, and the picker agrees with what was said.
+    await expect(page.getByText(/is not available on your Groq account/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("openai/gpt-oss-120b");
+
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await expect(page.getByText(/AI is working/)).toBeVisible({ timeout: 20_000 });
   });
 });

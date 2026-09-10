@@ -132,10 +132,13 @@ describe("provider errors", () => {
     expect(friendlyError(burst)).toMatch(/busy/);
   });
 
-  it("tells the team to switch model when an id was retired", () => {
+  it("points at the button that fixes a retired model id", () => {
     const e = providerError(404, { error: { message: "The model `llama-3.1-70b` has been decommissioned" } });
     expect(e.code).toBe("no-model");
-    expect(friendlyError(e)).toMatch(/no longer available/);
+    // Naming the remedy beats describing the problem — the app self-corrects,
+    // and if that fails this is the one control that helps.
+    expect(friendlyError(e)).toMatch(/Refresh model list/);
+    expect(friendlyError(e)).not.toMatch(/key/i);
   });
 
   it("falls back to the status code when the body explains nothing", () => {

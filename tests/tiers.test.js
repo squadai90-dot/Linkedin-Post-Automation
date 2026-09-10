@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AI_CONFIG, MODEL_REGISTRY, TIER_DEFAULTS, modelForTier, aiRouter, saveAISettings,
   markSpent, isSpent, clearSpent, providerError, hostedProvider, AI_STATUS, resetDiscovered, loadAISettings,
-  searchedUrls, sameTarget, isPlaceholderUrl, corroborateSources, blockedRemedy,
+  searchedUrls, sameTarget, isPlaceholderUrl, corroborateSources, blockedRemedy, friendlyError,
 } from "../src/lib/ai.js";
 
 const headers = (o = {}) => ({ get: (k) => o[k.toLowerCase()] ?? null });
@@ -17,7 +17,7 @@ beforeEach(() => {
   localStorage.clear();
   clearSpent();
   resetDiscovered();
-  saveAISettings({ provider: "groq", keys: { groq: "gsk_t" }, models: { groq: "llama-3.3-70b-versatile" }, useLocal: false, useTiers: true, autoDowngrade: true, tiers: { groq: { fast: "", strong: "" } } });
+  saveAISettings({ provider: "groq", keys: { groq: "gsk_t" }, models: { groq: "llama-3.3-70b-versatile" }, searchModel: "groq/compound", useLocal: false, useTiers: true, autoDowngrade: true, tiers: { groq: { fast: "", strong: "" } } });
   hostedProvider.reset();
   AI_STATUS.blocked = null;
 });
@@ -245,5 +245,85 @@ describe("a blocked browser call", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(noRelay()).mockResolvedValueOnce(groqOk("ok")));
     await hostedProvider.chat({ user: "hi" });
     expect(AI_STATUS.blocked).toBeNull();
+  });
+});
+
+describe("a model id that no longer exists", () => {
+  /* The real message Groq returns, verbatim, because it is the one a user
+     actually met: "The model `llama-3.3-70b-versatile` does not exist or you
+     do not have access to it." A shipped default goes stale on its own. */
+  const gone = (id) => errRes(404, { error: { message: `The model \`${id}\` does not exist or you do not have access to it.`, code: "model_not_found" } });
+  const modelList = (ids) => okRes({ data: ids.map((id) => ({ id })) });
+
+  it("reads it as a model problem, not a key problem", () => {
+    const e = providerError(404, { error: { message: "The model `llama-3.3-70b-versatile` does not exist or you do not have access to it." } });
+    expect(e.code).toBe("no-model");
+    // The key is fine — saying "check your key" would send someone the wrong way.
+    expect(friendlyError(e)).not.toMatch(/key was rejected/i);
+    expect(friendlyError(e)).toMatch(/Refresh model list/);
+  });
+
+  it("moves the selection onto a model the key can actually use", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(modelList(["openai/gpt-oss-120b", "llama-3.1-8b-instant", "groq/compound", "whisper-large-v3"])));
+    const r = await hostedProvider.ensureUsableModel();
+    expect(r.changed).toBe(true);
+    expect(r.from).toBe("llama-3.3-70b-versatile");
+    expect(r.to).toBe("openai/gpt-oss-120b");   // first of ours that the key has
+    expect(AI_CONFIG.models.groq).toBe("openai/gpt-oss-120b");
+  });
+
+  it("never lands on a search model as the general-purpose one", async () => {
+    // groq/compound sorts first alphabetically and rejects JSON mode, so
+    // picking it here would break every structured call.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(modelList(["groq/compound", "some-new-model"])));
+    const r = await hostedProvider.ensureUsableModel();
+    expect(r.to).toBe("some-new-model");
+  });
+
+  it("fixes a stale search model too", async () => {
+    saveAISettings({ searchModel: "groq/compound-retired" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(modelList(["llama-3.3-70b-versatile", "groq/compound-mini"])));
+    const r = await hostedProvider.ensureUsableModel();
+    expect(r.changed).toBe(true);
+    expect(AI_CONFIG.searchModel).toBe("groq/compound-mini");
+    expect(AI_CONFIG.models.groq).toBe("llama-3.3-70b-versatile");  // still valid, untouched
+  });
+
+  it("leaves a valid selection alone", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(modelList(["llama-3.3-70b-versatile", "groq/compound"])));
+    const r = await hostedProvider.ensureUsableModel();
+    expect(r.changed).toBe(false);
+    expect(AI_CONFIG.models.groq).toBe("llama-3.3-70b-versatile");
+  });
+
+  it("recovers mid-call and returns the answer, rather than sample data", async () => {
+    const notices = [];
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(noRelay())
+      .mockResolvedValueOnce(gone("llama-3.3-70b-versatile"))                     // the call fails
+      .mockResolvedValueOnce(modelList(["openai/gpt-oss-120b", "groq/compound"]))  // ask what exists
+      .mockResolvedValueOnce(groqOk("the real answer")));                          // same call, new model
+
+    const out = await aiRouter.run({ capability: "quality", user: "check this", onNotice: (n) => notices.push(n) });
+    expect(out).toBe("the real answer");
+    expect(notices).toEqual([{ kind: "model-changed", from: "llama-3.3-70b-versatile", to: "openai/gpt-oss-120b" }]);
+  });
+
+  it("gives up rather than looping when nothing works", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(noRelay())
+      .mockResolvedValueOnce(gone("llama-3.3-70b-versatile"))
+      .mockResolvedValueOnce(modelList(["openai/gpt-oss-120b"]))
+      .mockResolvedValue(gone("openai/gpt-oss-120b")));
+    await expect(aiRouter.run({ capability: "quality", user: "x" })).rejects.toMatchObject({ code: "no-model" });
+  });
+
+  it("does not try to correct when the model list is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(noRelay())
+      .mockResolvedValueOnce(gone("llama-3.3-70b-versatile"))
+      .mockRejectedValue(new TypeError("Failed to fetch")));
+    await expect(aiRouter.run({ capability: "quality", user: "x" })).rejects.toMatchObject({ code: "no-model" });
+    expect(AI_CONFIG.models.groq).toBe("llama-3.3-70b-versatile");   // unchanged
   });
 });

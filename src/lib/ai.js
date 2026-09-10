@@ -262,7 +262,7 @@ export const friendlyError = (e) => {
   if (e?.code === "no-key" || /No AI key/i.test(m)) return "No AI key configured — add one under Settings → AI.";
   if (e?.code === "bad-key" || /invalid x-api-key|invalid_api_key|authentication/i.test(m)) return "The AI key was rejected. Check it under Settings → AI.";
   if (e?.code === "refusal") return "The model declined this request.";
-  if (e?.code === "no-model" || /model_not_found|does not exist|decommissioned/i.test(m)) return "That model is no longer available. Pick another under Settings → AI.";
+  if (e?.code === "no-model" || /model_not_found|does not exist|decommissioned/i.test(m)) return "That model is not available on your account. Settings → AI → Refresh model list will show the ones that are.";
   if (e?.code === "blocked") return "The browser could not reach the AI service. Check your network, or deploy the relay so calls go server-side.";
   if (e?.code === "daily-limit" || /tokens per day|requests per day|TPD|RPD/i.test(m)) return "The free daily AI limit is used up. It resets 24 hours after the first call — or switch model under Settings → AI.";
   if (/abort/i.test(m)) return "Cancelled.";
@@ -565,6 +565,50 @@ export const hostedProvider = {
     if (ids.length) discovered.groq = ids;
     return ids;
   },
+  /* Groq retires model ids on its own schedule, so a default that shipped
+     months ago can simply not exist on a given account. Rather than making
+     someone decode "does not exist or you do not have access to it", ask the
+     key what it can use and move the selection onto something real. */
+  async ensureUsableModel(signal) {
+    if (AI_CONFIG.provider !== "groq" || !activeKey()) return { ok: false, reason: "not-applicable" };
+    let available;
+    try {
+      available = await this.listModels(signal);
+    } catch (e) {
+      return { ok: false, reason: "unreachable", error: e };
+    }
+    if (!available.length) return { ok: false, reason: "empty" };
+
+    const chat = available.filter((id) => !/^groq\/compound/.test(id));
+    const from = activeModel();
+    const patch = {};
+
+    if (!available.includes(from)) {
+      /* Prefer something from the list we shipped notes for, so the picker
+         still explains itself; otherwise take the first real chat model. */
+      const preferred = MODELS.groq.map((m) => m.id).find((id) => chat.includes(id));
+      patch.models = { groq: preferred || chat[0] };
+    }
+    /* The search model is separate and can go stale on its own. */
+    if (!available.includes(AI_CONFIG.searchModel)) {
+      const search = available.find((id) => /^groq\/compound/.test(id));
+      if (search) patch.searchModel = search;
+    }
+
+    if (!Object.keys(patch).length) return { ok: true, changed: false, available };
+    /* saveAISettings resets the transport because a key or provider change
+       invalidates it. Only the model changed here, so put the resolved mode
+       back rather than re-probing for a relay mid-call. */
+    const mode = this._mode, relayKey = this._relayKey;
+    saveAISettings(patch);
+    this._mode = mode; this._relayKey = relayKey;
+    AI_STATUS.hostedVia = mode;
+    /* saveAISettings clears the discovered list when the key changes; it did
+       not here, but the list is what we just fetched, so put it back. */
+    discovered.groq = available;
+    return { ok: true, changed: true, from, to: activeModel(), available };
+  },
+
   async chat({ system, user, search, json, model: wanted, signal, meta }) {
     const mode = await this.resolve();
     const provider = AI_CONFIG.provider;
@@ -682,6 +726,7 @@ export const aiRouter = {
       const queue = usable.length ? usable : [chain[0]];
 
       let lastErr;
+      let corrected = false;
       for (let i = 0; i < queue.length; i++) {
         const m = queue[i];
         AI_STATUS.routed[capability] = `${AI_CONFIG.provider} · ${m}${search ? " + search" : ""}${i ? " (stepped down)" : ""}`;
@@ -694,6 +739,19 @@ export const aiRouter = {
           if (e?.name === "AbortError") throw e;
           lastErr = e;
           AI_STATUS.lastError = friendlyError(e);
+          /* A retired model id is recoverable without troubling anyone: ask
+             the key what it can use, then run the same call again. Once per
+             call, so a genuinely broken account still fails fast. */
+          if (e?.code === "no-model" && !corrected) {
+            corrected = true;
+            const r = await hostedProvider.ensureUsableModel(sig);
+            if (r.ok && r.changed) {
+              onNotice?.({ kind: "model-changed", from: r.from, to: r.to });
+              queue[i] = this.plan(capability, search).model;
+              i -= 1;                       // retry this step on the new model
+              continue;
+            }
+          }
           /* Only a spent daily allowance is worth retrying on another model.
              A bad key or a blocked browser fails the same way every time. */
           if (e?.code !== "daily-limit") throw e;

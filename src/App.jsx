@@ -534,6 +534,12 @@ export default function UnisonContentOS() {
     const key = n.kind + (n.model || n.to || "");
     if (noticedRef.current.has(key)) return;
     noticedRef.current.add(key);
+    if (n.kind === "model-changed") {
+      /* The router corrected the config directly, so pull it back into React
+         or Settings would keep showing the model we just moved off. */
+      updateAI({});
+      notify(`${n.from} is not available on your account — switched to ${n.to}.`, { tone: "warn", ms: 7000 });
+    }
     if (n.kind === "downgraded") notify(`Daily limit reached on ${n.from} — continuing on ${n.to}. Output may be shorter or plainer until it resets.`, { tone: "warn", ms: 9000 });
     if (n.kind === "spent") logAudit(`Daily allowance spent on ${n.model}`);
   }, []);

@@ -82,16 +82,46 @@ export function Settings(props) {
   const quota = AI_STATUS.quota;
   const setP = (k) => (e) => setProfile({ ...profile, [k]: e.target.value });
 
-  async function testAI() {
+  async function testAI({ retried = false } = {}) {
     setTesting(true);
     try {
       const t0 = Date.now();
       const out = await aiRouter.run({ capability: "reasoning", system: "Reply with exactly the word OK.", user: "Say OK." });
       notify(`AI is working (${Math.round((Date.now() - t0) / 100) / 10}s) — reply: "${String(out).trim().slice(0, 40)}"`, { tone: "ok" });
     } catch (e) {
-      notify(`AI test failed: ${e?.message || e}`, { tone: "bad", ms: 8000 });
+      /* "The model does not exist or you do not have access to it" is not
+         something to hand a marketer verbatim. The key is fine; the model id
+         is stale. Fix it and try once more, rather than reporting it. */
+      if (e?.code === "no-model" && !retried) {
+        const r = await hostedProvider.ensureUsableModel();
+        if (r.ok && r.changed) {
+          setLiveModels(r.available);
+          updateAI({});   // re-read the corrected config into React state
+          notify(`${r.from} is not available on your Groq account — switched to ${r.to} and retrying.`, { tone: "warn", ms: 7000 });
+          setTesting(false);
+          return testAI({ retried: true });
+        }
+      }
+      notify(`AI test failed: ${friendlyError(e)}`, { tone: "bad", ms: 9000 });
+      console.warn("[unison] AI test failed:", e?.message || e);
     } finally { setTesting(false); refreshAI?.(); }
   }
+
+  /* A key that has just been entered is the moment to find out which models
+     it can use — before someone hits a stale default mid-draft. */
+  useEffect(() => {
+    if (provider !== "groq" || !savedKey) return;
+    let cancelled = false;
+    hostedProvider.ensureUsableModel().then((r) => {
+      if (cancelled || !r.ok) return;
+      setLiveModels(r.available);
+      if (r.changed) {
+        updateAI({});   // as above: keep the picker showing what is actually in use
+        notify(`${r.from} is not available on your Groq account — using ${r.to} instead.`, { tone: "warn", ms: 7000 });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [provider, savedKey]);
 
   const importRef = (el) => { if (el) el.onchange = (e) => { const f = e.target.files?.[0]; if (f) importSession?.(f); e.target.value = ""; }; };
   const savedBytes = (() => { try { return new Blob([localStorage.getItem("unison:session:v1") || ""]).size; } catch { return 0; } })();
