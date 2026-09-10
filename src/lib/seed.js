@@ -11,12 +11,12 @@ import { addDays, todayISO } from "./dates.js";
 const day = (n) => addDays(todayISO(), n);
 
 export const SEED_POSTS = [
-  { id: "p-201", title: "Why procurement is the real AI bottleneck", state: "HUMAN_REVIEW", date: day(-2), sample: true },
-  { id: "p-202", title: "Three questions to ask before you buy an AI tool", state: "HUMAN_REVIEW", date: day(-2), sample: true },
-  { id: "p-203", title: "What our support team learned in 90 days", state: "HUMAN_REVIEW", date: day(-3), sample: true },
-  { id: "p-198", title: "AI agents in enterprise software", state: "PUBLISHED", date: day(-14), sample: true, metrics: { impressions: 14820, reactions: 386, comments: 74, shares: 41, clicks: 512 } },
-  { id: "p-195", title: "The quiet cost of unverified content", state: "PUBLISHED", date: day(-21), sample: true, metrics: { impressions: 9110, reactions: 211, comments: 33, shares: 18, clicks: 274 } },
-  { id: "p-207", title: "Q3 customer roundup", state: "SCHEDULED", date: day(4), time: "09:30", sample: true },
+  { id: "p-201", title: "Why most CA firms lose margin in January, not March", state: "HUMAN_REVIEW", date: day(-2), sample: true },
+  { id: "p-202", title: "Five questions to ask before you outsource bookkeeping", state: "HUMAN_REVIEW", date: day(-2), sample: true },
+  { id: "p-203", title: "What we learned running month-end for 40 practices", state: "HUMAN_REVIEW", date: day(-3), sample: true },
+  { id: "p-198", title: "Offshore finance teams: what actually transfers well", state: "PUBLISHED", date: day(-14), sample: true, metrics: { impressions: 14820, reactions: 386, comments: 74, shares: 41, clicks: 512 } },
+  { id: "p-195", title: "The hidden cost of hiring for tax season only", state: "PUBLISHED", date: day(-21), sample: true, metrics: { impressions: 9110, reactions: 211, comments: 33, shares: 18, clicks: 274 } },
+  { id: "p-207", title: "Quarter-end close checklist for growing practices", state: "SCHEDULED", date: day(4), time: "09:30", sample: true },
 ];
 
 /* Home holds the composer, so there is no separate "New". "Drafts" is the
@@ -68,5 +68,6 @@ export const SEED_TEAM = [];
 
 export const DEFAULT_PROFILE = {
   company: "", website: "", followers: "", userName: "",
-  industry: "Enterprise software", audience: "Marketing and RevOps leaders", keywords: "AI agents, automation, buying process",
+  industry: "Finance and accounting outsourcing", audience: "Chartered Accountants, CPA firm partners and finance heads",
+  keywords: "outsourced accounting, CA firm capacity, bookkeeping, audit support, tax season staffing, offshore finance teams",
 };

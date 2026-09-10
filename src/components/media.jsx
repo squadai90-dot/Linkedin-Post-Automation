@@ -3,6 +3,7 @@ import { FORMAT_BY_ID, normalizeFormats, visualOf } from "../lib/formats.js";
 import { pad } from "../lib/util.js";
 import { drawScene, svgToPng, downloadBlob } from "../lib/brand.js";
 import { SCENE_SECONDS, videoProvider } from "../lib/media.js";
+import { ImageStudio } from "./imagestudio.jsx";
 
 /* ============================================================
    MEDIA UI — one panel per format, all driven by the media engine
@@ -150,8 +151,11 @@ async function saveUrlAsset(url, name) {
 
 /* ---------- image ---------- */
 
-export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUpload, prototypeNote }) {
+export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify }) {
   const [variant, setVariant] = useState(0);
+  /* Open once the picture exists: the design is the interesting part, and
+     hiding it behind a click is what made the old output feel fixed. */
+  const [studioOpen, setStudioOpen] = useState(true);
   const img = assets.images[0];
   const fileRef = useRef(null);
   return (
@@ -170,6 +174,20 @@ export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUploa
         </>}
       />
       {img && <><SvgFrame src={srcOf(img)} />{img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div> : prototypeNote}</>}
+
+      {/* Rolling the dice again is a poor way to fix one wrong word, so the
+          composition and the words in it are both editable here. */}
+      {img && img.kind !== "url" && (
+        <details className="studio" open={studioOpen} onToggle={(e) => setStudioOpen(e.currentTarget.open)}>
+          <summary>Change the design and the words</summary>
+          <ImageStudio
+            brief={img.brief} draft={draft} profile={profile} photosOn={extras.commons !== false}
+            value={assets.imageDesign}
+            onChange={(d) => patchAssets({ imageDesign: d, images: [{ ...(assets.images[0] || {}), kind: "svg", svg: d.svg, source: "template", template: d.templateId, photoCredit: d.photo?.credit || null, id: assets.images[0]?.id || "img-studio" }] })}
+            notify={notify}
+          />
+        </details>
+      )}
       {assets.upload && !img && (
         <div className="svgframe" style={{ aspectRatio: "1200 / 630" }}><img src={assets.upload.data} alt={assets.upload.name} /></div>
       )}

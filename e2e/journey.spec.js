@@ -115,7 +115,8 @@ test.describe("desktop", () => {
     await page.goto("/");
 
     await page.getByPlaceholder("What is this post about?").fill("Why approval workflows decide AI rollouts");
-    await page.locator(".fmt", { hasText: "Poll" }).first().click();
+    // Nothing about format is asked here any more — Start writes the post.
+    await expect(page.locator(".create .fmt")).toHaveCount(0);
     await page.getByRole("button", { name: "Start" }).click();
 
     // Research falls back and says the sources are placeholders.
@@ -126,6 +127,12 @@ test.describe("desktop", () => {
     await page.locator(".angle").first().click();
     await expect(page.locator(".li-body")).toBeVisible({ timeout: 40_000 });
     await expect(page.getByText(/Sample text/)).toBeVisible();
+
+    // Now the post can be read, decide it wants a poll — and the text stays.
+    await expect(page.getByText("Add to this post")).toBeVisible();
+    await page.locator(".fmt", { hasText: "Poll" }).first().click();
+    await expect(page.getByRole("heading", { name: "Poll" })).toBeVisible({ timeout: 40_000 });
+    await expect(page.locator(".li-body")).toBeVisible();
 
     // The checks could not run, so approval is not presented as verified.
     await expect(page.getByText(/Not verified — the AI was unavailable/)).toBeVisible();
@@ -182,7 +189,7 @@ test.describe("desktop", () => {
     const rows = page.locator("table.tbl tbody tr");
     const total = await rows.count();
     expect(total).toBeGreaterThan(0);
-    await page.getByPlaceholder("Search posts…").fill("procurement");
+    await page.getByPlaceholder("Search posts…").fill("bookkeeping");
     await expect(rows).toHaveCount(1);
     await page.getByPlaceholder("Search posts…").fill("");
     await page.getByRole("button", { name: "Published" }).click();

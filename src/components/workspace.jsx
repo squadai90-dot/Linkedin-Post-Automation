@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import { LinkBadge } from "./linkbadge.jsx";
-import { FORMAT_BY_ID } from "../lib/formats.js";
+import { FORMAT_BY_ID, VISUAL_FORMATS, normalizeFormats, toggleFormat } from "../lib/formats.js";
 import { REJECT_REASONS } from "../lib/seed.js";
 import { pad, tierLabel, host, LI_LIMIT, LI_FOLD } from "../lib/util.js";
 import { locateClaim, segments } from "../lib/text.jsx";
@@ -100,7 +100,8 @@ export function Workspace(p) {
     approve, reject, confirmSchedule, publishNow, runDiscovery, setDrawer, setModal, reset, cancelWork,
     setFailMode, undoStack, undo, pushUndo, assets, patchAssets, mstate, makeImage, makeImageSet,
     retile, addTile, makeVideo, makeDocument, makeCarousel, reslide, moveItem, dropItem, editSlide,
-    editDocPage, makePoll, makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady,
+    editDocPage, makePoll, makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady, setFormats,
+    recommendFormat, recommending, recommended,
   } = p;
 
   const [rejecting, setRejecting] = useState(false);
@@ -150,6 +151,7 @@ export function Workspace(p) {
     format, formats, assets, patchAssets, mstate, makeImage, makeImageSet, retile, addTile, makeVideo,
     makeDocument, makeCarousel, reslide, moveItem, dropItem, editSlide, editDocPage, makePoll,
     makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, locked, extras,
+    draft, profile, notify,
   };
 
   const evidencePanel = !draft ? null : (
@@ -357,6 +359,12 @@ export function Workspace(p) {
             {(!narrow || tab === "post") && postPanel}
             {(!narrow || tab === "evidence") && shows("evidence") && evidencePanel}
           </div>
+        </Section>
+      )}
+
+      {draft && !locked && !done && (
+        <Section n={null} title="Add to this post" engine="Optional">
+          <AddComponents formats={formats} setFormats={setFormats} assets={assets} busy={busy} recommend={recommendFormat} recommending={recommending} recommended={recommended} />
         </Section>
       )}
 
@@ -630,7 +638,9 @@ export function EmptyWorkspace({ onCreate, drafts = 0, onDrafts }) {
 export function Section({ n, title, engine, children }) {
   return (
     <section className="sec">
-      <div className="sec-h"><span className="num">{pad(n)}</span><h2 className="disp">{title}</h2><span className="eyebrow">{engine}</span></div>
+      {/* An optional step carries no number: it sits between two numbered
+          ones without pushing everything after it along. */}
+      <div className="sec-h"><span className="num">{n == null ? "＋" : pad(n)}</span><h2 className="disp">{title}</h2><span className="eyebrow">{engine}</span></div>
       {children}
     </section>
   );
@@ -641,6 +651,77 @@ export function Control({ label, value, setValue, options }) {
     <div className="ctrl">
       <span className="eyebrow">{label}</span>
       {options.map((o) => <button key={o} className={"opt " + (value === o ? "on" : "")} aria-pressed={value === o} onClick={() => setValue(o)}>{o}</button>)}
+    </div>
+  );
+}
+
+/* ---------- what this post needs, decided once it can be read ----------
+   Asking "image, video or poll?" before a word exists is the wrong question
+   first — nobody knows yet. So the choice lives here, under the draft, and
+   stays changeable: read the post, decide it wants a poll, add one; change
+   your mind, remove it. Nothing regenerates the text. */
+
+const ADDABLE = ["image", "multi", "video", "document", "poll", "article", "carousel"];
+
+const HAS_ASSET = {
+  image: (a) => a.images.length > 0 || !!a.upload,
+  multi: (a) => a.images.length > 1 || !!a.upload,
+  video: (a) => !!a.video || !!a.upload,
+  document: (a) => !!a.doc,
+  poll: (a) => !!a.poll,
+  article: (a) => !!a.article,
+  carousel: (a) => a.carousel.length > 0,
+};
+
+export function AddComponents({ formats, setFormats, assets, busy, recommend, recommending, recommended }) {
+  const list = normalizeFormats(formats);
+  const chosen = list.filter((f) => f !== "text");
+  const visual = VISUAL_FORMATS.find((f) => list.includes(f));
+
+  const toggle = (id) => setFormats?.((cur) => toggleFormat(normalizeFormats(cur), id));
+  const recList = Array.isArray(recommended) ? recommended : recommended ? [recommended] : [];
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+        <span className="eyebrow">{chosen.length ? `Text + ${chosen.map((f) => FORMAT_BY_ID[f].label).join(" + ")}` : "Text only"}</span>
+        <span className="u-muted" style={{ fontSize: 12.5 }}>LinkedIn allows one visual per post. A poll, an article or a carousel can sit alongside it.</span>
+      </div>
+      <p className="u-muted" style={{ fontSize: 13.5, margin: "0 0 14px" }}>
+        Nothing here is required — plain text is a perfectly good LinkedIn post. Add something and it is
+        generated from the draft above; remove it and the text is untouched.
+      </p>
+
+      {recommend && (
+        <div className="row" style={{ marginBottom: 14 }}>
+          <button className="btn sm" disabled={recommending || busy} onClick={() => recommend()}>
+            {recommending ? "Reading the post…" : "Suggest what suits this post"}
+          </button>
+          {recList.length > 0 && <span className="u-muted" style={{ fontSize: 12.5 }}>Suggested: {recList.map((f) => FORMAT_BY_ID[f]?.label).filter(Boolean).join(", ") || "text only"}</span>}
+        </div>
+      )}
+
+      <div className="fmt-grid">
+        {ADDABLE.map((id) => {
+          const f = FORMAT_BY_ID[id];
+          const on = list.includes(id);
+          /* Choosing a second visual would replace the first, and with it any
+             work already done on it. Say so rather than silently swapping. */
+          const replaces = !on && VISUAL_FORMATS.includes(id) && visual && HAS_ASSET[visual]?.(assets);
+          return (
+            <button key={id} className={"fmt " + (on ? "on" : "")} onClick={() => toggle(id)} aria-pressed={on} disabled={busy}>
+              <span className="row" style={{ justifyContent: "space-between" }}>
+                <span className="fmt-label">{f.label}</span>
+                <span className={"fmt-check " + (on ? "on" : "")}>{on ? "✓" : "+"}</span>
+              </span>
+              <span className="u-muted fmt-hint">{f.hint}</span>
+              {replaces && <span className="eyebrow" style={{ marginTop: 6, color: "var(--warn, #FFB74D)" }}>Replaces the {FORMAT_BY_ID[visual].label.toLowerCase()}</span>}
+              {!on && recList.includes(id) && <span className="eyebrow" style={{ marginTop: 6 }}>Suggested</span>}
+              {on && HAS_ASSET[id]?.(assets) && <span className="eyebrow" style={{ marginTop: 6 }}>Ready below</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

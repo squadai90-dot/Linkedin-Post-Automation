@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { FORMATS, toggleFormat, labelFor } from "../lib/formats.js";
+import { labelFor } from "../lib/formats.js";
+
 import { greeting, relativeTime } from "../lib/dates.js";
 import { postDue } from "./views.jsx";
 
@@ -208,25 +209,22 @@ export function DraftsList({ drafts, activeId, onEdit, onRemove, onResume, onCre
    the sentence. */
 export const STARTERS = [
   { label: "Idea", text: "I want to create a post about " },
-  { label: "Announcement", text: "We're announcing " },
-  { label: "Lesson learned", text: "Something we learned recently: " },
-  { label: "Ask the audience", text: "A question for our audience: " },
+  { label: "Client win", text: "A practice we work with just " },
+  { label: "Lesson learned", text: "Something we learned running finance work for CA firms: " },
+  { label: "Compliance update", text: "A change practices need to know about: " },
+  { label: "Ask the audience", text: "A question for practice owners: " },
   { label: "Data point", text: "A number worth talking about: " },
 ];
 
-export function CreateFlow({ onStart, recommend, recommending, recommended, seed, clearSeed }) {
-  const [formats, setFormats] = useState(["text"]);
+export function CreateFlow({ onStart, seed, clearSeed }) {
   const [text, setText] = useState(seed || "");
   const inputRef = useRef(null);
   useEffect(() => { if (seed) { setText(seed); inputRef.current?.focus(); clearSeed?.(); } }, [seed]);  
-  const go = () => text.trim() && onStart(formats, text.trim());
-  const pick = (id) => setFormats((f) => toggleFormat(f, id));
+  const go = () => text.trim() && onStart(["text"], text.trim());
   const starter = (t) => {
     setText((cur) => (!cur.trim() || STARTERS.some((s) => cur === s.text) ? t : t + cur.trimStart()));
     requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
   };
-  const recList = Array.isArray(recommended) ? recommended : recommended ? [recommended] : [];
-
   return (
     <div className="create">
       <div className="composer">
@@ -237,32 +235,12 @@ export function CreateFlow({ onStart, recommend, recommending, recommended, seed
 
       <div className="chips" style={{ marginTop: 12 }}>
         {STARTERS.map((s) => <button key={s.label} className="chip" onClick={() => starter(s.text)}>{s.label}</button>)}
-        <button className="chip" disabled={!text.trim() || recommending} onClick={() => recommend(text, setFormats)}>
-          {recommending ? "Thinking…" : "Let Unison pick the format"}
-        </button>
       </div>
 
-      <div className="row" style={{ justifyContent: "space-between", margin: "22px 0 10px" }}>
-        <span className="eyebrow">Components · {labelFor(formats)}</span>
-        <span className="u-muted" style={{ fontSize: 12.5 }}>Pick as many as the post needs. One visual per post.</span>
-      </div>
-      <div className="fmt-grid">
-        {FORMATS.map((f) => {
-          const on = formats.includes(f.id);
-          const base = f.id === "text";
-          return (
-            <button key={f.id} className={"fmt " + (on ? "on" : "") + (base ? " base" : "") + (recList.includes(f.id) && !base ? " rec" : "")}
-              onClick={() => pick(f.id)} aria-pressed={on}>
-              <span className="row" style={{ justifyContent: "space-between" }}>
-                <span className="fmt-label">{f.label}</span>
-                <span className={"fmt-check " + (on ? "on" : "")}>{on ? "✓" : ""}</span>
-              </span>
-              <span className="u-muted fmt-hint">{base ? "Always included — the written post." : f.hint}</span>
-              {recList.includes(f.id) && !base && <span className="eyebrow" style={{ marginTop: 6 }}>Recommended</span>}
-            </button>
-          );
-        })}
-      </div>
+      <p className="u-muted" style={{ margin: "18px 0 0", fontSize: 13.5, maxWidth: 560 }}>
+        Unison writes the post first. Once you can read it, you decide whether it needs an image, a poll,
+        a document or nothing at all — and you can change your mind then.
+      </p>
     </div>
   );
 }

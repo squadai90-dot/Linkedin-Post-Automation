@@ -64,7 +64,7 @@ export const STAGE_LABEL = {
   evidence: "Evidence", health: "Health", approval: "Approval", schedule: "Publish",
 };
 
-export const EMPTY_ASSETS = { images: [], video: null, doc: null, carousel: [], poll: null, article: null, upload: null, uploadDropped: null, sourceDoc: null };
+export const EMPTY_ASSETS = { images: [], video: null, doc: null, carousel: [], poll: null, article: null, upload: null, uploadDropped: null, sourceDoc: null, imageDesign: null };
 /* what is safe to persist: blobs and object URLs don't survive a reload */
 /* What survives a reload. Object URLs and Blobs do not, so the video keeps
    only its storyboard. An uploaded image is already downscaled, so it is kept
@@ -78,6 +78,12 @@ export const compactAssets = (a) => {
     upload: keepUpload ? a.upload : null,
     uploadDropped: a.upload && !keepUpload ? { name: a.upload.name, type: a.upload.type } : (a.uploadDropped || null),
     video: a.video ? { ...a.video, url: null, blob: null } : null,
+    /* A chosen photograph is already inlined in the rendered SVG. Keeping a
+       second base64 copy here would double the biggest thing in the session
+       for no gain — the web address is enough to fetch it again. */
+    imageDesign: a.imageDesign
+      ? { ...a.imageDesign, photo: a.imageDesign.photo ? { ...a.imageDesign.photo, dataUrl: null } : null }
+      : null,
   };
 };
 

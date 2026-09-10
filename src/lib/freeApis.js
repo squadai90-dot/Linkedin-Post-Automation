@@ -16,8 +16,9 @@ export const FREE_APIS = {
   languagetool: { id: "languagetool", label: "LanguageTool grammar check", url: "https://api.languagetool.org/v2/check", note: "Checks the draft for spelling, grammar and style. Text is sent to languagetool.org." },
   holidays: { id: "holidays", label: "Public holidays (Nager.Date)", url: "https://date.nager.at/api/v3/PublicHolidays", note: "Warns when a scheduled date is a public holiday in the chosen timezone's country." },
   pollinations: { id: "pollinations", label: "Pollinations AI images", url: "https://image.pollinations.ai/prompt/", note: "Generates a photographic post image from the creative brief. Off by default — the branded renderer stays the default." },
+  commons: { id: "commons", label: "Wikimedia Commons photos", url: "https://commons.wikimedia.org/", note: "Freely licensed photographs for the photo templates. Only CC0, public domain and CC-BY files are offered, and the credit is drawn onto the image." },
 };
-export const DEFAULT_EXTRAS = { hn: true, wikipedia: true, languagetool: true, holidays: true, pollinations: false };
+export const DEFAULT_EXTRAS = { hn: true, wikipedia: true, languagetool: true, holidays: true, commons: true, pollinations: false };
 
 const tagged = (message, kind, extra = {}) => Object.assign(new Error(message), { kind, ...extra });
 const withTimeout = (ms) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms); return { signal: c.signal, done: () => clearTimeout(t) }; };
@@ -141,4 +142,81 @@ export async function fetchImageAsDataUrl(url, { timeoutMs = 60000 } = {}) {
   if (!res.ok) throw tagged(`HTTP ${res.status}`, "http", { status: res.status });
   const blob = await res.blob();
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(tagged("Unreadable image.", "unreadable")); r.readAsDataURL(blob); });
+}
+
+/* ---------- Wikimedia Commons: freely licensed photography ----------
+   Templates that want a photograph need one that is genuinely free to use in
+   a company post. Commons is keyless, CORS-enabled (origin=*), and every file
+   carries its licence and author — which the app then has to show, because
+   attribution is a condition of most of those licences, not a nicety.
+
+   Deliberately no Unsplash or Pexels: both need an API key, which a
+   frontend-only build would have to ship inside the bundle. */
+
+export const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
+
+const LICENCE_OK = /^(cc0|cc[- ]by([- ]sa)?([- ]\d(\.\d)?)?|public domain|pd|no restrictions)/i;
+
+export async function commonsPhotos(query, { limit = 12, signal } = {}) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const params = new URLSearchParams({
+    action: "query", format: "json", origin: "*",
+    generator: "search",
+    gsrsearch: `filetype:bitmap ${q}`,
+    gsrnamespace: "6",                       // File: namespace only
+    gsrlimit: String(Math.min(limit * 3, 50)),
+    prop: "imageinfo",
+    iiprop: "url|extmetadata|size",
+    iiurlwidth: "1200",
+  });
+
+  let res;
+  try {
+    res = await fetch(`${COMMONS_API}?${params}`, { signal });
+  } catch { return []; }
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  const pages = Object.values(data?.query?.pages || {});
+
+  return pages.map((p) => {
+    const info = p.imageinfo?.[0];
+    if (!info) return null;
+    const meta = info.extmetadata || {};
+    const strip = (v) => String(v?.value || "").replace(/<[^>]*>/g, "").trim();
+    const licence = strip(meta.LicenseShortName) || strip(meta.License);
+    /* A licence we cannot read is a licence we cannot promise is safe. */
+    if (!LICENCE_OK.test(licence)) return null;
+    /* Landscape only: these fill a 1200x630 frame, and a portrait crop loses
+       the subject. */
+    if (info.width && info.height && info.width / info.height < 1.2) return null;
+
+    const author = strip(meta.Artist) || strip(meta.Credit) || "Unknown author";
+    return {
+      id: p.pageid,
+      title: String(p.title || "").replace(/^File:/, "").replace(/\.[a-z]+$/i, ""),
+      url: info.thumburl || info.url,
+      fullUrl: info.url,
+      width: info.thumbwidth || info.width,
+      height: info.thumbheight || info.height,
+      author,
+      licence,
+      source: info.descriptionurl || `https://commons.wikimedia.org/?curid=${p.pageid}`,
+      /* Rendered onto the image itself, so the credit travels with the file
+         wherever it is posted. */
+      credit: `${author} · ${licence} · Wikimedia Commons`,
+    };
+  }).filter(Boolean).slice(0, limit);
+}
+
+/* Search terms from a post, not the whole post. A headline pasted into an
+   image search returns nothing; two or three nouns return something usable. */
+export function photoQuery(draft = {}, profile = {}) {
+  const stop = new Set("the a an and or but for with from into that this those these your our their you we they is are was were be been being of to in on at by as it its how why what when who".split(" "));
+  const words = `${draft.hook || ""} ${draft.body || ""}`.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/)
+    .filter((w) => w.length > 3 && !stop.has(w));
+  const counts = new Map();
+  words.forEach((w) => counts.set(w, (counts.get(w) || 0) + 1));
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([w]) => w);
+  return top.length ? top.join(" ") : String(profile.industry || "office").toLowerCase();
 }

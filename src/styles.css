@@ -300,6 +300,42 @@ select.ta{cursor:pointer;} select.ta option{background:var(--bg); color:var(--in
 .lk-warn{background:rgba(255,183,77,.14); border-color:rgba(255,183,77,.36); color:#FFB74D;}
 .lk-bad{background:rgba(255,122,102,.14); border-color:rgba(255,122,102,.36); color:#FF7A66;}
 
+/* ---------- image studio ----------
+   The thumbnails are the real templates rendered small, so what you pick is
+   exactly what you get — no stand-in art that flatters the result. */
+.tpl-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px;}
+.tpl{display:flex; flex-direction:column; gap:7px; text-align:left; padding:10px; cursor:pointer;
+     background:var(--panel); border:1px solid var(--line); border-radius:14px; color:inherit; font:inherit;
+     transition:border-color .15s, transform .15s;}
+.tpl:hover{border-color:var(--accent); transform:translateY(-1px);}
+.tpl.on{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
+.tpl-thumb{display:block; border-radius:9px; overflow:hidden; line-height:0; background:#0A0F1A;}
+.tpl-thumb svg{width:100%; height:auto; display:block;}
+.tpl-name{font-size:13.5px; font-weight:600;}
+.tpl-note{font-size:11.5px; line-height:1.45;}
+
+.photo-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin-top:6px;}
+.photo{position:relative; padding:0; border:2px solid transparent; border-radius:11px; overflow:hidden;
+       cursor:pointer; background:var(--panel); line-height:0;}
+.photo img{width:100%; height:104px; object-fit:cover; display:block;}
+.photo.on{border-color:var(--accent);}
+.photo:hover{border-color:var(--accent);}
+/* The licence is on every thumbnail, not only the chosen one — it is the
+   thing that decides whether a picture can be used at all. */
+.photo-cap{position:absolute; left:0; right:0; bottom:0; padding:3px 6px; font-size:10px; line-height:1.3;
+           background:rgba(0,0,0,.72); color:#fff; text-align:left; letter-spacing:.02em;}
+
+.studio{margin-top:16px; border:1px solid var(--line); border-radius:14px; padding:14px 16px; background:var(--panel);}
+.studio > summary{cursor:pointer; font-size:13.5px; font-weight:600; list-style:none;}
+.studio > summary::-webkit-details-marker{display:none;}
+.studio > summary::before{content:"▸ "; color:var(--muted);}
+.studio[open] > summary::before{content:"▾ ";}
+.studio > summary + *{margin-top:14px;}
+@media (max-width:700px){
+  .tpl-grid{grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));}
+  .photo img{height:84px;}
+}
+
 .diff{font-size:14.5px; line-height:1.7; white-space:pre-wrap; border:1px solid var(--line); border-radius:14px; padding:18px; background:var(--panel);}
 .diff .same{opacity:.55;}
 .diff .add{background:rgba(79,214,156,.2); border-radius:3px;}

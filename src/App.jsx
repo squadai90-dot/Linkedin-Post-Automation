@@ -864,13 +864,19 @@ Scores 0-100. "Evidence verified" passes only if every factual statement is one 
      which chooses the components that suit it (every post is written text;
      it may add one visual and/or a poll, article or carousel) and says why in
      one sentence. If the model is unreachable the answer is plain text. */
-  async function recommendFormat(text, apply) {
+  /* Reads the finished post and says what it thinks would suit it. It never
+     applies the answer: someone who has already made and edited an image
+     should not lose it to a suggestion they only wanted to see. */
+  async function recommendFormat(text) {
     setRecBusy(true);
     const r = await askJSON({
       capability: "reasoning",
-      system: `You choose the best LinkedIn post composition for an idea. ${JSON_RULE}`,
-      user: `Idea: "${text}"
-Every post is written text. Choose up to two extra components that genuinely help this idea, from: image, multi, video, document, poll, article, carousel.
+      system: `You choose the best LinkedIn post composition for a written post. ${JSON_RULE}`,
+      user: `The post as written:
+"""
+${String(text || "").slice(0, 2000)}
+"""
+Every post is written text. Choose up to two extra components that genuinely help THIS post, from: image, multi, video, document, poll, article, carousel.
 At most one of image, multi, video, document. Prefer nothing extra over a weak fit.
 Rules of thumb: a debatable question or a choice → poll; a number or a single claim → image; a step-by-step or a list → document or carousel; a deep explanation → article; a demo or a story → video.
 {"formats":["poll"],"why":"one short sentence"}`,
@@ -879,8 +885,7 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
     });
     const picked = normalizeFormats((r.formats || (r.format ? [r.format] : [])).filter((f) => FORMAT_BY_ID[f]));
     setRecFormat(picked);
-    apply?.(picked);
-    notify(`Unison suggests ${labelFor(picked)} — ${r.why}`);
+    notify(`Unison suggests ${labelFor(picked)} — ${r.why} Tap what you want; nothing was changed.`);
     setRecBusy(false);
   }
 
@@ -1657,13 +1662,14 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
 
   const appProps = {
     idea, stage, steps, research, angles, angle, draft, setDraft, verification, setVerification,
-    quality, dupDismissed, setDupDismissed, media, format, formats, fmt, versions, schedule, setSchedule, publishState, attempts, publishError, publishVia,
+    quality, dupDismissed, setDupDismissed, media, format, formats, setFormats, fmt, versions, schedule, setSchedule, publishState, attempts, publishError, publishVia,
     assets, patchAssets, mstate, makeImage, makeImageSet, retile, addTile, makeVideo, makeDocument,
     makeCarousel, reslide, moveItem, dropItem, editSlide, editDocPage, makePoll, makeArticle, editArticle,
     ingestDocument, attachUpload, exportVideo,
     analytics, busy, tone, setTone, pov, setPov, length, setLength, showDetail, setShowDetail,
     openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter, approve, reject, confirmSchedule,
     publishNow, runDiscovery, setDrawer, reset, cancelWork, setFailMode, undoStack, pushUndo, undo,
+    recommendFormat: () => recommendFormat([draft?.hook, draft?.body, draft?.cta].filter(Boolean).join("\n\n")), recommending: recBusy, recommended: recFormat,
     publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras, publishReady,
     setModal: openModal,
   };
@@ -1705,7 +1711,6 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
               composer={
                 <CreateFlow
                   onStart={(f, t) => runDiscovery(t, f)}
-                  recommend={recommendFormat} recommending={recBusy} recommended={recFormat}
                   seed={seedIdea} clearSeed={() => setSeedIdea("")}
                 />
               }
