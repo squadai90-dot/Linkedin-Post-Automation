@@ -2,6 +2,7 @@ node_modules
 dist
 .vercel
 .env*
+!.env.example
 playwright-report
 test-results
 dist-artifact

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   extractJSON, normalizeDraft, normalizeVerification, normalizeQuality,
-  normalizeAngles, normalizeResearch, friendlyError, rateFor, HOSTED_MODELS,
+  normalizeAngles, normalizeResearch, friendlyError, rateFor, MODELS,
 } from "../src/lib/ai.js";
 
 describe("extractJSON", () => {
@@ -140,15 +140,21 @@ describe("friendlyError", () => {
 });
 
 describe("pricing", () => {
-  it("has a rate for every listed model", () => {
-    HOSTED_MODELS.forEach((m) => {
+  it("prices every paid model, input below output", () => {
+    MODELS.anthropic.forEach((m) => {
       const [inR, outR] = rateFor(m.id);
       expect(inR).toBeGreaterThan(0);
       expect(outR).toBeGreaterThan(inR);
     });
   });
 
-  it("falls back to a rate for an unknown model", () => {
-    expect(rateFor("something-else")).toHaveLength(2);
+  it("prices every Groq model at zero, so the cost line can say free", () => {
+    MODELS.groq.forEach((m) => expect(rateFor(m.id)).toEqual([0, 0]));
+  });
+
+  it("treats a model id it has never seen as free", () => {
+    // Groq adds ids between releases; the picker discovers them at runtime.
+    // Guessing a price for one would put an invented number in front of the team.
+    expect(rateFor("some-new-groq-model")).toEqual([0, 0]);
   });
 });

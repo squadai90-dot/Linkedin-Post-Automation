@@ -10,10 +10,10 @@
     "lint": "eslint src api tests e2e scripts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "VITE_GROQ_API_KEY= VITE_ANTHROPIC_API_KEY= playwright test",
     "check": "npm run lint && npm run test && npm run build",
-    "build:preview": "vite build --config vite.artifact.config.js && node scripts/build-preview.mjs --sandbox",
-    "build:standalone": "vite build --config vite.artifact.config.js && node scripts/build-preview.mjs"
+    "build:preview": "VITE_GROQ_API_KEY= VITE_ANTHROPIC_API_KEY= vite build --config vite.artifact.config.js && node scripts/build-preview.mjs --sandbox",
+    "build:standalone": "VITE_GROQ_API_KEY= VITE_ANTHROPIC_API_KEY= vite build --config vite.artifact.config.js && node scripts/build-preview.mjs"
   },
   "dependencies": {
     "mammoth": "1.8.0",

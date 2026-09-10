@@ -283,6 +283,15 @@ select.ta{cursor:pointer;} select.ta option{background:var(--bg); color:var(--in
 .tabs button{background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); font:inherit; font-size:13.5px; font-weight:600; padding:10px 14px; cursor:pointer; white-space:nowrap;}
 .tabs button.on{color:var(--ink); border-bottom-color:var(--accent);}
 
+/* Segmented control — a two-or-three-way choice where a dropdown would hide
+   the alternative. Wraps rather than scrolls, so it survives a phone. */
+.segs{display:flex; flex-wrap:wrap; gap:6px;}
+.seg{flex:1 1 140px; background:var(--panel); border:1px solid var(--line); border-radius:10px; color:var(--muted);
+     font:inherit; font-size:13.5px; font-weight:600; padding:9px 12px; cursor:pointer; text-align:center; transition:border-color .15s, color .15s;}
+.seg:hover{border-color:var(--accent);}
+.seg.on{color:var(--ink); border-color:var(--accent); background:rgba(124,140,255,.12);}
+.seg .u-muted{font-weight:500;}
+
 .diff{font-size:14.5px; line-height:1.7; white-space:pre-wrap; border:1px solid var(--line); border-radius:14px; padding:18px; background:var(--panel);}
 .diff .same{opacity:.55;}
 .diff .add{background:rgba(79,214,156,.2); border-radius:3px;}

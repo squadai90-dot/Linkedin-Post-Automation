@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, HOSTED_MODELS, rateFor, aiRouter } from "../lib/ai.js";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, PROVIDERS, MODELS, modelsFor, rateFor, aiRouter, hostedProvider, activeProvider, friendlyError } from "../lib/ai.js";
 import { PUBLISH_RELAY_PATH, MAKE_CONFIG } from "../lib/publish.js";
 import { imageProvider, videoProvider } from "../lib/media.js";
 import { TIMEZONES, localTimezone } from "../lib/dates.js";
@@ -48,10 +48,37 @@ export function Settings(props) {
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
-  const [keyDraft, setKeyDraft] = useState(aiSettings?.apiKey || "");
-  useEffect(() => { setKeyDraft(aiSettings?.apiKey || ""); }, [aiSettings?.apiKey]);
-  const [inRate, outRate] = rateFor(aiSettings?.model || AI_CONFIG.hostedModel);
+  const provider = aiSettings?.provider || AI_CONFIG.provider;
+  const meta = PROVIDERS[provider] || activeProvider();
+  const savedKey = aiSettings?.keys?.[provider] || "";
+  const model = aiSettings?.models?.[provider] || AI_CONFIG.models[provider] || "";
+  const [keyDraft, setKeyDraft] = useState(savedKey);
+  useEffect(() => { setKeyDraft(savedKey); }, [savedKey]);
+
+  /* Groq retires model ids on its own schedule, so the picker asks the key
+     what it can actually use rather than trusting a list we shipped. */
+  const [liveModels, setLiveModels] = useState(null);
+  const [modelErr, setModelErr] = useState(null);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const refreshModels = useCallback(async () => {
+    setLoadingModels(true); setModelErr(null);
+    try { setLiveModels(await hostedProvider.listModels()); }
+    catch (e) { setModelErr(friendlyError(e)); }
+    finally { setLoadingModels(false); }
+  }, []);
+  useEffect(() => { setLiveModels(null); setModelErr(null); }, [provider, savedKey]);
+  const modelOptions = useMemo(() => {
+    const known = new Map((MODELS[provider] || []).map((m) => [m.id, m]));
+    const ids = liveModels?.length ? liveModels : modelsFor(provider).map((m) => m.id);
+    const list = ids.map((id) => known.get(id) || { id, label: id, rates: [0, 0], note: "" });
+    /* Whatever is selected must stay selectable, even if the list lost it. */
+    return list.some((m) => m.id === model) || !model ? list : [{ id: model, label: model, rates: [0, 0], note: "Not in the provider's current list" }, ...list];
+  }, [provider, liveModels, model]);
+  const searchModels = useMemo(() => modelOptions.filter((m) => /compound/.test(m.id)), [modelOptions]);
+
+  const [inRate, outRate] = rateFor(model);
   const cost = (usage?.inTok || 0) * inRate + (usage?.outTok || 0) * outRate;
+  const quota = AI_STATUS.quota;
   const setP = (k) => (e) => setProfile({ ...profile, [k]: e.target.value });
 
   async function testAI() {
@@ -134,44 +161,81 @@ export function Settings(props) {
             <Row title="Status" sub={aiInfo ? aiInfo.summary : "Checking…"}>
               <span className={"dot " + (aiInfo ? (aiInfo.ready ? "g" : "r") : "y")} style={{ flex: "none" }} />
             </Row>
-            <Row title="Web search" sub="Lets research and discovery pull real sources with links. Hosted calls only.">
+            <Row title="Web search" sub={meta.free ? "Lets research and discovery pull real sources with links, using Groq's compound model. Free." : "Lets research and discovery pull real sources with links. Billed per search."}>
               <Toggle on={searchOn} set={setSearchOn} label="Web search" />
             </Row>
           </div>
 
           <div className="conn">
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Hosted AI (Anthropic)</div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Text and reasoning</div>
             <div className="u-muted" style={{ fontSize: 13, marginBottom: 12 }}>
-              {aiInfo?.mode === "relay"
-                ? "This deployment has an AI relay, so the key lives on the server. Nothing to enter here."
-                : "Frontend-only: the key is stored in this browser only (never in the saved session or exports) and calls go straight to Anthropic. Use a key from console.anthropic.com that is scoped to this team."}
+              Every written feature — discovery, research, drafting, evidence checks, the health score, image and video prompts — runs on the provider chosen here.
             </div>
-            {aiInfo?.mode !== "relay" && (
-              <Field label="API key">
+
+            <Field label="Provider">
+              <div className="segs" role="radiogroup" aria-label="AI provider">
+                {Object.values(PROVIDERS).map((p) => (
+                  <button key={p.id} role="radio" aria-checked={provider === p.id} className={"seg " + (provider === p.id ? "on" : "")} onClick={() => updateAI({ provider: p.id })}>
+                    {p.label} <span className="u-muted">· {p.free ? "free" : "paid"}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <div className="u-muted" style={{ fontSize: 12.5, margin: "-4px 0 12px" }}>{meta.note}</div>
+
+            {aiInfo?.mode === "relay" ? (
+              <div className="u-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                This deployment has an AI relay, so the key lives on the server. Nothing to enter here.
+              </div>
+            ) : (
+              <Field label={`${meta.label} API key`} hint={<>Stored in this browser only — never in the saved session or an export. <a href={meta.keyUrl} target="_blank" rel="noreferrer">Get a key</a>.</>}>
                 <div className="row">
-                  <input className="ta mono" style={{ flex: 1, minWidth: 220 }} type={showKey ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder="sk-ant-…" value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} onBlur={() => keyDraft !== aiSettings?.apiKey && updateAI({ apiKey: keyDraft })} />
+                  <input className="ta mono" style={{ flex: 1, minWidth: 220 }} type={showKey ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder={meta.keyPlaceholder} value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} onBlur={() => keyDraft !== savedKey && updateAI({ keys: { [provider]: keyDraft } })} />
                   <button className="btn sm" onClick={() => setShowKey(!showKey)}>{showKey ? "Hide" : "Show"}</button>
-                  {keyDraft !== (aiSettings?.apiKey || "") && <button className="btn acc sm" onClick={() => updateAI({ apiKey: keyDraft })}>Save</button>}
-                  {aiSettings?.apiKey && <button className="btn sm" onClick={() => { setKeyDraft(""); updateAI({ apiKey: "" }); }}>Remove</button>}
+                  {keyDraft !== savedKey && <button className="btn acc sm" onClick={() => updateAI({ keys: { [provider]: keyDraft } })}>Save</button>}
+                  {savedKey && <button className="btn sm" onClick={() => { setKeyDraft(""); updateAI({ keys: { [provider]: "" } }); }}>Remove</button>}
                 </div>
               </Field>
             )}
+
             <div className="grid2">
-              <Field label="Model" hint={HOSTED_MODELS.find((m) => m.id === aiSettings?.model)?.note}>
-                <select className="ta" value={aiSettings?.model || AI_CONFIG.hostedModel} onChange={(e) => updateAI({ model: e.target.value })}>
-                  {HOSTED_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label} · ${m.rates[0]} / ${m.rates[1]} per M tokens</option>)}
+              <Field label="Model" hint={modelErr || modelOptions.find((m) => m.id === model)?.note}>
+                <select className="ta" value={model} onChange={(e) => updateAI({ models: { [provider]: e.target.value } })}>
+                  {modelOptions.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}{m.rates[0] ? ` · $${m.rates[0]} / $${m.rates[1]} per M tokens` : " · free"}</option>
+                  ))}
                 </select>
               </Field>
-              <Field label="Thinking depth" hint="Low is fastest. Medium is right for drafting. High for the final rewrite.">
-                <select className="ta" value={aiSettings?.effort || "medium"} onChange={(e) => updateAI({ effort: e.target.value })}>
-                  <option value="low">Low — fastest</option><option value="medium">Medium — balanced</option><option value="high">High — most careful</option>
-                </select>
-              </Field>
+              {meta.free ? (
+                <Field label="Search model" hint="Used only when Web search is on. Runs its own web lookups.">
+                  <select className="ta" value={aiSettings?.searchModel || AI_CONFIG.searchModel} onChange={(e) => updateAI({ searchModel: e.target.value })}>
+                    {(searchModels.length ? searchModels : [{ id: "groq/compound", label: "Compound (web search)" }, { id: "groq/compound-mini", label: "Compound mini (web search)" }]).map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Thinking depth" hint="Low is fastest. Medium is right for drafting. High for the final rewrite.">
+                  <select className="ta" value={aiSettings?.effort || "medium"} onChange={(e) => updateAI({ effort: e.target.value })}>
+                    <option value="low">Low — fastest</option><option value="medium">Medium — balanced</option><option value="high">High — most careful</option>
+                  </select>
+                </Field>
+              )}
             </div>
+
             <div className="row">
               <button className="btn sm" disabled={testing} onClick={testAI}>{testing ? "Testing…" : "Test connection"}</button>
+              {meta.free && <button className="btn sm" disabled={loadingModels || !savedKey} onClick={refreshModels}>{loadingModels ? "Loading…" : "Refresh model list"}</button>}
               <button className="btn sm" onClick={() => refreshAI?.()}>Re-check</button>
             </div>
+
+            {quota && (
+              <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+                Free allowance left: <b>{quota.requests.remaining ?? "—"}</b> of {quota.requests.limit ?? "—"} requests
+                {quota.tokens.limit ? <> · <b>{(quota.tokens.remaining ?? 0).toLocaleString()}</b> of {quota.tokens.limit.toLocaleString()} tokens</> : null}
+                {quota.requests.reset ? ` · resets in ${quota.requests.reset}` : ""}
+              </div>
+            )}
           </div>
 
           <div className="conn">
@@ -193,7 +257,7 @@ export function Settings(props) {
             ))}
           </div>
           <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-            Estimated spend ${cost.toFixed(3)} at {aiSettings?.model || AI_CONFIG.hostedModel} list prices · {usage.fails} call{usage.fails === 1 ? "" : "s"} fell back to sample data · research is cached per topic for the session.
+            {meta.free ? <>No spend — {model} is on {meta.label}'s free tier.</> : <>Estimated spend ${cost.toFixed(3)} at {model} list prices.</>} {usage.fails} call{usage.fails === 1 ? "" : "s"} fell back to sample data · research is cached per topic for the session.
           </div>
           {Object.keys(usage.byEngine || {}).length > 0 && (
             <div className="tbl-wrap" style={{ marginTop: 12 }}>
@@ -355,7 +419,7 @@ export function Settings(props) {
               <thead><tr><th>Capability</th><th>Intended</th><th>Actually used</th></tr></thead>
               <tbody>
                 {Object.entries(MODEL_REGISTRY).map(([k, v]) => (
-                  <tr key={k}><td>{k}</td><td className="u-muted">{v.provider === "ollama" ? `Local · ${AI_CONFIG.localModel} → hosted` : v.label}</td><td className="mono" style={{ fontSize: 12 }}>{AI_STATUS.routed[k] || "—"}</td></tr>
+                  <tr key={k}><td>{k}</td><td className="u-muted">{v.provider === "text" ? aiRouter.describe(k) : v.label}</td><td className="mono" style={{ fontSize: 12 }}>{AI_STATUS.routed[k] || "—"}</td></tr>
                 ))}
               </tbody>
             </table>

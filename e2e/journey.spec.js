@@ -8,6 +8,7 @@ import { test, expect } from "@playwright/test";
 const stubExternals = async (page) => {
   // Nothing should reach the network in a test run.
   await page.route("**://api.anthropic.com/**", (r) => r.abort());
+  await page.route("**://api.groq.com/**", (r) => r.abort());
   await page.route("**://hook.*.make.com/**", (r) => r.abort());
   await page.route("**://hn.algolia.com/**", (r) => r.fulfill({ json: { hits: [] } }));
   await page.route("**://en.wikipedia.org/**", (r) => r.fulfill({ json: { query: { search: [] } } }));
@@ -34,6 +35,49 @@ test.describe("desktop", () => {
     await expect(page.getByText(/AI not configured/)).toBeVisible();
     await expect(page.getByText(/Publishing not connected/)).toBeVisible();
     expect(errors).toEqual([]);
+  });
+
+  test("the AI tab defaults to the free provider and remembers a switch", async ({ page }) => {
+    await stubExternals(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "AI" }).click();
+
+    // Free by default — nobody has to choose to avoid a bill.
+    const groq = page.getByRole("radio", { name: /Groq/ });
+    await expect(groq).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByPlaceholder("gsk_…")).toBeVisible();
+    await expect(page.getByText(/free tier/i).first()).toBeVisible();
+
+    // Switching provider swaps the key field, so a key is never sent to the
+    // wrong service.
+    await page.getByRole("radio", { name: /Anthropic/ }).click();
+    await expect(page.getByPlaceholder("sk-ant-…")).toBeVisible();
+    await expect(page.getByPlaceholder("gsk_…")).toHaveCount(0);
+
+    // And it survives a reload, because it is a setting, not a mode.
+    await page.reload();
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "AI" }).click();
+    await expect(page.getByRole("radio", { name: /Anthropic/ })).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("a key typed into settings never reaches the exported session", async ({ page }) => {
+    await stubExternals(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("tab", { name: "AI" }).click();
+    await page.getByPlaceholder("gsk_…").fill("gsk_secret_probe_value");
+    await page.getByRole("button", { name: "Save" }).first().click();
+
+    const stored = await page.evaluate(() => ({
+      session: localStorage.getItem("unison:session:v1") || "",
+      ai: localStorage.getItem("unison:ai:v1") || "",
+    }));
+    // The key lives in its own entry so clearing or exporting a session
+    // cannot carry it anywhere.
+    expect(stored.ai).toContain("gsk_secret_probe_value");
+    expect(stored.session).not.toContain("gsk_secret_probe_value");
   });
 
   test("settings opens on every tab and keeps what you type", async ({ page }) => {
@@ -218,6 +262,7 @@ test.describe("mobile", () => {
     await page.getByRole("button", { name: "Settings", exact: true }).first().click();
     await expect(page.getByRole("tab", { name: "Workspace" })).toBeVisible();
     await page.getByRole("tab", { name: "AI" }).click();
-    await expect(page.getByText("Hosted AI (Anthropic)")).toBeVisible();
+    await expect(page.getByText("Text and reasoning")).toBeVisible();
+    await expect(page.getByRole("radio", { name: /Groq/ })).toBeVisible();
   });
 });

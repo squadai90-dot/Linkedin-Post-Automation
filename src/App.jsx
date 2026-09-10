@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
 import { STORE_KEY, persistentStore, sanitizeSession } from "./lib/store.js";
 import { P, S } from "./lib/pointer.js";
-import { friendlyError, askJSON, JSON_RULE, fb, WEB_SEARCH_TOOL, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
+import { friendlyError, askJSON, JSON_RULE, fb, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
 import { EMPTY_CONNECTION, withDerived, linkedinService, readCallbackParams } from "./lib/linkedin.js";
 import { MAKE_CONFIG, makeLinkedInService } from "./lib/publish.js";
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
@@ -519,7 +519,7 @@ Score 0-100 for how worth posting each is this week. gap = "open" if the Page ha
 ${brief}
 ${shape}
 Be terse. The whole reply must fit in 400 words.`,
-        tools: [WEB_SEARCH_TOOL],
+        search: true,
         fallback: () => null, track: track("Discovery"), signal,
       }) : null;
       if (id !== oppRunRef.current) return;
@@ -595,7 +595,7 @@ Tier 1 = official/primary, 2 = major publication, 3 = industry press, 4 = blogs/
 Search the web and return the real URL of every source. Prefer sources from the last 90 days.
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 400 words.`,
-          tools: [WEB_SEARCH_TOOL],
+          search: true,
           fallback: () => null, track: track("Discovery"), signal,
         });
         if (id !== runRef.current) return;

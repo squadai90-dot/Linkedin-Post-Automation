@@ -72,27 +72,59 @@ activity log. Nothing here leaves the browser.
 
 ### 2. AI (Settings → AI)
 
-The writing, research, evidence and quality engines need a model. There are
-three ways to give them one, tried in this order:
+Every written feature — discovery, research, drafting, evidence checks, the
+health score, image and video prompts — runs on one provider, chosen here.
 
-1. **Local model (free, private).** If [Ollama](https://ollama.com) is running
-   on the same machine, Unison uses it. Set the endpoint and model tag under
-   Settings → AI. Web search is not available on this route.
-2. **The AI relay** (`api/ai.js`, see *Optional serverless relays* below). When
-   deployed, the key lives on the server and nothing is stored in the browser.
-3. **A key in this browser.** Paste an Anthropic API key from
-   [console.anthropic.com](https://console.anthropic.com). It is kept in this
-   browser's `localStorage` under `unison:ai:v1`, never in the saved session and
-   never in an export. Calls go straight to `api.anthropic.com`.
+**Groq is the default and it is free.** Its free tier meters requests and
+tokens per day and the counters reset 24 hours after your first call, which is
+why it suits a small internal team. Get a key at
+[console.groq.com/keys](https://console.groq.com/keys) — it takes about a
+minute and needs no card.
 
-> **Be deliberate about option 3.** A key in a browser is visible to anyone with
-> access to that browser profile and to any script on the page. Use a key scoped
-> to this team, rotate it on a schedule, and prefer options 1 or 2 for shared or
-> public deployments.
+Three ways to give the app a key, tried in this order:
 
-Model, thinking depth and estimated spend are all on the same tab. Default:
-Claude Opus 5 at medium effort. **Test connection** proves it works before you
-rely on it.
+1. **The AI relay** (`api/ai.js`, see *Optional serverless relays* below). When
+   deployed, the key lives on the server and never reaches the browser. This is
+   the right choice for a shared URL.
+2. **Settings → AI.** Paste the key into the field. It is kept in this
+   browser's `localStorage` under `unison:ai:v1`, never in the saved session
+   and never in an export. Calls go straight to the provider. This is the right
+   choice for a laptop.
+3. **`.env.local`.** Copy `.env.example` to `.env.local` and set
+   `VITE_GROQ_API_KEY`. `npm run dev` picks it up so nobody has to paste a key
+   after a hard refresh.
+
+> **Option 3 puts the key inside the built JavaScript.** That is how Vite
+> works: every `VITE_*` variable is inlined at build time, so anyone who can
+> open the page can read it. `npm run build` prints a warning when it happens.
+> Fine for a build that stays on your own machines; use option 1 or 2 for
+> anything with a URL. The artifact builds (`build:preview`, `build:standalone`)
+> blank these variables, so a handover file never carries a key.
+
+Optionally, a **local model**: if [Ollama](https://ollama.com) is running on the
+same machine, turn it on and Unison will prefer it. It is off by default — the
+probe costs about 1.5 seconds and most machines do not run Ollama. Web search is
+not available on this route.
+
+**Choosing a model.** Groq retires model ids on its own schedule, so the picker
+asks your key what it can actually use — press **Refresh model list**. The
+shipped default is Llama 3.3 70B. Nothing in the app hard-codes a model name;
+`MODEL_REGISTRY` in `src/lib/ai.js` maps capabilities to providers.
+
+**Web search.** Groq runs search inside its `groq/compound` models rather than
+as a separate tool, so turning on Web search swaps the model for that one call.
+It is free and needs no extra key. On Anthropic the same switch attaches the
+server-side `web_search` tool, which is billed.
+
+**Anthropic** stays available for when a draft needs the strongest model
+available. Switch provider at the top of the tab; each provider keeps its own
+key and model, so switching back loses nothing. Thinking depth applies to
+Anthropic only.
+
+**Test connection** proves it works before you rely on it. If the free daily
+allowance is visible, it appears under the buttons — some providers do not
+expose those numbers to a browser, in which case nothing is shown rather than a
+guess.
 
 ### 3. Publishing (Settings → LinkedIn)
 
@@ -200,14 +232,15 @@ the app detects them and adapts. Deploy them if you want keys off the browser:
 
 | Variable | Used by | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | `api/ai.js` | Holds the AI key server-side |
+| `GROQ_API_KEY` | `api/ai.js` | Holds the free AI key server-side (default provider) |
+| `ANTHROPIC_API_KEY` | `api/ai.js` | Optional; only if the team also uses Anthropic |
 | `MAKE_LINKEDIN_WEBHOOK_URL` | `api/publish.js` | Holds the webhook server-side |
 | `UNISON_RELAY_TOKEN` | both | Optional shared secret; set the same value in the browser under `localStorage["unison:relay-token"]` |
 
 Both answer `GET` with a health check that sends nothing:
 
 ```bash
-curl https://<your-app>/api/ai        # {"service":"unison-ai-relay",...}
+curl https://<your-app>/api/ai        # {"service":"unison-ai-relay","providers":{"groq":true,...}}
 curl https://<your-app>/api/publish   # {"service":"unison-publish-relay",...}
 ```
 
@@ -282,7 +315,7 @@ Then walk this by hand with nothing configured:
 - [ ] Phone width: the menu reaches every view and nothing scrolls sideways
 - [ ] Light theme renders
 
-Then configure an AI key and a Make webhook and repeat the last three steps of
+Then configure a free Groq key and a Make webhook and repeat the last three steps of
 the journey with a real post.
 
 ---
