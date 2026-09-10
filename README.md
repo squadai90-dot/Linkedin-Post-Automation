@@ -27,11 +27,23 @@ npm run preview    # http://localhost:4173
 Deploy `dist/` to any static host (Vercel, Netlify, S3, an internal nginx). No
 build-time environment variables are required.
 
-For a shareable single file — no server, no build step at the other end —
-`npm run build:preview` writes `preview.html` with the app inlined. Opening it
-from disk works; note that a sandboxed host (or `file://`) may block outbound
-requests, in which case the AI and publishing steps stay in their labelled
-fallback mode and file downloads are unavailable.
+### One file, no install
+
+`npm run build:standalone` writes `unison-content-os.html` — the whole app
+inlined into a single file. Save it anywhere and double-click it; no server, no
+`npm install` at the other end. Everything works, including saved sessions,
+because the browser keeps them per file.
+
+The one caveat, which the file states itself when you open it that way: a page
+loaded over `file://` sends no origin, so an AI key may be refused. To use one,
+serve the folder instead and open the address it prints:
+
+```bash
+npx serve .
+```
+
+`npm run build:preview` writes the same thing as `preview.html` for a hosted
+sandbox, where outbound requests are blocked and file downloads are unavailable.
 
 | Command | What it does |
 |---|---|
@@ -42,7 +54,8 @@ fallback mode and file downloads are unavailable.
 | `npm test` | Vitest unit tests (91 tests, no network) |
 | `npm run test:e2e` | Playwright journey tests against the built app |
 | `npm run check` | lint + unit tests + build, in that order |
-| `npm run build:preview` | One self-contained `preview.html` — the whole app inlined into a single file you can email, open from disk, or host anywhere |
+| `npm run build:standalone` | One self-contained `unison-content-os.html` you can email or double-click |
+| `npm run build:preview` | The same file as `preview.html`, for a hosted sandbox |
 
 ---
 
