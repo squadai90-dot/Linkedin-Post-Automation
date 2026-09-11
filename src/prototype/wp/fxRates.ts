@@ -18,6 +18,43 @@ export const SPOT_YEARS = ["2016", "2017", "2018", "2019", "2020", "2021", "2022
 export const CURRENCY_CODES = Object.keys(FX_META).sort();
 
 /** Two-digit or four-digit year out of a "12/31/25" style period end. */
+/* Currencies pegged to the US dollar, at the peg's own precision.
+ *
+ * The Treasury 12/31 table publishes KYD at 0.82, two decimals; the peg is
+ * 0.833, and the prior return filed at 0.833. Translating a balance sheet at
+ * 0.82 moves every opening figure by about 1.6% against the filing it is
+ * supposed to continue — on the reconciliation test that was 472 dollars of
+ * cash, 332 of receivables and 262 on net current assets, all of it noise
+ * with no accounting event behind it.
+ *
+ * So a pegged currency takes its peg as the default year-end rate, tagged so
+ * the provenance sheet says where it came from, with the published table
+ * still shown beside it and a manual entry still overriding both. Only hard
+ * pegs are listed: a managed float is not a peg, and guessing one would be
+ * worse than the table. Divide rates, as everywhere here: units per 1 USD. */
+export const PEGGED_SPOT: Record<string, { rate: number; note: string }> = {
+  AED: { rate: 3.6725, note: "UAE dirham pegged at 3.6725 per USD" },
+  AWG: { rate: 1.79, note: "Aruban florin pegged at 1.79 per USD" },
+  BBD: { rate: 2, note: "Barbados dollar pegged at 2 per USD" },
+  BHD: { rate: 0.376, note: "Bahraini dinar pegged at 0.376 per USD" },
+  BMD: { rate: 1, note: "Bermudian dollar pegged at par with the USD" },
+  BSD: { rate: 1, note: "Bahamian dollar pegged at par with the USD" },
+  BZD: { rate: 2, note: "Belize dollar pegged at 2 per USD" },
+  DJF: { rate: 177.721, note: "Djiboutian franc pegged at 177.721 per USD" },
+  ERN: { rate: 15, note: "Eritrean nakfa pegged at 15 per USD" },
+  JOD: { rate: 0.709, note: "Jordanian dinar pegged at 0.709 per USD" },
+  KYD: { rate: 0.833, note: "Cayman Islands dollar pegged at 0.833 per USD (US$1.20)" },
+  OMR: { rate: 0.3845, note: "Omani rial pegged at 0.3845 per USD" },
+  PAB: { rate: 1, note: "Panamanian balboa pegged at par with the USD" },
+  QAR: { rate: 3.64, note: "Qatari riyal pegged at 3.64 per USD" },
+  SAR: { rate: 3.75, note: "Saudi riyal pegged at 3.75 per USD" },
+  XCD: { rate: 2.7, note: "East Caribbean dollar pegged at 2.7 per USD" },
+};
+
+/** The peg for a currency, or null when it is not pegged to the dollar. */
+export const peggedRate = (code: string) =>
+  PEGGED_SPOT[String(code || "").toUpperCase().trim()] ?? null;
+
 export function yearFromPeriod(period: string): string | null {
   const m = String(period || "").match(/(\d{4})|(\d{2})\s*$/);
   if (!m) return null;
@@ -33,7 +70,27 @@ export type RateLookup = {
   cyYear: string | null;
   pyYear: string | null;
   source: string;
+  /** Set by applyPeg when the year-end rates came from a dollar peg rather
+      than the published table, with the published figures kept for
+      comparison — the FX view shows both and the preparer may disagree. */
+  pegged?: { note: string; published: { cy: number | null; py: number | null } } | null;
 };
+
+/** Replace a pegged currency's year-end rates with its peg, keeping what the
+    table published. A rate table the preparer uploaded is their own answer
+    and outranks the peg; the built-in table does not, because its two
+    decimals ARE the peg, rounded. Applied where the rates are filled, not in
+    the lookup, so a caller asking what the tables say still gets that. */
+export function applyPeg(hit: RateLookup, code: string, uploaded?: boolean): RateLookup {
+  const peg = uploaded ? null : peggedRate(code);
+  if (!peg) return hit;
+  return {
+    ...hit,
+    cyRate: peg.rate,
+    pyRate: peg.rate,
+    pegged: { note: peg.note, published: { cy: hit.cyRate, py: hit.pyRate } },
+  };
+}
 
 /** Resolve all three template rates for a currency and the two period ends. */
 export function lookupRates(

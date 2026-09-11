@@ -39,7 +39,7 @@
     "test:stale": "node tests/test_stale_values.cjs",
     "test:boy": "node tests/test_boy_carryforward.cjs",
     "test:numfmt": "node tests/test_number_format.cjs",
-    "test:all": "npm run test:stale && npm run test:boy && npm run test:numfmt && npm run test:stacked && npm run test:profile && npm run test:swiss && npm run test:ocr && npm run test:readstatus && npm run test:intake && npm run test:spanish && npm run test:schedb && npm run test:item2d && npm run test:translate && npm run test:sections && npm run test:sanitize && npm run test:rulesparity && npm run test:rules && npm run test:detect && npm run test:spaces && npm run test:fxparity && npm run test:fx && npm run test:aiparity && npm run test:ai && npm run test:ids && npm run test:sheets && npm run test:boygrp && npm run test:gen && npm run test:groq && npm run test:tasks && npm run test:taskstore && npm run test:aikey && npm run test:tables && npm run test:schedc && npm run test:layer && npm run test:bridge && npm run test:boot && npm run test:fixture && npm run test:boating && npm run test:p2 && npm run test:questionnaire && npm run test:p5 && npm run test:srcparity && npm run test:wired && npm run test:inject && npm run test:integrity && npm run test:guide",
+    "test:all": "npm run test:stale && npm run test:boy && npm run test:numfmt && npm run test:stacked && npm run test:profile && npm run test:swiss && npm run test:ocr && npm run test:readstatus && npm run test:intake && npm run test:spanish && npm run test:schedb && npm run test:item2d && npm run test:translate && npm run test:sections && npm run test:sanitize && npm run test:rulesparity && npm run test:rules && npm run test:detect && npm run test:spaces && npm run test:fxparity && npm run test:fx && npm run test:aiparity && npm run test:ai && npm run test:ids && npm run test:sheets && npm run test:boygrp && npm run test:gen && npm run test:groq && npm run test:tasks && npm run test:taskstore && npm run test:aikey && npm run test:tables && npm run test:schedc && npm run test:layer && npm run test:bridge && npm run test:boot && npm run test:fixture && npm run test:boating && npm run test:p2 && npm run test:questionnaire && npm run test:p5 && npm run test:qbgroups && npm run test:peg && npm run test:gates && npm run test:srcparity && npm run test:wired && npm run test:inject && npm run test:integrity && npm run test:guide",
     "build:full-DESTRUCTIVE": "node scripts/build.mjs && node scripts/build-server.mjs && node scripts/inject-layer.mjs",
     "test:stacked": "node tests/test_stacked_form.cjs",
     "test:profile": "node tests/test_profile_boxed.cjs",
@@ -61,7 +61,10 @@
     "test:boating": "node tests/test_fixture_boating.cjs",
     "test:p2": "node tests/test_boating_p2.cjs",
     "test:questionnaire": "node tests/test_questionnaire.cjs",
-    "test:p5": "node tests/test_boating_p5.cjs"
+    "test:p5": "node tests/test_boating_p5.cjs",
+    "test:qbgroups": "node tests/test_qb_groups.cjs",
+    "test:peg": "node tests/test_pegged_fx.cjs",
+    "test:gates": "node tests/test_gates_prefill.cjs"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.0",

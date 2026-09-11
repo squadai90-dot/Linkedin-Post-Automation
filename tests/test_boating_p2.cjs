@@ -161,11 +161,21 @@ t("the Boating residual is the 5,417 the hand-built tab plugged", () => {
 
 const store = fs.readFileSync(path.join(root, "src", "prototype", "wp", "store.ts"), "utf8");
 
-t("the residual is reported and suggested, never written", () => {
+/* The residual is never plugged on its own. It CAN be booked as a
+   translation adjustment, but only through a sign-off: the write lives in
+   resubmitReviewItem, keyed to an id of its own, and carries the preparer in
+   its source so the provenance sheet records a plug as a plug. */
+t("the residual is reported and suggested, never written on its own", () => {
   assert.ok(store.includes('id: "re-rollforward"'));
   assert.ok(store.includes("Nothing has been plugged"));
   assert.ok(store.includes("target: `${SHEET.re}!F24`, source: cfSource, suggestedValue: residual"));
-  assert.ok(!/ref: "F24", value/.test(store), "F24 must never be written by the tool");
+  // No F24 write anywhere in the write-building path …
+  const materialize = store.slice(store.indexOf("async function materializeCaseWrites"), store.indexOf("function provenanceRows"));
+  assert.ok(!/ref: "F24"/.test(materialize), "F24 must never be written while building the workbook");
+  // … and exactly one, behind the sign-off, in the resubmit path.
+  assert.ok(store.includes('id === "re-translation-adjustment"'), "the adjustment has its own id");
+  assert.ok(store.includes('sheet: SHEET.re, ref: "F24", value, reviewId: id'), "signing off books it");
+  assert.ok(store.includes("translation adjustment booked by the preparer"), "the audit line names who booked it");
 });
 
 t("Schedule F's opening RE is checked against Schedule J's", () => {

@@ -109,4 +109,4 @@ const val = (lines, key, field) => {
 
 const BANNERS = () => load("src/prototype/wp/sectionBanners.ts");
 
-module.exports = { toRows, book, val, ENG, STORE, SECT, BANNERS };
+module.exports = { toRows, book, val, ENG, STORE, SECT, BANNERS, LOAD: load };

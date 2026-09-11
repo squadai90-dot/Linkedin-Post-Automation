@@ -84,7 +84,7 @@ function daysBetweenPeriods(from?: string, to?: string): number | null {
 import { summarizeLedger, summarizeSalary, type LedgerSummary, type SalarySchedule } from "./relatedPartyLedger";
 import { addWorksheet, applyWrites, resolveTemplateRows, templateBytes, type CellValue, type Writes } from "./xlsxPatch";
 import { safeDownload } from "./safeBrowser";
-import { lookupRates, yearFromPeriod, FX_META } from "./fxRates";
+import { applyPeg, lookupRates, peggedRate, yearFromPeriod, FX_META } from "./fxRates";
 import { seedRateDb, type RateDb } from "./rateDb";
 import { PROVIDERS, fetchLiveRate, fxOfxAverage, isMostlyNonLatin, translateFree, type LiveRate } from "./providers";
 import { collectCaptionLabels, detectLanguage, displayLabel, isServiceErrorText, poisonedTranslationKeys, translateSourceCode } from "./captions";
@@ -194,7 +194,7 @@ export type DividendRec = {
 export type FxMeta = {
   source: string;
   asOf: string;
-  /** Short provenance label: IRS, Treasury, OFX, ECB, Live, Manual. */
+  /** Short provenance label: IRS, Treasury, Pegged, OFX, ECB, Live, Manual. */
   tag?: string;
   /** When a manual rate was typed (never the date it measures). */
   enteredOn?: string;
@@ -248,6 +248,10 @@ export type Entity = {
      asking again. */
   nameMismatch?: { statementName: string; priorName: string; source: string } | null;
   nameDecision?: { priorName: string; sameEntity: boolean } | null;
+  /** The rate the opening balance sheet was translated at, and why that one.
+      Written once, read by the provenance sheet and by every cell that
+      depends on the opening figures. */
+  openingRate?: { rate: number; why: string; source: string } | null;
   detected: Record<string, DetectedField>;
   lines: Record<string, LineValue>;
   relabels: Record<string, string>;
@@ -397,6 +401,7 @@ export function makeEntity(name: string, stakeholder: string): Entity {
     currencyConfirmed: false,
     nameMismatch: null,
     nameDecision: null,
+    openingRate: null,
     detected: {},
     lines: {},
     relabels: {},
@@ -1088,9 +1093,13 @@ export const actions = {
 
     const db = state.rateDb;
     const hit = {
-      ...lookupRates(code, ent.profile.cyEnd || "", ent.profile.pyEnd || "", {
-        irsAvg: db.irsAvg, spot: db.spot, source: db.source,
-      }),
+      ...applyPeg(
+        lookupRates(code, ent.profile.cyEnd || "", ent.profile.pyEnd || "", {
+          irsAvg: db.irsAvg, spot: db.spot, source: db.source,
+        }),
+        code,
+        !!db.uploadedAt,
+      ),
       ...(fiscal ? { avgRate: null, cyRate: null, pyRate: null } : null),
     };
 
@@ -1118,8 +1127,21 @@ export const actions = {
     const cyAsOf = ent.profile.cyEnd?.trim() || `12/31/${hit.cyYear}`;
     const pyAsOf = ent.profile.pyEnd?.trim() || `12/31/${hit.pyYear}`;
     put("avgRate", hit.avgRate, { source: `${db.source} · IRS yearly average`, asOf: `calendar ${hit.cyYear}`, tag: "IRS" });
-    put("cyRate", hit.cyRate, { source: `${db.source} · Treasury 12/31 spot`, asOf: cyAsOf, tag: "Treasury" });
-    put("pyRate", hit.pyRate, { source: `${db.source} · Treasury 12/31 spot`, asOf: pyAsOf, tag: "Treasury" });
+    /* A pegged currency takes its peg, and says so: the published table's
+       two decimals are a rounding of the peg, and translating an opening
+       balance sheet at the rounded figure moves every line against the
+       filing it continues. The table's own figure stays in the note. */
+    const spotSource = hit.pegged
+      ? `${hit.pegged.note} · published table ${hit.pegged.published.cy ?? "—"}`
+      : `${db.source} · Treasury 12/31 spot`;
+    const spotTag: FxMeta["tag"] = hit.pegged ? "Pegged" : "Treasury";
+    put("cyRate", hit.cyRate, { source: spotSource, asOf: cyAsOf, tag: spotTag });
+    put("pyRate", hit.pyRate, {
+      source: hit.pegged
+        ? `${hit.pegged.note} · published table ${hit.pegged.published.py ?? "—"}`
+        : `${db.source} · Treasury 12/31 spot`,
+      asOf: pyAsOf, tag: spotTag,
+    });
     updateEntity(entityId, { fx, fxAuto: true, fxMeta });
     if (hit.avgRate || hit.cyRate || hit.pyRate) {
       logEvent("Exchange rates applied", `${code} · avg ${hit.avgRate ?? "—"} (${hit.cyYear}) · CY spot ${hit.cyRate ?? "—"} · PY spot ${hit.pyRate ?? "—"} · ${db.source}`, ent.name, "system");
@@ -1441,6 +1463,17 @@ export const actions = {
     if (linked.length) {
       priorValue = linked[0].value;
       extraWrites = ent.extraWrites.map((w) => (w.reviewId === id ? { ...w, value } : w));
+      landed = true;
+    }
+
+    /* (a2) The translation adjustment has no write until it is signed off —
+       signing off IS the booking. The write carries who asked for it in its
+       source, so the provenance sheet records a plug as a plug. */
+    if (!landed && id === "re-translation-adjustment" && typeof value === "number") {
+      extraWrites = [...ent.extraWrites, {
+        sheet: SHEET.re, ref: "F24", value, reviewId: id,
+        source: `translation adjustment booked by the preparer — residual of the retained-earnings roll-forward${note ? ` · "${note}"` : ""}`,
+      }];
       landed = true;
     }
 
@@ -2448,7 +2481,21 @@ export const actions = {
 
         if (cf?.priorClosingUSD) {
           const cur0 = state.entities.find((e) => e.id === entityId);
-          const rate = Number(cur0?.fx?.pyRate);
+          /* WHICH rate turns the prior return's filed USD back into opening
+             local currency, in order of authority:
+
+               1. the rate the prior return itself printed (Sch H line 5e or
+                  the Schedule M header). Dividing the filed USD by anything
+                  else does not reproduce the local-currency figures that
+                  return was built from, and the difference is pure noise;
+               2. the currency's dollar peg, where there is one;
+               3. the published table.
+
+             Using the table where the filing stated its own rate is what put
+             the opening column 1.6% out on the reconciliation test. */
+          const rateSource = openingRateFor(cur0?.profile?.currency, numeric(cur0?.fx?.pyRate), cf.priorRate?.value)
+            ?? { rate: NaN, why: "no usable prior-year rate" };
+          const rate = rateSource.rate;
           if (cur0 && isFinite(rate) && rate > 0) {
             type BoyKey = "cash" | "ar" | "oca" | "depreciable" | "accumDep"
               | "ap" | "ocl" | "commonStock" | "re"
@@ -2502,10 +2549,10 @@ export const actions = {
               seeded.push(`${k}=${local.toLocaleString()}`);
             }
             if (seeded.length) {
-              updateEntity(entityId, { lines, relabels });
+              updateEntity(entityId, { lines, relabels, openingRate: { rate, why: rateSource.why, source: cfSource } });
               log.push(`${seeded.length} beginning-of-year balance(s) carried from the prior-year Form 5471`);
               logEvent("Beginning-of-year balances carried forward",
-                `${seeded.length} line(s) from ${cfSource} Sch F col (b), converted at the ${cur0.profile?.pyEnd || "prior year-end"} rate ${rate}`,
+                `${seeded.length} line(s) from ${cfSource} Sch F col (b), converted at ${rateSource.why}`,
                 cur0.name, "system");
             }
           }
@@ -3122,6 +3169,37 @@ type Routed = { field: "amount" | "boy" | "eoy"; value: number; year: number | n
     BEGINNING column and NEVER to the income statement. PDF rows with several
     numbers but no year identity are ambiguous and go to review instead of
     being guessed; spreadsheet rows keep the legacy positional behavior. */
+/** WHICH rate turns the prior return's filed USD back into opening local
+ *  currency, in order of authority:
+ *
+ *    1. the rate the prior return itself printed (Sch H line 5e, or the
+ *       Schedule M header). Dividing the filed USD by anything else does not
+ *       reproduce the local-currency figures that return was built from, and
+ *       the difference is noise with no accounting event behind it;
+ *    2. the currency's dollar peg, where there is one — the published table
+ *       rounds it, and the rounding moves every opening line;
+ *    3. the prior year-end rate in use.
+ *
+ * ONE definition, because the opening figure reaches three cells — Schedule F
+ * D61, Schedule J F15 and the Retained Earnings tab F10 — and two of them
+ * deriving it separately is what wrote the same figure twice with different
+ * values. Everything downstream reads this. */
+export function openingRateFor(
+  currency: string | null | undefined,
+  pyRate: number | null,
+  priorRate?: number | null,
+): { rate: number; why: string } | null {
+  if (typeof priorRate === "number" && priorRate > 0) {
+    return { rate: priorRate, why: `the rate the prior return printed (${priorRate})` };
+  }
+  const peg = peggedRate(currency || "");
+  if (peg) return { rate: peg.rate, why: peg.note };
+  if (typeof pyRate === "number" && pyRate > 0) {
+    return { rate: pyRate, why: `the prior year-end rate in use (${pyRate})` };
+  }
+  return null;
+}
+
 function routeRow(
   row: ExtractedRow,
   isBS: boolean,
@@ -3791,14 +3869,18 @@ async function materializeCaseWrites(
       const closing = numeric(String(ent.lines["BS:61"]?.eoy ?? ""));
       const filedUsd = cf.priorClosingUSD.re?.value;
       if (closing !== null && filedUsd !== undefined) {
-        const rateUsed = cf.priorRate?.value ?? pyRate ?? null;
+        /* The same rate Schedule F's opening column was built with — see
+           openingRateFor. Two derivations of one figure is the defect. */
+        const opening = ent.openingRate
+          ?? openingRateFor(ent.profile.currency, pyRate, cf.priorRate?.value);
+        const rateUsed = opening?.rate ?? null;
         const priorFc = rateUsed ? r2(filedUsd * rateUsed) : null;
         const ni = bookNetIncome(ent.lines);
         const distributions = r2(ent.dividends.reduce((n, d) => n + (Number(d.amountFunctional) || 0), 0));
         if (priorFc !== null && ni !== null) {
           w({
             sheet: SHEET.re, ref: "F10", value: priorFc, reviewId: "re-rollforward",
-            source: `${cfSource} · Schedule F line 22 US$${filedUsd.toLocaleString()} at ${rateUsed}${cf.priorRate ? " (the rate the prior filing states)" : " (prior year-end rate)"}`,
+            source: `${cfSource} · Schedule F line 22 US$${filedUsd.toLocaleString()} at ${rateUsed} — ${opening?.why ?? "no stated rate"}`,
           });
           const booksOpening = r2(closing - ni + distributions);
           const residual = r2(booksOpening - priorFc);
@@ -3810,6 +3892,19 @@ async function materializeCaseWrites(
               : `Retained earnings do not roll forward. Prior filing closed at US$${filedUsd.toLocaleString()} = ${priorFc.toLocaleString()} at ${rateUsed}; the books' closing ${closing.toLocaleString()} less net income ${ni.toLocaleString()} plus distributions ${distributions.toLocaleString()} implies an opening of ${booksOpening.toLocaleString()}. Difference ${residual.toLocaleString()} — a re-statement, a rate difference, or a prior return prepared from other figures. Nothing has been plugged: confirm the cause and enter it on the Retained Earnings tab (F24) so the tab ties to Schedule F.`,
             target: `${SHEET.re}!F24`, source: cfSource, suggestedValue: residual,
           });
+          /* The residual, offered as a single controlled action.
+             Deliberately its OWN item: "re-rollforward" already owns the F10
+             write, and resubmitting against that id would overwrite the prior
+             filing's opening balance instead of booking an adjustment. This
+             one carries no write until the preparer signs one off, so nothing
+             is ever plugged on its own. */
+          if (!ties) {
+            rv({
+              id: "re-translation-adjustment", level: "warn", category: "consistency",
+              message: `Book the ${residual.toLocaleString()} difference as a translation adjustment on the Retained Earnings tab (F24)? Saving the figure signs it off in your name, writes it with its own audit line, and makes the tab tie to Schedule F. Do this only if the difference IS translation — a re-statement or a prior return built from other figures needs the cause fixed, not a plug. Leave it alone to keep the difference visible.`,
+              target: `${SHEET.re}!F24`, source: cfSource, suggestedValue: residual,
+            });
+          }
         }
       }
       /* Schedule F's opening retained earnings (converted from the filed USD)
@@ -4625,6 +4720,16 @@ function provenanceRows(ent: Entity): CellValue[][] {
     rows.push(["Exchange rate", rateCell[key], "", "", "", value || "", meta?.tag || "",
                `source: ${meta?.source || "not set"}` +
                (meta?.asOf ? ` · as of ${meta.asOf}` : meta?.enteredOn ? ` · entered ${meta.enteredOn}` : "")]);
+  }
+
+  /* The rate the opening balance sheet was built at, named separately from
+     C61: it is often not C61 — a prior filing that printed its own rate wins
+     — and a reviewer comparing the opening column against the prior return
+     needs to know which figure was divided by what. */
+  if (ent.openingRate) {
+    rows.push(["Exchange rate", "opening balances (Schedule F column (a))", "", "", "",
+               ent.openingRate.rate, "",
+               `${ent.openingRate.why} · prior-year figures from ${ent.openingRate.source}`]);
   }
 
   const schE = (ent.extraWrites || []).find((w) => w.sheet === SHEET.schE && w.ref === "O16");

@@ -59,6 +59,7 @@ export const IRS_COUNTRY_CODES: Record<string, string> = {
   "romania": "RO", "russia": "RS", "rwanda": "RW",
   "saint kitts and nevis": "SC", "saint lucia": "ST",
   "saint vincent and the grenadines": "VC", "samoa": "WS", "san marino": "SM",
+  "sao tome and principe": "TP", "netherlands antilles": "NT",
   "saudi arabia": "SA", "senegal": "SG", "serbia": "RI", "seychelles": "SE",
   "sierra leone": "SL", "singapore": "SN", "sint maarten": "NN",
   "slovakia": "LO", "slovenia": "SI", "solomon islands": "BP",
@@ -99,6 +100,21 @@ const ALIASES: Record<string, string> = {
   "vatican": "vatican city", "cabo verde": "cape verde",
   "st kitts and nevis": "saint kitts and nevis", "st lucia": "saint lucia",
   "st vincent and the grenadines": "saint vincent and the grenadines",
+  /* The spellings the tool's own currency table uses. They reach this lookup
+     whenever a country is read from the functional currency rather than from
+     a document, so they are not optional. */
+  "south korean": "south korea", "korea, republic of": "south korea",
+  "antigua & barbuda": "antigua and barbuda",
+  "bosnia": "bosnia and herzegovina", "bosnia & herzegovina": "bosnia and herzegovina",
+  "sao tome & principe": "sao tome and principe",
+  "s\u00e3o tom\u00e9 and pr\u00edncipe": "sao tome and principe",
+  "somali": "somalia",
+  "trinidad & tobago": "trinidad and tobago",
+  "western samoa": "samoa",
+  "rep. of n macedonia": "north macedonia", "republic of north macedonia": "north macedonia",
+  "swaziland / eswatini-lilangeni": "eswatini",
+  "macao": "macau",
+  "cura\u00e7ao": "curacao",
 };
 
 /** Normalised for lookup: case, punctuation, a leading article and the

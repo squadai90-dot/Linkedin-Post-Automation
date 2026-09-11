@@ -118,6 +118,10 @@ export function FxRatesView() {
             <tbody>
               {[
                 { k: "avgRate", cell: "C59", label: "Average exchange rate", pub: published?.avgRate, src: `IRS yearly average ${cyYear || "—"}`, used: "Schedule C" },
+                /* The Published column is what the TABLES say, never the peg
+                   now in use: the point of the column is to let the preparer
+                   see the two side by side and disagree. applyPeg runs where
+                   the rates are filled, not in this lookup. */
                 { k: "cyRate", cell: "C60", label: "Current year end rate", pub: published?.cyRate, src: `Treasury spot ${active?.profile.cyEnd || (cyYear ? `12/31/${cyYear.slice(2)}` : "—")}`, used: "Schedule F col (b)" },
                 { k: "pyRate", cell: "C61", label: "Prior year end rate", pub: published?.pyRate, src: `Treasury spot ${active?.profile.pyEnd || (pyYear ? `12/31/${pyYear.slice(2)}` : "—")}`, used: "Schedule F col (a)" },
               ].map((r) => {
