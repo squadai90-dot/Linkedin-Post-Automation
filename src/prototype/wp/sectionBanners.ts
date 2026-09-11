@@ -50,6 +50,10 @@ export const SECTION_BANNERS: [RegExp, Section][] = [
   [/^activos?$/i, "assets"],
   [/^(gross margin|revenue|income|turnover|trading income|other income)$/i, "income"],
   [/^(profit\s*(and|&|or)\s*loss(\s+account|\s+statement)?|income statement|statement of (comprehensive income|profit or loss|financial performance)|trading account|winst.?en.?verliesrekening)$/i, "income"],
+  /* QuickBooks closes a P&L with an "Other Income" group and an "Other
+     Expenses" group. Without the second one, "8150 Exchange gain or loss"
+     printed under it was booked as a GAIN of 10.16 rather than a loss. */
+  [/^other\s+expenses?$/i, "costs"],
   [/^(operating costs|operating expenses|expenses|costs|overheads|depreciations?|financial result|financial (?:income and )?expenses?|taxes|administrative expenses|selling expenses|personnel costs|employment expenses)$/i, "costs"],
   /* Bought-in cost of the goods sold. Its own section because a caption
      printed here can never be revenue, however it reads — see sectionOk. */

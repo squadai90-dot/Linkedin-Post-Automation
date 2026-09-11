@@ -786,3 +786,67 @@ mapping now; the no-mapping check reads the catalogue instead of the bundle
 text, so a keyword can no longer pass by sitting anywhere but last in its
 group), `test_questionnaire` (line 6), `test_sections` (26 banners),
 `test_ids` (DERIVED_IDS read as a set, not as one adjacency of it).
+
+## Session 2026-09-11 — SHORI CORPORATION: tool vs hand-prepared work paper
+
+A second cell-by-cell reconciliation, against the 2024 work paper for SHORI
+CORPORATION (Belize, USD; books kept in Power Real Group, LLC; QuickBooks P&L
+and balance sheet plus the 2023 US return). The tool reported net income of
++1,291,419.39 against the statement's own −197.98. Schedule F balanced, but
+only because the misclassified equity offset itself inside the liability pool.
+Full reconciliation delivered as an Excel report (gitignored — client data).
+
+**The finding that mattered most was our own.** Six rule groups written on
+2026-09-10 — contra-revenue, the payment-processor costs, "Taxes and Licenses",
+the cash captions, payroll and the two equity groups — shipped inside the
+bundle while `RULE_CATALOGUE_VERSION` stayed at 3 and none were registered in
+`RULES_ADDED_SINCE`. `upgradeRules` returns the saved rules untouched once
+`savedVersion >= RULE_CATALOGUE_VERSION`, so every browser holding an earlier
+project kept the old catalogue for ever. Worse, **dist had no upgrade path at
+all**: its restore (`D_`) called `Vc({...s,...t,…})` and took `t.rules`
+verbatim. The live run booked owner investments as a current liability and
+"7600 Taxes and Licenses" into the other-deductions pool although both rules
+were sitting, unreachable, in the very file that produced the work paper.
+
+**Fixes.**
+- `RULE_CATALOGUE_VERSION` 3 → 4; `RULES_ADDED_SINCE[3]` names one fresh
+  keyword per changed group. Dist gains `/*EN9RULEUP*/`: `EN9upgradeRules`,
+  `EN9RULEVER`, `EN9RULESADDED`, `EN9SKIPADDED`, wired into the restore.
+- `structRows` parent-inclusive upward scan (`/*EN9PARENTTOT*/`). QuickBooks
+  prints a numbered group's total at the PARENT's indent, not one level in from
+  the members, so the scan stopped on the parent and left its balance out:
+  40,682.42 + 3,540.96 = 44,223.38 against a printed 45,912.38, no tie, and the
+  subtotal was booked as an account. Four of these on one P&L moved
+  2,925,861.08. Both the caption match (parent's caption under a leading
+  "Total") and the arithmetic tie are required before anything is dropped.
+- `TOTAL_WORD` gains `net other income` / `net operating income`
+  (`/*EN9NETOTHER*/`). Only fires at the outermost indent, so the balance
+  sheet's own "Net Income" equity row is untouched.
+- `contraRevenueFlip` takes the printed value: line 1b is subtracted by the
+  template, so it can only hold a positive magnitude. A −523,743.76 sales
+  return there moved gross profit by twice itself.
+- New `expenseGainFlip` plus an `^other expenses?$` banner: a gain-or-loss
+  caption printed inside an expense group is a loss. Narrow on purpose — only
+  IS:19/IS:20, only from a cost section, only when printed positive.
+- "Opening balance equity" moves BS:60 → BS:61. It is QuickBooks' setup
+  suspense account, which a preparer clears to retained earnings; the
+  hand-prepared paper does exactly that.
+
+**After.** Both trees land on the statement to the cent: 1a 2,105,663.30,
+1b 540,698.61, line 2 1,246,051.06, line 16 387.00, line 17 287,425.14 (the
+manual's 287,425.16 rounds Office Supplies to 788), net income −197.98;
+Schedule F 72,882.56 both sides with paid-in surplus 8,573.40 and retained
+earnings −6,025.52. Nothing unmatched on either statement.
+
+**New suites.** `tests/test_fixture_shori.cjs` (35 assertions; replays the real
+row geometry through src AND the shipped bundle) and
+`tests/test_rule_upgrade.cjs` (15; fails if a rule ships unreachable), with
+fixtures `shori_rows.json` and `rules_v3.json`. Pins deliberately changed:
+banner count 26 → 27, and "Opening Balance Equity" → BS:61 in
+`test_qb_groups.cjs`. `test:all` is now 52 suites, 1,325 assertions.
+
+**Known, not fixed.** Schedule M E15 (82,000 related-party wage) is pre-filled
+only from a questionnaire or salary schedule, and neither was supplied;
+acknowledging a blocking gate writes nothing, so C35 shipped blank; B17 is an
+Excel date serial. `4000 Cost of goods sold` books to Purchases rather than
+Cost of Labor — a row split inside line 2, with no effect on the return.

@@ -163,8 +163,12 @@ t("an unrecognised caption under cost of sales lands on a cost line", () => {
 
 t("owner contributions are paid-in surplus, draws are retained earnings", () => {
   const cases = [
-    ["Owner Investments", "BS:60"], ["Opening Balance Equity", "BS:60"],
+    ["Owner Investments", "BS:60"],
     ["Member Capital", "BS:60"], ["Capital contribution", "BS:60"],
+    /* QuickBooks' setup suspense account is cleared to retained earnings, not
+       to contributed capital — which is what the hand-prepared SHORI 2024
+       paper does. Moved out of BS:60 on 2026-09-11. */
+    ["Opening Balance Equity", "BS:61"],
     ["Owner Draws", "BS:61"], ["Owners Draw", "BS:61"],
     ["Shareholder distributions", "BS:61"], ["Partner distributions", "BS:61"],
   ];

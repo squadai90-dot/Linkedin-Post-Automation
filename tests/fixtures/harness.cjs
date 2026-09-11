@@ -97,7 +97,9 @@ function book(items, opts = {}) {
     const rowIn = { ...norm, docId: it.docId, docName: it.docName, page: it.row.page };
     /* Contra-revenue on line 1b carries the sign reversed when the statement
        added it to its own income total — see EN9contraFlip. */
-    if (M.EN9contraFlip && M.EN9contraFlip(alloc.target, it.EN9inTotal)) rowIn.values = rowIn.values.map((v) => -v);
+    if (M.EN9contraFlip && M.EN9contraFlip(alloc.target, it.EN9inTotal, rowIn.values[0])) rowIn.values = rowIn.values.map((v) => -v);
+    /* A gain-or-loss caption printed inside an expense group is a LOSS. */
+    if (M.EN9expGainFlip && M.EN9expGainFlip(alloc.target, it.section, rowIn.values[0])) rowIn.values = rowIn.values.map((v) => -v);
     const okBooked = M.bF(ENT, lines, contrib, relabels, alloc.target, rowIn, "fixture");
     if (!okBooked) unmatched.push({ label: norm.label, why: "bF refused (years/target)" });
   }

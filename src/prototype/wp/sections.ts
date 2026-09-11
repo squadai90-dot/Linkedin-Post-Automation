@@ -105,7 +105,11 @@ export function dropFurniture(rows: MapRow[]): MapRow[] {
 
 /* ---------- structural subtotals ---------- */
 
-const TOTAL_WORD = /^(total|subtotal|sub-total|sum|net result|net (income|earnings|profit|loss)|grand total|totaal|totale|gesamt|合计|總計)\b/i;
+/* "NET OTHER INCOME" and "NET OPERATING INCOME" are QuickBooks' own summary
+   lines, printed at the outermost indent beside "NET INCOME". Without them
+   in this lexicon, "NET OTHER INCOME" survived to the keyword scan, matched
+   "other income" and was booked as a second other-income account. */
+const TOTAL_WORD = /^(total|subtotal|sub-total|sum|net result|net\s+(?:other\s+|operating\s+)?(?:income|earnings|profit|loss)|grand total|totaal|totale|gesamt|合计|總計)\b/i;
 
 /** The outermost figures within a candidate group. A subtotal covers its
     IMMEDIATE children, so only the shallowest indent that carries numbers
@@ -179,6 +183,31 @@ export function structRows(rows: MapRow[]): MapRow[] {
       m.skipReason = `total of the ${total.rows.length} row(s) above it`;
       for (const kid of total.rows) (kid as MapRow).inTotal = true;
       continue;
+    }
+
+    /* The same total, printed the way QuickBooks prints a numbered group.
+       "6790 Other Professional Fees" carries its own balance, its members sit
+       one level in, and the closing "Total 6790 Other Professional Fees" is
+       printed back at the PARENT's indent — not one level in from the members.
+       The scan above therefore stops ON the parent and leaves the parent's own
+       balance out: 40,682.42 + 3,540.96 = 44,223.38 against a printed
+       45,912.38, no tie, and the subtotal was booked as an ordinary account.
+       Three of these on one P&L moved 2,925,861.08 across Schedule C.
+       Both tests must pass before anything is dropped: the caption has to be
+       the parent's caption under a leading "Total", and the arithmetic has to
+       tie with the parent included. */
+    if (TOTAL_WORD.test(String(m.row.label || "").trim())) {
+      const parent = out[i - 1 - above.length];
+      const pAmt = parent ? amtOf(parent) : null;
+      const bare = String(m.row.label || "").trim().replace(TOTAL_WORD, "");
+      if (parent && pAmt !== null && indentOf(parent) === ind &&
+          totalKey(bare) && totalKey(bare) === totalKey(String(parent.row.label || "")) &&
+          same(pAmt + (total ? total.sum : 0), amt)) {
+        m.skipReason = `total of "${parent.row.label}" and the ${above.length} row(s) beneath it`;
+        (parent as MapRow).inTotal = true;
+        if (total) for (const kid of total.rows) (kid as MapRow).inTotal = true;
+        continue;
+      }
     }
 
     if (ind === outermost && TOTAL_WORD.test(String(m.row.label || "").trim())) {
@@ -262,8 +291,35 @@ export function gridStructRows<T extends MapRow>(rows: T[]): T[] {
  * the classic "Gross sales / Less returns / Net sales" layout fails that
  * proof (its total does not add the returns line) and its figure is already
  * the right way round. */
-export const contraRevenueFlip = (target: string | null | undefined, inTotal?: boolean) =>
-  target === "IS:8" && !!inTotal;
+/** A gain-or-loss caption printed inside an expense group is a LOSS.
+ *
+ * Schedule C lines 8a and 8b hold a signed figure, so a statement that files
+ * "Exchange gain or loss 10.16" under its "Other Expenses" heading means minus
+ * ten dollars sixteen, not plus. Narrow on purpose: only the two currency
+ * lines, only from a cost section, only when the statement printed it
+ * positive. */
+export const expenseGainFlip = (
+  target: string | null | undefined,
+  section: Section | null | undefined,
+  printed?: number,
+) =>
+  (target === "IS:19" || target === "IS:20") &&
+  (section === "costs" || section === "cogs") &&
+  typeof printed === "number" && printed > 0;
+
+export const contraRevenueFlip = (
+  target: string | null | undefined,
+  inTotal?: boolean,
+  printed?: number,
+) =>
+  target === "IS:8" &&
+  /* Either the statement already added the caption inside its own income
+     total (the QuickBooks shape), or it printed the caption negative. Line 1b
+     is SUBTRACTED from line 1a by the template, so it can only ever hold a
+     positive magnitude: a negative there is added back. On the SHORI 2024 run
+     a -523,743.76 sales return on line 1b moved gross profit by twice itself,
+     1,047,487.52, because neither condition was being tested. */
+  (!!inTotal || (typeof printed === "number" && printed < 0));
 
 /** Tag every row with the last banner seen above it. Sticky downward, first
     matching pattern wins, and a row that already carries a section is never

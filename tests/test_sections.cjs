@@ -58,12 +58,13 @@ const R = (label, amt, x0, page = 1) => ({
   docId: "d1", docName: "Accounts.pdf", feed: "is", kind: "pdf", x0,
 });
 
-/* 26 since the bank-accounts and cost-of-sales groups were added: a
-   QuickBooks sub-account is named after the bank or the supplier, so only its
-   heading says what it is. */
-t("the two banner lexicons are the same 26 patterns", () => {
+/* 27 since the bank-accounts, cost-of-sales and other-expenses groups were
+   added: a QuickBooks sub-account is named after the bank or the supplier, so
+   only its heading says what it is, and "8150 Exchange gain or loss" is a LOSS
+   only because of the heading it is printed under. */
+t("the two banner lexicons are the same 27 patterns", () => {
   const BANNERS = load("src/prototype/wp/sectionBanners.ts").SECTION_BANNERS;
-  assert.strictEqual(BANNERS.length, 26);
+  assert.strictEqual(BANNERS.length, 27);
   assert.strictEqual(SHIPPED.SECTB.length, BANNERS.length);
   for (let i = 0; i < BANNERS.length; i++) {
     assert.strictEqual(String(BANNERS[i][0]), String(SHIPPED.SECTB[i][0]), "pattern " + i);

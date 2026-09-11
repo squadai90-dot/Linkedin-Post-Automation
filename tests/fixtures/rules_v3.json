@@ -1,0 +1,693 @@
+{
+ "version": 3,
+ "note": "The shipped mapping catalogue as of 198d7f8, the last release before the SHORI reconciliation. Any keyword added after this must be reachable by upgradeRules so that saved projects receive it.",
+ "rules": [
+  {
+   "kw": [
+    "cost of sales",
+    "total trading income",
+    "total income",
+    "total expenses",
+    "total for income",
+    "total for expenses",
+    "total deductions",
+    "gross profit",
+    "trading profit",
+    "net profit",
+    "from ordinary activities",
+    "total current assets",
+    "total assets",
+    "total non-current assets",
+    "total current liabilities",
+    "total liabilities",
+    "net assets",
+    "total equity",
+    "opening retained profits",
+    "closing retained profits",
+    "total changes in equity",
+    "attributable to members",
+    "total net sales",
+    "gross margin",
+    "operating income",
+    "total operating expenses",
+    "net income",
+    "total non-current liabilities",
+    "total revenues",
+    "total de ingresos",
+    "total de egresos",
+    "total del activo",
+    "total del pasivo",
+    "total de activos",
+    "total de pasivos",
+    "total ingresos",
+    "total egresos",
+    "depreciacion tributaria",
+    "depreciación tributaria",
+    "resultado financiero",
+    "resultado del ejercicio",
+    "utilidad del ejercicio",
+    "perdida del ejercicio",
+    "pérdida del ejercicio",
+    "total revenue",
+    "operating profit",
+    "profit before tax",
+    "net financial income",
+    "total foreign capital",
+    "total fixed assets",
+    "net income for the year",
+    "net earnings",
+    "net earnings for the year",
+    "net profit for the period",
+    "net loss for the year",
+    "net loss",
+    "result for the year",
+    "profit for the year",
+    "loss for the year",
+    "bénéfice d'exploitation",
+    "benefice d'exploitation",
+    "bénéfice de l'exercice",
+    "benefice de l'exercice",
+    "total du passif",
+    "total de l'actif",
+    "total des produits",
+    "total des charges",
+    "total des capitaux propres",
+    "total des capitaux étrangers"
+   ],
+   "t": "SKIP"
+  },
+  {
+   "kw": [
+    "gross receipt",
+    "turnover",
+    "revenue",
+    "sales",
+    "chiffre d'affaires",
+    "ingresos",
+    "ingresos operacionales",
+    "ventas netas",
+    "receita",
+    "营业收入"
+   ],
+   "t": "IS:7"
+  },
+  {
+   "kw": [
+    "service income",
+    "services income",
+    "consulting fees",
+    "consultancy fees",
+    "fees earned"
+   ],
+   "t": "IS:7"
+  },
+  {
+   "kw": [
+    "returns and allowance",
+    "sales return"
+   ],
+   "t": "IS:8"
+  },
+  {
+   "kw": [
+    "cost of labor",
+    "cost of labour",
+    "direct labour"
+   ],
+   "t": "IS:10"
+  },
+  {
+   "kw": [
+    "purchase",
+    "achats",
+    "cost of goods",
+    "cogs",
+    "costo directo",
+    "costo de venta",
+    "costos de venta",
+    "compras",
+    "custo dos produtos",
+    "existencias, insumos",
+    "insumos y servicios"
+   ],
+   "t": "IS:11"
+  },
+  {
+   "kw": [
+    "direct hotel",
+    "direct meals",
+    "direct car rental",
+    "direct airfare",
+    "direct fuel",
+    "direct parking",
+    "direct taxi",
+    "uber",
+    "job cost"
+   ],
+   "t": "IS:12"
+  },
+  {
+   "kw": [
+    "dividend income",
+    "dividends received"
+   ],
+   "t": "IS:14"
+  },
+  {
+   "kw": [
+    "interest income",
+    "interest received",
+    "produits financiers"
+   ],
+   "t": "IS:15"
+  },
+  {
+   "kw": [
+    "rental income",
+    "gross rent"
+   ],
+   "t": "IS:16"
+  },
+  {
+   "kw": [
+    "royalt",
+    "licence fee",
+    "license fee"
+   ],
+   "t": "IS:17"
+  },
+  {
+   "kw": [
+    "gain on sale",
+    "loss on sale",
+    "disposal of asset"
+   ],
+   "t": "IS:18"
+  },
+  {
+   "kw": [
+    "unrealised exchange",
+    "unrealized exchange"
+   ],
+   "t": "IS:19"
+  },
+  {
+   "kw": [
+    "realised exchange",
+    "realized exchange",
+    "exchange gain",
+    "exchange loss"
+   ],
+   "t": "IS:20"
+  },
+  {
+   "kw": [
+    "management fees earned",
+    "management fee income",
+    "management fees",
+    "reimbursement",
+    "recharge income",
+    "sundry income",
+    "other income",
+    "other revenue",
+    "other revenues",
+    "otros ingresos",
+    "outras receitas"
+   ],
+   "t": "IS:OI"
+  },
+  {
+   "kw": [
+    "salaries",
+    "salary",
+    "payroll",
+    "compensation",
+    "personnel",
+    "staff cost",
+    "charges de personnel",
+    "wages",
+    "superannuation",
+    "pension contribution",
+    "gastos del personal",
+    "gasto de personal",
+    "gastos de personal",
+    "sueldos",
+    "salarios",
+    "nomina",
+    "nómina",
+    "remuneracion",
+    "remuneraç",
+    "cesantias",
+    "cesantías",
+    "vacaciones consolid",
+    "primas consolid",
+    "despesas com pessoal"
+   ],
+   "t": "IS:26"
+  },
+  {
+   "kw": [
+    "rent expense",
+    "rent",
+    "loyer",
+    "premises rent",
+    "arriendo"
+   ],
+   "t": "IS:27"
+  },
+  {
+   "kw": [
+    "royalty expense"
+   ],
+   "t": "IS:28"
+  },
+  {
+   "kw": [
+    "interest expense",
+    "finance cost",
+    "charges financi",
+    "gastos financieros",
+    "intereses"
+   ],
+   "t": "IS:29"
+  },
+  {
+   "kw": [
+    "depreciation",
+    "amortisation expense",
+    "amortization expense",
+    "dotations aux amortissements",
+    "depreciaciones",
+    "amortizaciones",
+    "depreciacion",
+    "depreciación"
+   ],
+   "t": "IS:30"
+  },
+  {
+   "kw": [
+    "depletion"
+   ],
+   "t": "IS:31"
+  },
+  {
+   "kw": [
+    "taxes other than income",
+    "business rates",
+    "property tax",
+    "impots et taxes"
+   ],
+   "t": "IS:32"
+  },
+  {
+   "kw": [
+    "accountancy",
+    "accounting fees",
+    "audit fee",
+    "bookkeeping"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "subscription",
+    "membership fee"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "telecommunication",
+    "telephone",
+    "internet"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "filing fee",
+    "registration fee",
+    "licence cost",
+    "permits"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "entertainment",
+    "printing",
+    "stationery",
+    "postage",
+    "advertising",
+    "promotion"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "insurance",
+    "workers compensation",
+    "bank fees",
+    "bank charges",
+    "sundry expense",
+    "staff amenities",
+    "motor vehicle",
+    "travel expense",
+    "legal fees",
+    "professional fees",
+    "consultants fees",
+    "computer expense",
+    "office expense",
+    "cleaning",
+    "utilities",
+    "electricity",
+    "repairs and maintenance",
+    "gastos legales",
+    "honorarios",
+    "arrendamientos",
+    "mantenimiento y reparaciones",
+    "gastos de viaje",
+    "seguros"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "gastos",
+    "egresos",
+    "despesas",
+    "gastos deducibles",
+    "gastos deducidos",
+    "de los ingresos"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "income tax - current",
+    "current tax",
+    "corporation tax",
+    "tax on profit",
+    "tax on ordinary activities",
+    "income tax revenue",
+    "income tax expense",
+    "impot sur les societes"
+   ],
+   "t": "IS:54"
+  },
+  {
+   "kw": [
+    "deferred tax"
+   ],
+   "t": "IS:55"
+  },
+  {
+   "kw": [
+    "cash",
+    "bank account",
+    "cash at bank",
+    "banque",
+    "trésorerie",
+    "caja general",
+    "bancos nacionales",
+    "cuentas de ahorro",
+    "caixa",
+    "bancos",
+    "货币资金"
+   ],
+   "t": "BS:10"
+  },
+  {
+   "kw": [
+    "trade receivable",
+    "accounts receivable",
+    "debtor",
+    "trade debtor",
+    "créances clients",
+    "deudores",
+    "cuentas por cobrar",
+    "contas a receber",
+    "应收账款"
+   ],
+   "t": "BS:11"
+  },
+  {
+   "kw": [
+    "allowance for bad debt",
+    "provision for doubtful"
+   ],
+   "t": "BS:12"
+  },
+  {
+   "kw": [
+    "wkr expense",
+    "werkkostenregeling"
+   ],
+   "t": "IS:26"
+  },
+  {
+   "kw": [
+    "small material",
+    "kleinmateriaal"
+   ],
+   "t": "IS:OD"
+  },
+  {
+   "kw": [
+    "issued & paid up capital",
+    "issued and paid up capital",
+    "paid up capital",
+    "issued capital"
+   ],
+   "t": "BS:59"
+  },
+  {
+   "kw": [
+    "opening stock",
+    "opening finished goods",
+    "opening work in progress",
+    "opening raw materials"
+   ],
+   "t": "IS:12"
+  },
+  {
+   "kw": [
+    "closing stock",
+    "closing finished goods",
+    "closing work in progress",
+    "closing raw materials"
+   ],
+   "t": "IS:12"
+  },
+  {
+   "kw": [
+    "stock on hand"
+   ],
+   "t": "BS:14"
+  },
+  {
+   "kw": [
+    "inventor",
+    "存货"
+   ],
+   "t": "BS:14"
+  },
+  {
+   "kw": [
+    "prepaid",
+    "prepayment",
+    "charges constatées",
+    "accrued management fee",
+    "accrued income",
+    "accrued revenue"
+   ],
+   "t": "BS:OCA"
+  },
+  {
+   "kw": [
+    "loan to shareholder",
+    "amounts owed by"
+   ],
+   "t": "BS:19"
+  },
+  {
+   "kw": [
+    "investment in subsidiar",
+    "shares in group"
+   ],
+   "t": "BS:21"
+  },
+  {
+   "kw": [
+    "building",
+    "plant and machinery",
+    "fixed asset",
+    "immobilisations corporelles",
+    "maquinaria y equipo",
+    "equipo de oficina",
+    "equipo de computacion",
+    "equipo de computación",
+    "propiedad planta y equipo",
+    "imobilizado",
+    "固定资产"
+   ],
+   "t": "BS:28"
+  },
+  {
+   "kw": [
+    "accumulated depreciation",
+    "amortissements cumulés",
+    "depr. acumulada",
+    "depreciacion acumulada",
+    "depreciación acumulada",
+    "deprec. acumulada"
+   ],
+   "t": "BS:29"
+  },
+  {
+   "kw": [
+    "land"
+   ],
+   "t": "BS:32"
+  },
+  {
+   "kw": [
+    "goodwill",
+    "fonds de commerce"
+   ],
+   "t": "BS:34"
+  },
+  {
+   "kw": [
+    "organization cost",
+    "organisation cost",
+    "formation expenses"
+   ],
+   "t": "BS:35"
+  },
+  {
+   "kw": [
+    "patent",
+    "trademark",
+    "intangible",
+    "immobilisations incorporelles"
+   ],
+   "t": "BS:36"
+  },
+  {
+   "kw": [
+    "accumulated amortisation",
+    "accumulated amortization"
+   ],
+   "t": "BS:37"
+  },
+  {
+   "kw": [
+    "accounts payable",
+    "trade payable",
+    "creditor",
+    "trade creditor",
+    "dettes fournisseurs",
+    "acreedores",
+    "cuentas por pagar",
+    "proveedores",
+    "fornecedores",
+    "应付账款"
+   ],
+   "t": "BS:46"
+  },
+  {
+   "kw": [
+    "vat payable",
+    "sales tax payable",
+    "sundry creditor",
+    "gst",
+    "input tax credit",
+    "taxation",
+    "taxation payable",
+    "income tax payable",
+    "provision for income tax",
+    "superannuation payable",
+    "super payable",
+    "accrued wages",
+    "accrued expense",
+    "payg withholding payable"
+   ],
+   "t": "BS:OCL"
+  },
+  {
+   "kw": [
+    "loan from shareholder",
+    "director loan",
+    "amounts owed to"
+   ],
+   "t": "BS:52"
+  },
+  {
+   "kw": [
+    "bank loan",
+    "borrowing",
+    "emprunt"
+   ],
+   "t": "BS:OL"
+  },
+  {
+   "kw": [
+    "obligations under finance lease",
+    "finance lease",
+    "hire purchase"
+   ],
+   "t": "BS:OL"
+  },
+  {
+   "kw": [
+    "preferred stock",
+    "preference share"
+   ],
+   "t": "BS:58"
+  },
+  {
+   "kw": [
+    "common stock",
+    "share capital",
+    "called up share",
+    "capital social",
+    "capital suscrito",
+    "capital pagado",
+    "实收资本"
+   ],
+   "t": "BS:59"
+  },
+  {
+   "kw": [
+    "paid-in",
+    "share premium",
+    "capital surplus",
+    "prime d'émission"
+   ],
+   "t": "BS:60"
+  },
+  {
+   "kw": [
+    "retained earning",
+    "retained profits",
+    "accumulated profit",
+    "profit and loss account",
+    "report à nouveau",
+    "utilidades acumuladas",
+    "excedentes acumulados",
+    "resultados acumulados",
+    "lucros acumulados",
+    "未分配利润"
+   ],
+   "t": "BS:61"
+  },
+  {
+   "kw": [
+    "treasury stock",
+    "own shares"
+   ],
+   "t": "BS:62"
+  }
+ ]
+}

@@ -1,0 +1,1820 @@
+{
+ "pl": [
+  {
+   "page": 1,
+   "y": 745,
+   "cells": [
+    {
+     "text": "Power Real Group, LLC",
+     "x0": 221.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 722,
+   "cells": [
+    {
+     "text": "Profit and Loss",
+     "x0": 265.9
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 705,
+   "cells": [
+    {
+     "text": "January - December 2024",
+     "x0": 248.2
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 666,
+   "cells": [
+    {
+     "text": "TOTAL",
+     "x0": 555.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 652,
+   "cells": [
+    {
+     "text": "Income",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 638,
+   "cells": [
+    {
+     "text": "3000 Shopify Product Sales",
+     "x0": 34.8
+    },
+    {
+     "text": "2,099,769.77",
+     "x0": 530.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 624,
+   "cells": [
+    {
+     "text": "3002 Shopify Discounts Given",
+     "x0": 37.8
+    },
+    {
+     "text": "-16,954.85",
+     "x0": 540.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 610,
+   "cells": [
+    {
+     "text": "3003 Shopify Sales Return",
+     "x0": 37.8
+    },
+    {
+     "text": "-523,743.76",
+     "x0": 535.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 597,
+   "cells": [
+    {
+     "text": "3004 Shopify Taxes",
+     "x0": 37.8
+    },
+    {
+     "text": "563.88",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 583,
+   "cells": [
+    {
+     "text": "Total 3000 Shopify Product Sales",
+     "x0": 34.8
+    },
+    {
+     "text": "1,559,635.04",
+     "x0": 530.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 566,
+   "cells": [
+    {
+     "text": "3100 Shopify Shipping Income",
+     "x0": 34.8
+    },
+    {
+     "text": "4,958.81",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 552,
+   "cells": [
+    {
+     "text": "Sales of Product Income",
+     "x0": 34.8
+    },
+    {
+     "text": "370.84",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 538,
+   "cells": [
+    {
+     "text": "Total Income",
+     "x0": 28.8
+    },
+    {
+     "text": "$1,564,964.69",
+     "x0": 525.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 522,
+   "cells": [
+    {
+     "text": "Cost of Goods Sold",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 508,
+   "cells": [
+    {
+     "text": "4000 Cost of goods sold",
+     "x0": 34.8
+    },
+    {
+     "text": "13,605.29",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 494,
+   "cells": [
+    {
+     "text": "4010 Product Purchases - Shopify",
+     "x0": 34.8
+    },
+    {
+     "text": "1,107,168.14",
+     "x0": 530.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 481,
+   "cells": [
+    {
+     "text": "4011 Purchase Discount",
+     "x0": 37.8
+    },
+    {
+     "text": "-1,523.00",
+     "x0": 545.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 467,
+   "cells": [
+    {
+     "text": "Total 4010 Product Purchases - Shopify",
+     "x0": 34.8
+    },
+    {
+     "text": "1,105,645.14",
+     "x0": 530.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 450,
+   "cells": [
+    {
+     "text": "4100 Freight and delivery - COS",
+     "x0": 34.8
+    },
+    {
+     "text": "76,693.12",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 436,
+   "cells": [
+    {
+     "text": "4500 Shopify Payment Fees",
+     "x0": 34.8
+    },
+    {
+     "text": "47,964.76",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 423,
+   "cells": [
+    {
+     "text": "4502 Paypal Fees",
+     "x0": 34.8
+    },
+    {
+     "text": "2,142.75",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 408,
+   "cells": [
+    {
+     "text": "Total Cost of Goods Sold",
+     "x0": 28.8
+    },
+    {
+     "text": "$1,246,051.06",
+     "x0": 525.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 392,
+   "cells": [
+    {
+     "text": "GROSS PROFIT",
+     "x0": 28.8
+    },
+    {
+     "text": "$318,913.63",
+     "x0": 533
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 375,
+   "cells": [
+    {
+     "text": "Expenses",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 362,
+   "cells": [
+    {
+     "text": "5000 Wages Expense",
+     "x0": 34.8
+    },
+    {
+     "text": "82,000.00",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 348,
+   "cells": [
+    {
+     "text": "6510 Software subscriptions",
+     "x0": 34.8
+    },
+    {
+     "text": "18,049.97",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 334,
+   "cells": [
+    {
+     "text": "6710 Accounting Fee",
+     "x0": 34.8
+    },
+    {
+     "text": "3,500.00",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 320,
+   "cells": [
+    {
+     "text": "6720 Legal Fees",
+     "x0": 34.8
+    },
+    {
+     "text": "2,100.00",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 306,
+   "cells": [
+    {
+     "text": "6790 Other Professional Fees",
+     "x0": 34.8
+    },
+    {
+     "text": "1,689.00",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 293,
+   "cells": [
+    {
+     "text": "6792 Virtual Assistants",
+     "x0": 37.8
+    },
+    {
+     "text": "40,682.42",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 279,
+   "cells": [
+    {
+     "text": "6793 SEO services",
+     "x0": 37.8
+    },
+    {
+     "text": "3,540.96",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 265,
+   "cells": [
+    {
+     "text": "Total 6790 Other Professional Fees",
+     "x0": 34.8
+    },
+    {
+     "text": "45,912.38",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 248,
+   "cells": [
+    {
+     "text": "6800 Office Supplies",
+     "x0": 34.8
+    },
+    {
+     "text": "787.98",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 235,
+   "cells": [
+    {
+     "text": "6900 Telephone",
+     "x0": 34.8
+    },
+    {
+     "text": "918.09",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 221,
+   "cells": [
+    {
+     "text": "7300 Advertising expense",
+     "x0": 34.8
+    },
+    {
+     "text": "169,039.45",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 207,
+   "cells": [
+    {
+     "text": "7310 Google Ads",
+     "x0": 37.8
+    },
+    {
+     "text": "975.57",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 193,
+   "cells": [
+    {
+     "text": "7320 Microsoft Ads",
+     "x0": 37.8
+    },
+    {
+     "text": "44,653.50",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 179,
+   "cells": [
+    {
+     "text": "Total 7300 Advertising expense",
+     "x0": 34.8
+    },
+    {
+     "text": "214,668.52",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 163,
+   "cells": [
+    {
+     "text": "7600 Taxes and Licenses",
+     "x0": 34.8
+    },
+    {
+     "text": "387.00",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 149,
+   "cells": [
+    {
+     "text": "7610 Permits",
+     "x0": 34.8
+    },
+    {
+     "text": "662.00",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 135,
+   "cells": [
+    {
+     "text": "7700 Bank charges",
+     "x0": 34.8
+    },
+    {
+     "text": "826.20",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 121,
+   "cells": [
+    {
+     "text": "Total Expenses",
+     "x0": 28.8
+    },
+    {
+     "text": "$369,812.14",
+     "x0": 533
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 104,
+   "cells": [
+    {
+     "text": "NET OPERATING INCOME",
+     "x0": 28.8
+    },
+    {
+     "text": "$ -50,898.51",
+     "x0": 532.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 22,
+   "cells": [
+    {
+     "text": "1/2",
+     "x0": 570.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 19,
+   "cells": [
+    {
+     "text": "Accrual Basis Monday, June 9, 2025 12:16 PM GMT+08:00",
+     "x0": 172.4
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 745,
+   "cells": [
+    {
+     "text": "Power Real Group, LLC",
+     "x0": 221.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 722,
+   "cells": [
+    {
+     "text": "Profit and Loss",
+     "x0": 265.9
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 705,
+   "cells": [
+    {
+     "text": "January - December 2024",
+     "x0": 248.2
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 666,
+   "cells": [
+    {
+     "text": "TOTAL",
+     "x0": 555.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 652,
+   "cells": [
+    {
+     "text": "Other Income",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 638,
+   "cells": [
+    {
+     "text": "8050 Other income",
+     "x0": 34.8
+    },
+    {
+     "text": "50,710.69",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 624,
+   "cells": [
+    {
+     "text": "Total Other Income",
+     "x0": 28.8
+    },
+    {
+     "text": "$50,710.69",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 608,
+   "cells": [
+    {
+     "text": "Other Expenses",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 594,
+   "cells": [
+    {
+     "text": "Unrealized Gain or Loss",
+     "x0": 34.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 580,
+   "cells": [
+    {
+     "text": "8150 Exchange gain or loss",
+     "x0": 34.8
+    },
+    {
+     "text": "10.16",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 566,
+   "cells": [
+    {
+     "text": "Total Other Expenses",
+     "x0": 28.8
+    },
+    {
+     "text": "$10.16",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 549,
+   "cells": [
+    {
+     "text": "NET OTHER INCOME",
+     "x0": 28.8
+    },
+    {
+     "text": "$50,700.53",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 533,
+   "cells": [
+    {
+     "text": "NET INCOME",
+     "x0": 28.8
+    },
+    {
+     "text": "$ -197.98",
+     "x0": 545.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 22,
+   "cells": [
+    {
+     "text": "2/2",
+     "x0": 570.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 19,
+   "cells": [
+    {
+     "text": "Accrual Basis Monday, June 9, 2025 12:16 PM GMT+08:00",
+     "x0": 172.4
+    }
+   ]
+  }
+ ],
+ "bs": [
+  {
+   "page": 1,
+   "y": 745,
+   "cells": [
+    {
+     "text": "Power Real Group, LLC",
+     "x0": 221.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 722,
+   "cells": [
+    {
+     "text": "Balance Sheet",
+     "x0": 266.9
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 705,
+   "cells": [
+    {
+     "text": "As of December 31, 2024",
+     "x0": 249.3
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 666,
+   "cells": [
+    {
+     "text": "TOTAL",
+     "x0": 555.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 652,
+   "cells": [
+    {
+     "text": "ASSETS",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 638,
+   "cells": [
+    {
+     "text": "Current Assets",
+     "x0": 34.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 624,
+   "cells": [
+    {
+     "text": "Bank Accounts",
+     "x0": 37.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 610,
+   "cells": [
+    {
+     "text": "1000 Brex (5404)",
+     "x0": 40.8
+    },
+    {
+     "text": "8,010.14",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 597,
+   "cells": [
+    {
+     "text": "1001 Mercury Checking (0522)",
+     "x0": 40.8
+    },
+    {
+     "text": "5.17",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 583,
+   "cells": [
+    {
+     "text": "1002 Mercury Checking (0731)",
+     "x0": 40.8
+    },
+    {
+     "text": "16.75",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 569,
+   "cells": [
+    {
+     "text": "1003 Mercury Checking (3502)",
+     "x0": 40.8
+    },
+    {
+     "text": "3.43",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 555,
+   "cells": [
+    {
+     "text": "1004 Mercury Checking (7946)",
+     "x0": 40.8
+    },
+    {
+     "text": "36,064.57",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 541,
+   "cells": [
+    {
+     "text": "1005 Mercury Checking *0053",
+     "x0": 40.8
+    },
+    {
+     "text": "35.77",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 528,
+   "cells": [
+    {
+     "text": "1006 Mercury Checking *9621",
+     "x0": 40.8
+    },
+    {
+     "text": "10,666.67",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 514,
+   "cells": [
+    {
+     "text": "1007 Mercury Checking 3157",
+     "x0": 40.8
+    },
+    {
+     "text": "16.18",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 500,
+   "cells": [
+    {
+     "text": "1022 Azlo",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 486,
+   "cells": [
+    {
+     "text": "1023 Paypal USD",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 472,
+   "cells": [
+    {
+     "text": "1024 Paypal PHP",
+     "x0": 40.8
+    },
+    {
+     "text": "-0.02",
+     "x0": 562.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 459,
+   "cells": [
+    {
+     "text": "1025 Paypal - PH",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 445,
+   "cells": [
+    {
+     "text": "1026 Paypal PH - PHP",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 431,
+   "cells": [
+    {
+     "text": "1030 Shopify Fund",
+     "x0": 40.8
+    },
+    {
+     "text": "1,341.60",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 417,
+   "cells": [
+    {
+     "text": "1035 Shopify Fund - PH",
+     "x0": 40.8
+    },
+    {
+     "text": "16,722.30",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 403,
+   "cells": [
+    {
+     "text": "1080 Shopify Payments",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 390,
+   "cells": [
+    {
+     "text": "1081 Shopify payments - PH",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 376,
+   "cells": [
+    {
+     "text": "1085 Affirm Bank",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 362,
+   "cells": [
+    {
+     "text": "1090 Bank transfer clearing",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 348,
+   "cells": [
+    {
+     "text": "1091 Shopify payments clearing",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 334,
+   "cells": [
+    {
+     "text": "1092 Paypal Clearing",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 321,
+   "cells": [
+    {
+     "text": "1093 Affirm Clearing",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 307,
+   "cells": [
+    {
+     "text": "1094 Paypal Hold",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 293,
+   "cells": [
+    {
+     "text": "1095 Shopify payments clearing - PH",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 279,
+   "cells": [
+    {
+     "text": "Total Bank Accounts",
+     "x0": 37.8
+    },
+    {
+     "text": "$72,882.56",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 263,
+   "cells": [
+    {
+     "text": "Accounts Receivable",
+     "x0": 37.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 249,
+   "cells": [
+    {
+     "text": "1100 Accounts Receivable (A/R)",
+     "x0": 40.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 235,
+   "cells": [
+    {
+     "text": "Total Accounts Receivable",
+     "x0": 37.8
+    },
+    {
+     "text": "$0.00",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 218,
+   "cells": [
+    {
+     "text": "Total Current Assets",
+     "x0": 34.8
+    },
+    {
+     "text": "$72,882.56",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 201,
+   "cells": [
+    {
+     "text": "TOTAL ASSETS",
+     "x0": 28.8
+    },
+    {
+     "text": "$72,882.56",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 22,
+   "cells": [
+    {
+     "text": "1/2",
+     "x0": 570.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 19,
+   "cells": [
+    {
+     "text": "Accrual Basis Monday, June 9, 2025 12:20 PM GMT+08:00",
+     "x0": 172.4
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 745,
+   "cells": [
+    {
+     "text": "Power Real Group, LLC",
+     "x0": 221.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 722,
+   "cells": [
+    {
+     "text": "Balance Sheet",
+     "x0": 266.9
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 705,
+   "cells": [
+    {
+     "text": "As of December 31, 2024",
+     "x0": 249.3
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 666,
+   "cells": [
+    {
+     "text": "TOTAL",
+     "x0": 555.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 652,
+   "cells": [
+    {
+     "text": "LIABILITIES AND EQUITY",
+     "x0": 28.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 638,
+   "cells": [
+    {
+     "text": "Liabilities",
+     "x0": 34.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 624,
+   "cells": [
+    {
+     "text": "Current Liabilities",
+     "x0": 37.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 610,
+   "cells": [
+    {
+     "text": "Accounts Payable",
+     "x0": 40.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 597,
+   "cells": [
+    {
+     "text": "2000 Accounts Payable (A/P)",
+     "x0": 43.8
+    },
+    {
+     "text": "61,139.37",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 583,
+   "cells": [
+    {
+     "text": "Total Accounts Payable",
+     "x0": 40.8
+    },
+    {
+     "text": "$61,139.37",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 566,
+   "cells": [
+    {
+     "text": "Credit Cards",
+     "x0": 40.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 552,
+   "cells": [
+    {
+     "text": "2010 Brex Credit Card",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 539,
+   "cells": [
+    {
+     "text": "2011 Chase Credit card (6669)",
+     "x0": 43.8
+    },
+    {
+     "text": "15.35",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 525,
+   "cells": [
+    {
+     "text": "2012 Chase Credit card (0413)",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 511,
+   "cells": [
+    {
+     "text": "2013 Chase Credit card (7994)",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 497,
+   "cells": [
+    {
+     "text": "2014 Chase Credit Card (1256)",
+     "x0": 43.8
+    },
+    {
+     "text": "326.98",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 483,
+   "cells": [
+    {
+     "text": "2015 Chase Credit Card - *8457",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 470,
+   "cells": [
+    {
+     "text": "2016 Credit Card - 4340",
+     "x0": 43.8
+    },
+    {
+     "text": "1,400.00",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 456,
+   "cells": [
+    {
+     "text": "2017 Credit Card - 7744",
+     "x0": 43.8
+    },
+    {
+     "text": "36.50",
+     "x0": 560.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 442,
+   "cells": [
+    {
+     "text": "2018 Chase 5284",
+     "x0": 43.8
+    },
+    {
+     "text": "211.06",
+     "x0": 555.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 428,
+   "cells": [
+    {
+     "text": "2030 BOA 4122",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 414,
+   "cells": [
+    {
+     "text": "2031 Amex 1004",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 401,
+   "cells": [
+    {
+     "text": "2032 Amex 1005",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 387,
+   "cells": [
+    {
+     "text": "2033 Amex 1008",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 373,
+   "cells": [
+    {
+     "text": "2034 Amex Gold 1008",
+     "x0": 43.8
+    },
+    {
+     "text": "1,130.43",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 359,
+   "cells": [
+    {
+     "text": "Total Credit Cards",
+     "x0": 40.8
+    },
+    {
+     "text": "$3,120.32",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 343,
+   "cells": [
+    {
+     "text": "Other Current Liabilities",
+     "x0": 40.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 329,
+   "cells": [
+    {
+     "text": "2150 Deferred Revenue",
+     "x0": 43.8
+    },
+    {
+     "text": "6,074.99",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 315,
+   "cells": [
+    {
+     "text": "Sales tax to pay",
+     "x0": 43.8
+    },
+    {
+     "text": "0.00",
+     "x0": 565.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 301,
+   "cells": [
+    {
+     "text": "Total Other Current Liabilities",
+     "x0": 40.8
+    },
+    {
+     "text": "$6,074.99",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 284,
+   "cells": [
+    {
+     "text": "Total Current Liabilities",
+     "x0": 37.8
+    },
+    {
+     "text": "$70,334.68",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 268,
+   "cells": [
+    {
+     "text": "Total Liabilities",
+     "x0": 34.8
+    },
+    {
+     "text": "$70,334.68",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 251,
+   "cells": [
+    {
+     "text": "Equity",
+     "x0": 34.8
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 237,
+   "cells": [
+    {
+     "text": "2910 Owner investments",
+     "x0": 37.8
+    },
+    {
+     "text": "8,573.40",
+     "x0": 548.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 224,
+   "cells": [
+    {
+     "text": "2960 Owner draws",
+     "x0": 37.8
+    },
+    {
+     "text": "-104,008.71",
+     "x0": 535.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 210,
+   "cells": [
+    {
+     "text": "2990 Retained Earnings",
+     "x0": 37.8
+    },
+    {
+     "text": "243,156.64",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 196,
+   "cells": [
+    {
+     "text": "Opening balance equity",
+     "x0": 37.8
+    },
+    {
+     "text": "-144,975.47",
+     "x0": 535.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 182,
+   "cells": [
+    {
+     "text": "Net Income",
+     "x0": 37.8
+    },
+    {
+     "text": "-197.98",
+     "x0": 552.6
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 168,
+   "cells": [
+    {
+     "text": "Total Equity",
+     "x0": 34.8
+    },
+    {
+     "text": "$2,547.88",
+     "x0": 543.1
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 151,
+   "cells": [
+    {
+     "text": "TOTAL LIABILITIES AND EQUITY",
+     "x0": 28.8
+    },
+    {
+     "text": "$72,882.56",
+     "x0": 538
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 22,
+   "cells": [
+    {
+     "text": "2/2",
+     "x0": 570.7
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "y": 19,
+   "cells": [
+    {
+     "text": "Accrual Basis Monday, June 9, 2025 12:20 PM GMT+08:00",
+     "x0": 172.4
+    }
+   ]
+  }
+ ]
+}

@@ -9,7 +9,7 @@ import {
 import { r2, r2add, sanitize } from "./hygiene";
 import { parseQuestionnaire, type Questionnaire } from "./questionnaire";
 import { irsCountryCode } from "./countryCodes";
-import { collapsedRoute, collapsedSections, contraRevenueFlip, equityOverride, gridStructRows, refeedBySection, sectionOk, sectionRoute, structRows, tagSections, type MapRow, type Section } from "./sections";
+import { collapsedRoute, collapsedSections, contraRevenueFlip, equityOverride, expenseGainFlip, gridStructRows, refeedBySection, sectionOk, sectionRoute, structRows, tagSections, type MapRow, type Section } from "./sections";
 import { asOfLabel, fxTag, providerTag, requireIso, toIsoLoose, yearBefore } from "./fxDates";
 import {
   AI_BATCH, TPM_BUDGET, aiMode, askResume, classifyFailure, estTokens, maxTokensFor,
@@ -434,7 +434,7 @@ const initialStakeholder = "New stakeholder";
    Version 2 (2026-09-09) added the six groups from the round-5 review:
    werkkostenregeling, kleinmateriaal, issued & paid-up capital, the periodic
    opening/closing stock pair and stock on hand. */
-export const RULE_CATALOGUE_VERSION = 3;
+export const RULE_CATALOGUE_VERSION = 4;
 
 /** SKIP keywords added at each version. The SKIP group already exists in
     every saved catalogue, so these are MERGED into it rather than added as a
@@ -449,6 +449,14 @@ const SKIP_ADDED_SINCE: Record<number, string[]> = {
     keyword rather than by index so reordering the catalogue is harmless. */
 const RULES_ADDED_SINCE: Record<number, string[]> = {
   1: ["wkr expense", "small material", "issued & paid up capital", "opening stock", "closing stock", "stock on hand"],
+  // v4 (2026-09-11): the groups written for the reconciliation test. Every one
+  // of them was shipped at v3 WITHOUT being registered here, so a saved project
+  // never received them — the SHORI 2024 run booked owner investments as a
+  // current liability and "Taxes and Licenses" into the other-deductions pool
+  // although both rules were sitting in the bundle. One fresh keyword per
+  // changed group is enough: upgradeRules appends the whole group it belongs to.
+  3: ["discount given", "freight", "taxes and licenses", "merchant account",
+      "payroll expense", "owner investment", "owner draw"],
 };
 
 /** Groups the saved catalogue is missing purely because it predates them.
@@ -2076,14 +2084,24 @@ export const actions = {
 
           let routed = routeRow(m.row, target.startsWith("BS"), caseYears, m.kind);
           // The rule and its reasoning live in sections.ts.
-          if (contraRevenueFlip(target, m.inTotal) && Array.isArray(routed)) {
+          if (Array.isArray(routed) && contraRevenueFlip(target, m.inTotal, routed[0]?.value)) {
             const asPrinted = routed[0]?.value ?? 0;
             routed = routed.map((r) => ({ ...r, value: -r.value }));
             rv({
               id: `contra-revenue-${norm(m.row.label)}`,
               level: "info", category: "mapping", sourceLabel: m.row.label,
-              message: `"${m.row.label}" (${asPrinted.toLocaleString()} as printed) was booked to Schedule C line 1b, returns and allowances, as ${r2(-asPrinted).toLocaleString()}. The statement ADDS this caption inside its own income total, and line 1b is subtracted from line 1a, so the sign is reversed to leave gross income exactly as the statement reports it. If the books have the sign the wrong way round, correct it in the books rather than here.`,
+              message: `"${m.row.label}" (${asPrinted.toLocaleString()} as printed) was booked to Schedule C line 1b, returns and allowances, as ${r2(-asPrinted).toLocaleString()}. Line 1b is subtracted from line 1a, so it can only hold a positive magnitude; the sign is reversed to leave gross income exactly as the statement reports it. If the books have the sign the wrong way round, correct it in the books rather than here.`,
               target: `${SHEET.is}!F8`, source: m.docName,
+            });
+          }
+          if (Array.isArray(routed) && expenseGainFlip(target, m.section, routed[0]?.value)) {
+            const asPrinted = routed[0]?.value ?? 0;
+            routed = routed.map((r) => ({ ...r, value: -r.value }));
+            rv({
+              id: `expense-gain-${norm(m.row.label)}`,
+              level: "info", category: "mapping", sourceLabel: m.row.label,
+              message: `"${m.row.label}" is printed under the statement's expense heading, so the ${asPrinted.toLocaleString()} it reports is a loss. It was booked to Schedule C as ${r2(-asPrinted).toLocaleString()}.`,
+              target: `${SHEET.is}!F${target === "IS:19" ? 19 : 20}`, source: m.docName,
             });
           }
           if (routed === "ambiguous") {

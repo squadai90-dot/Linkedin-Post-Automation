@@ -374,9 +374,14 @@ export const DEFAULT_RULES: MappingRule[] = [
      retained earnings and arrive already signed. */
   { kw: ["owner investment", "owner's investment", "owners investment",
          "member capital", "members capital", "member's capital",
-         "opening balance equity", "owner contribution", "owners contribution",
+         "owner contribution", "owners contribution",
          "capital contribution", "partner capital", "partners capital"], t: "BS:60" },
+  /* "Opening balance equity" is QuickBooks' setup suspense account, not
+     contributed capital: a preparer clears it to retained earnings, which is
+     what the hand-prepared SHORI 2024 paper does (243,156.64 - 104,008.71 -
+     144,975.47 = -5,827.54 on Schedule F line 22). */
   { kw: ["owner draw", "owners draw", "owner's draw", "owner drawing",
+         "opening balance equity",
          "member draw", "members draw", "partner draw", "partners draw",
          "shareholder distribution", "partner distribution", "member distribution",
          "owner distribution", "distributions to owner"], t: "BS:61" },
