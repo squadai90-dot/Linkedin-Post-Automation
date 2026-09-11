@@ -8,3 +8,6 @@ dist/bundle.js
 .netlify
 dist-server/
 dist-bundle/
+
+# Client reconciliation outputs — real client financial data, kept out of the repo
+5471_Reconciliation_*.xlsx
