@@ -1,0 +1,152 @@
+/* ============================================================
+   EN9 THEME — original design system for the 5471 Work Paper
+   Inspired by: Retool (density), Linear (nav & filtering),
+   Stripe/Ramp (financial polish). No copied assets or layouts.
+   ============================================================ */
+:root{
+  --ink:#0d1017; --paper:#ffffff; --line:#e4e7ec; --muted:#667085;
+  --indigo:#4f5ae8; --teal:#0e9384;
+  --en9-bg:#f7f8fa; --en9-hover:#f9fafb; --en9-ring:rgba(79,90,232,.28);
+  --en9-shadow:0 1px 2px rgba(16,24,40,.05);
+  --en9-shadow-md:0 4px 12px -2px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+}
+html{font-size:16px}
+body{background:var(--en9-bg);font-size:13px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+/* ---- surfaces: hairline + whisper shadow (Stripe-like calm) ---- */
+.panel{border-radius:10px;padding:16px 18px;box-shadow:var(--en9-shadow)}
+.metric-card{border-radius:10px;padding:14px 16px;box-shadow:var(--en9-shadow)}
+.metric-card strong{font-size:22px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.metric-card>span,.metric-card small{font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700}
+.hero-panel{box-shadow:var(--en9-shadow-md)}
+h1{font-size:clamp(26px,3.4vw,38px);letter-spacing:-.03em}
+.panel-heading h2{font-size:15px;font-weight:650;letter-spacing:-.01em}
+.section-kicker{font-size:10px;letter-spacing:.09em}
+.hero-panel p{font-size:14px}
+
+/* ---- Linear-inspired sidebar & nav ---- */
+.sidebar{background:var(--ink);padding:18px 12px}
+.brand-lockup{padding:0 8px 16px;border-bottom:1px solid #ffffff14}
+.brand-mark{border-radius:9px;width:32px;height:32px;background:var(--indigo)}
+.nav-list{margin-top:10px}
+.nav-item{border-radius:6px;padding:7px 9px;font-size:12.5px;font-weight:500;color:#9aa4b8;
+  transition:background .12s ease,color .12s ease;position:relative}
+.nav-item span{font-size:9px;width:20px;color:#5b6474}
+.nav-item:hover{background:#ffffff0d;color:#e5e9f2}
+.nav-item.active{background:#ffffff12;color:#fff;box-shadow:inset 2px 0 0 var(--indigo)}
+.nav-item.active span{color:#aab1ff}
+.sidebar-foot{border-top:1px solid #ffffff14;font-size:10.5px;color:#7c8698}
+.sidebar ::-webkit-scrollbar{width:8px}
+.sidebar ::-webkit-scrollbar-thumb{background:#ffffff1a;border-radius:8px}
+
+/* ---- topbar: compact, blurred (Linear) ---- */
+.topbar{height:54px;padding:0 24px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px)}
+.topbar strong{font-size:13px}
+.eyebrow{font-size:9.5px}
+.prototype-badge{border-radius:6px;font-weight:650}
+
+/* ---- buttons: Stripe-style weights ---- */
+.button{border-radius:8px;padding:7px 13px;font-size:12.5px;font-weight:600;
+  box-shadow:var(--en9-shadow);transition:box-shadow .12s ease,transform .05s ease,background .12s ease}
+.button:hover{background:var(--en9-hover)}
+.button:active{transform:translateY(.5px)}
+.button.primary{background:var(--indigo);border-color:#4046c9}
+.button.primary:hover{background:#4650df}
+.button:disabled{opacity:.55;box-shadow:none}
+
+/* ---- inputs: hairline + focus ring ---- */
+input,select,textarea{border-radius:8px;font-size:12.5px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,.button:focus-visible,.nav-item:focus-visible{
+  outline:none;box-shadow:0 0 0 3px var(--en9-ring),var(--en9-shadow)}
+
+/* ---- tables: financial-grade (Ramp) ---- */
+.wp-table{border:1px solid var(--line);border-radius:10px;box-shadow:var(--en9-shadow)}
+.wp-table thead th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+  font-weight:700;background:#fbfcfd}
+.wp-table td{border-top:1px solid #f1f3f6;font-size:12.5px}
+.wp-table tbody tr:nth-child(even):not(.en9-x){background:transparent}
+.wp-table tbody tr:not(.en9-x):hover{background:var(--en9-hover)}
+td.numeric,th.numeric,.rate-cell{font-variant-numeric:tabular-nums lining-nums}
+.ref-cell{font-size:10.5px;color:#98a2b3}
+tr.en9-group td{background:#f5f6fb;color:#4046c9;border-top:1px solid #eaecfa}
+tr.en9-subtotal td{background:#fbfcfd}
+
+/* ---- chips, pills, tags: pastel + strong text (Stripe status) ---- */
+.status-pill,.type-chip,.actor-tag,.filter-chip,.instance-pill,.en9-fchip{border-radius:6px;font-weight:650;letter-spacing:.01em}
+.chip-btn{border-radius:7px;font-weight:600;transition:border-color .12s ease,background .12s ease}
+.chip-btn.active{border-color:var(--indigo);box-shadow:0 0 0 3px var(--en9-ring)}
+.cat-chip{border-radius:8px;font-weight:600}
+.cat-chip.on{box-shadow:0 0 0 3px var(--en9-ring)}
+.callout,.toast{border-radius:10px;box-shadow:var(--en9-shadow-md)}
+
+/* ---- misc polish ---- */
+.log-list{font-size:11.5px}
+.dropzone{border-radius:10px;border-style:dashed}
+.progress-track{border-radius:999px;height:6px}
+.tab-button{border-radius:8px;font-weight:600;font-size:12.5px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#d5dae2;border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:#b9c0cc;background-clip:content-box}
+
+/* ---- command palette (Linear-inspired, original build) ---- */
+.en9-kbar{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-start;justify-content:center;
+  background:rgba(13,16,23,.42);backdrop-filter:blur(2px);padding-top:14vh}
+.en9-kbar[hidden]{display:none}
+.en9-kcard{width:min(580px,92vw);background:#fff;border-radius:12px;box-shadow:0 24px 64px -12px rgba(16,24,40,.35);
+  border:1px solid var(--line);overflow:hidden}
+.en9-kin{width:100%;border:none;outline:none;padding:15px 18px;font-size:15px;box-shadow:none!important;border-radius:0}
+.en9-klist{max-height:320px;overflow:auto;border-top:1px solid var(--line);padding:6px}
+.en9-kitem{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13px;cursor:pointer;color:#1d2433}
+.en9-kitem .en9-kk{font-size:9.5px;color:#98a2b3;font-family:var(--font-geist-mono),monospace;width:22px}
+.en9-kitem .en9-ksec{margin-left:auto;font-size:10px;color:#98a2b3;text-transform:uppercase;letter-spacing:.05em}
+.en9-kitem.sel{background:#f5f6fb;color:#111}
+.en9-kfoot{display:flex;gap:14px;border-top:1px solid var(--line);padding:8px 14px;font-size:10.5px;color:#98a2b3}
+.en9-kfoot kbd{background:#f2f4f7;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-family:inherit}
+.en9-kbd-hint{border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--muted);
+  font-size:10.5px;padding:3px 8px;cursor:pointer;font-family:var(--font-geist-mono),monospace}
+.en9-kbd-hint:hover{color:var(--indigo);border-color:#c7cbfa}
+.en9-kempty{padding:18px;text-align:center;color:#98a2b3;font-size:12.5px}
+@media (prefers-reduced-motion:no-preference){
+  .en9-kcard{animation:en9pop .13s ease}
+  @keyframes en9pop{from{transform:translateY(-6px) scale(.985);opacity:0}to{transform:none;opacity:1}}
+}
+
+/* ============================================================
+   EN9 DARK THEME + THEME TRANSITION
+   ============================================================ */
+  --ink:#e7ebf2; --paper:#151a23; --line:#262c38; --muted:#8b94a7;
+  --indigo:#6d76f5; --teal:#2dd4bf;
+  --en9-bg:#0d1015; --en9-hover:#1a2029; --en9-ring:rgba(109,118,245,.32);
+  --en9-shadow:0 1px 2px rgba(0,0,0,.35);
+  --en9-shadow-md:0 6px 18px -4px rgba(0,0,0,.5);
+}
+body,.panel,.metric-card,.topbar,.wp-table,.wp-table td,.wp-table th,.button,input,select,textarea,
+.en9-authority,.en9-auth-card,.en9-sources,.en9-fb input,.en9-fb select,tr.en9-cfrow th,tr.en9-cfrow input,
+.en9-pager select,.en9-pbtn,.en9-fchip,.en9-chip,.en9-logbtn,.cat-chip,.chip-btn{
+  transition:background-color .25s ease,color .25s ease,border-color .25s ease,box-shadow .25s ease}
+@media (prefers-reduced-motion:reduce){
+  body,.panel,.metric-card,.topbar,.wp-table,.wp-table td,.wp-table th,.button,input,select,textarea{transition:none}}
+  background:#111620;color:var(--ink);border-color:#2e3542}
+
+/* ---- theme toggle pill ---- */
+  background:#f2f4f7;cursor:pointer;padding:0;transition:background .25s ease,border-color .25s ease}
+  background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.25);display:grid;place-items:center;font-size:11px;
+  transition:transform .25s cubic-bezier(.4,0,.2,1)}
+
+/* ============================================================
+   EN9 AMBIENT BACKGROUND — aurora drift + sidebar sheen
+   Motion lives behind opaque surfaces at low opacity; frozen
+   under prefers-reduced-motion; killable from Settings.
+   ============================================================ */
+.app-shell{position:relative;z-index:1}
+@keyframes en9dr1{50%{transform:translate(9vw,7vh) scale(1.12)}}
+@keyframes en9dr2{50%{transform:translate(-7vw,-9vh) scale(.9)}}
+@keyframes en9dr3{50%{transform:translate(-6vw,-5vh) scale(1.08)}}
+.sidebar{overflow:hidden}
+.sidebar::after{content:"";position:absolute;left:0;right:0;top:-40%;height:34%;pointer-events:none;
+  background:linear-gradient(105deg,transparent 20%,rgba(255,255,255,.045) 50%,transparent 80%);
+  animation:en9sheen 22s linear infinite}
+@keyframes en9sheen{0%,72%{transform:translateY(-120%)}92%,100%{transform:translateY(560%)}}
+@media (prefers-reduced-motion:reduce){
+  .sidebar::after{display:none}}
+/* ---- settings ambient switch ---- */

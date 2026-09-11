@@ -1,0 +1,326 @@
+[
+{
+"target": "Sch F \u00b7 Buildings and other depreciable assets (eoy)",
+"caption": "Tangible xed assets",
+"page": 2,
+"value": 59.25
+},
+{
+"target": "Sch F \u00b7 Buildings and other depreciable assets (eoy)",
+"caption": "Computers",
+"page": 2,
+"value": 59.25
+},
+{
+"target": "Sch F \u00b7 Buildings and other depreciable assets (eoy)",
+"caption": "02400 Ofce appliances",
+"page": 2,
+"value": 655.37
+},
+{
+"target": "Sch F \u00b7 Buildings and other depreciable assets (eoy)",
+"caption": "02600 Bicycle",
+"page": 2,
+"value": 794
+},
+{
+"target": "Sch F \u00b7 Buildings and other depreciable assets (eoy)",
+"caption": "Tangible xed assets",
+"page": 4,
+"value": 236.97
+},
+{
+"target": "Sch F \u00b7 Common stock (eoy)",
+"caption": "Equity",
+"page": 3,
+"value": 2609.32
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "24000 Current account VAT",
+"page": 2,
+"value": 156
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "24010 Taxes Payable",
+"page": 2,
+"value": 979
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "Short-term liabilities",
+"page": 3,
+"value": 27032.1
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "Other payables",
+"page": 3,
+"value": 6087
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "17110 National social security ofce",
+"page": 3,
+"value": 6087
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "Other debts",
+"page": 3,
+"value": 5568.69
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "20301 Current account William Phillippe",
+"page": 3,
+"value": 5568.69
+},
+{
+"target": "Sch F \u00b7 Accounts payable (eoy)",
+"caption": "Transitory liabilities",
+"page": 3,
+"value": 15117.17
+},
+{
+"target": "Sch C \u00b7 Interest (amount)",
+"caption": "Bank interest paid",
+"page": 4,
+"value": -49
+},
+{
+"target": "Sch C \u00b7 Interest (amount)",
+"caption": "86000 Interest paid",
+"page": 4,
+"value": -49
+},
+{
+"target": "Sch C \u00b7 Other deduction 1 (amount)",
+"caption": "Miscellaneous nancial charges",
+"page": 4,
+"value": -2701.45
+},
+{
+"target": "Sch C \u00b7 FX gain/loss \u2014 unrealised (amount)",
+"caption": "86991 FX losses",
+"page": 4,
+"value": -2701.45
+},
+{
+"target": "Sch F \u00b7 Less accumulated depreciation (negative) (eoy)",
+"caption": "02450 Depreciation of ofce appliances - recorded",
+"page": 2,
+"value": -596.12
+},
+{
+"target": "Sch F \u00b7 Less accumulated depreciation (negative) (eoy)",
+"caption": "02650 Accumulative depreciation bicycle",
+"page": 2,
+"value": -794
+},
+{
+"target": "Sch F \u00b7 Cash (eoy)",
+"caption": "Current assets",
+"page": 2,
+"value": 29582.17
+},
+{
+"target": "Sch F \u00b7 Cash (eoy)",
+"caption": "Liquid assets",
+"page": 2,
+"value": 28447.17
+},
+{
+"target": "Sch F \u00b7 Cash (eoy)",
+"caption": "Checking accounts",
+"page": 2,
+"value": 23947.17
+},
+{
+"target": "Sch F \u00b7 Cash (eoy)",
+"caption": "11000 NL77INGB0009457686",
+"page": 2,
+"value": 23947.17
+},
+{
+"target": "Sch F \u00b7 Cash (eoy)",
+"caption": "Saving accounts",
+"page": 2,
+"value": 4500
+},
+{
+"target": "Sch F \u00b7 Cash (eoy)",
+"caption": "12000 NL77INGB0009457686",
+"page": 2,
+"value": 4500
+},
+{
+"target": "Sch F \u00b7 Trade notes and accounts receivable (eoy)",
+"caption": "Receivables",
+"page": 2,
+"value": 1135
+},
+{
+"target": "Sch F \u00b7 Trade notes and accounts receivable (eoy)",
+"caption": "Other amounts receivable",
+"page": 2,
+"value": 1135
+},
+{
+"target": "Sch F \u00b7 Trade notes and accounts receivable (eoy)",
+"caption": "16100 Invoices to be received",
+"page": 3,
+"value": 214.25
+},
+{
+"target": "Sch F \u00b7 Retained earnings (eoy)",
+"caption": "Distributable reserves",
+"page": 3,
+"value": -1890.68
+},
+{
+"target": "Sch F \u00b7 Retained earnings (eoy)",
+"caption": "08400 General reserves",
+"page": 3,
+"value": -1890.68
+},
+{
+"target": "Sch C \u00b7 Other income 1 (amount)",
+"caption": "16982 Unearned income",
+"page": 3,
+"value": 14902.92
+},
+{
+"target": "Sch C \u00b7 Gross receipts (amount)",
+"caption": "Net revenue",
+"page": 4,
+"value": 192726.69
+},
+{
+"target": "Sch C \u00b7 Gross receipts (amount)",
+"caption": "80000 Consulting Services",
+"page": 4,
+"value": 174223.36
+},
+{
+"target": "Sch C \u00b7 Gross receipts (amount)",
+"caption": "80001 Referral fee",
+"page": 4,
+"value": 18503.33
+},
+{
+"target": "Sch C \u00b7 Cost of labor (amount)",
+"caption": "Personnel costs",
+"page": 4,
+"value": 186640.63
+},
+{
+"target": "Sch C \u00b7 Cost of labor (amount)",
+"caption": "Payroll costs",
+"page": 4,
+"value": 184250
+},
+{
+"target": "Sch C \u00b7 Cost of labor (amount)",
+"caption": "40010 Directors and managers",
+"page": 4,
+"value": 184250
+},
+{
+"target": "Sch C \u00b7 Cost of labor (amount)",
+"caption": "Other personnel costs",
+"page": 4,
+"value": 2390.63
+},
+{
+"target": "Sch C \u00b7 Cost of labor (amount)",
+"caption": "40970 WKR expenses",
+"page": 4,
+"value": 2400
+},
+{
+"target": "Sch C \u00b7 Cost of labor (amount)",
+"caption": "40990 Other personnel costs",
+"page": 4,
+"value": -9.37
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "Other operating costs",
+"page": 4,
+"value": 3252.17
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "Advisors",
+"page": 4,
+"value": 2817.54
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "45500 Fees for bookkeepers and accountants",
+"page": 4,
+"value": 2817.54
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "Ofce costs",
+"page": 4,
+"value": 132.12
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "45310 Small material",
+"page": 4,
+"value": 33.05
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "45350 Computer services",
+"page": 4,
+"value": 99.07
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "Financial costs",
+"page": 4,
+"value": 302.51
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "45800 Bank costs",
+"page": 4,
+"value": 302.51
+},
+{
+"target": "Sch C \u00b7 Other costs (amount)",
+"caption": "Total Operating costs",
+"page": 4,
+"value": 189892.8
+},
+{
+"target": "Sch C \u00b7 Depletion (amount)",
+"caption": "49300 Depreciation of hardware",
+"page": 4,
+"value": 131.08
+},
+{
+"target": "Sch C \u00b7 Depletion (amount)",
+"caption": "49500 Depreciation of vehicles",
+"page": 4,
+"value": 105.89
+},
+{
+"target": "Sch C \u00b7 Depletion (amount)",
+"caption": "Total Depreciations",
+"page": 4,
+"value": 236.97
+},
+{
+"target": "Sch C \u00b7 Other income 3 (amount)",
+"caption": "Financial losses",
+"page": 4,
+"value": -2750.45
+}
+]
