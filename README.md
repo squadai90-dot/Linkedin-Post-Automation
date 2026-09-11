@@ -1,404 +1,254 @@
-# Unison Content OS
+# Form 5471 Work Paper
 
-An internal tool for a marketing team to research, draft, fact-check, illustrate,
-approve, schedule and publish LinkedIn Company Page posts.
+Populates a Form 5471 master workbook from client documents, entirely in the browser.
 
-It is a **frontend-only React app**. It runs from any static host — or straight
-off your laptop — with no backend and no database. Everything it needs to be
-useful is optional and configured in Settings; everything it cannot do, it says
-so on screen rather than pretending.
+The tool reads trial balances and statutory accounts, maps their captions onto the
+work paper's schedule lines, and writes the values into **your** master template —
+preserving all 19 sheets, every formula, the styling and the hidden tabs. It does not
+create a new output format, and it never computes a US-dollar figure: the template's
+own formulas do that from the three exchange rates the tool supplies.
+
+Everything runs client-side. Documents are parsed in the browser and are never uploaded.
 
 ---
 
-## Run it
+## Quick start
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+npm start          # serves the committed dist/ on localhost
 ```
 
-Build and preview the production bundle:
+No install, no network? `npm start:local` (or `node scripts/serve-local.mjs`)
+serves the same committed `dist/` on <http://localhost:8080> using nothing but
+Node's standard library — no `npm install`, no `npx` download. Pass a port to
+change it: `node scripts/serve-local.mjs 3000`.
 
-```bash
-npm run build
-npm run preview    # http://localhost:4173
-```
+> **Serve over HTTPS (or localhost).** Browsers block the tool's network calls
+> and IndexedDB persistence from `file://` — do not open `index.html` directly.
+>
+> **Note on builds:** `npm run build` is intentionally a no-op. The shipped
+> application is the *committed* `dist/index.html` — every fix is applied to it
+> directly (see `PROJECT-NOTES.md`). `npm run build:app` would regenerate it
+> from the older `src/` tree and **must not be run** unless you are porting the
+> fixes back to source first.
 
-Deploy `dist/` to any static host (Vercel, Netlify, S3, an internal nginx). No
-build-time environment variables are required.
+**2026-08-21:** the app degrades gracefully when no backend is reachable
+(Task management shows a friendly notice on both 404 and SPA-fallback hosts —
+never a blank screen); generate buttons live only in Executive overview,
+Workpaper preview, Entity workspace and Sign-off, and the Overview button
+becomes **Preview format** (downloads the blank master template) until
+something is processed; the full OCR panel appears only on an entity's
+Documents tab (elsewhere a compact `⚠ OCR — verify` badge marks OCR-sourced
+values, and Settings carries one OCR card at the bottom of Free services);
+re-processing treats the **current** document set as the single source of
+truth — auto-detected data from removed documents is pruned (hand-typed
+values, sign-offs and saved mappings survive), and removing a file resets the
+entity to "needs processing". `npm run test:all` — 7 suites, 29 layer test
+groups.
 
-### One file, no install
+`dist/index.html` is the entire application — one self-contained file with the master
+template, the exchange-rate tables and all code inlined. Drop it on any static host
+(HTTPS) or serve it locally.
 
-`npm run build:standalone` writes `unison-content-os.html` — the whole app
-inlined into a single file. Save it anywhere and double-click it; no server, no
-`npm install` at the other end. Everything works, including saved sessions,
-because the browser keeps them per file.
+---
 
-The one caveat, which the file states itself when you open it that way: a page
-loaded over `file://` sends no origin, so an AI key may be refused. To use one,
-serve the folder instead and open the address it prints:
+## What it does
 
-```bash
-npx serve .
-```
-
-`npm run build:preview` writes the same thing as `preview.html` for a hosted
-sandbox, where outbound requests are blocked and file downloads are unavailable.
-
-| Command | What it does |
+| | |
 |---|---|
-| `npm run dev` | Dev server with hot reload |
-| `npm run build` | Production bundle into `dist/` |
-| `npm run preview` | Serve the built bundle on port 4173 |
-| `npm run lint` | ESLint over the app, the API routes and the tests |
-| `npm test` | Vitest unit tests (91 tests, no network) |
-| `npm run test:e2e` | Playwright journey tests against the built app |
-| `npm run check` | lint + unit tests + build, in that order |
-| `npm run build:standalone` | One self-contained `unison-content-os.html` you can email or double-click |
-| `npm run build:preview` | The same file as `preview.html`, for a hosted sandbox |
+| **Reads** | `.xlsx` `.xlsm` `.csv` `.tsv` `.txt` and **text-layer PDFs** |
+| **Maps** | 50+ multilingual keyword rules (growing as you assign captions), then an automatic AI pass |
+| **Detects** | Legal name, address, country, formation date, currency, ownership, categories |
+| **Rates** | IRS yearly averages (2017–2025) and US Treasury 12/31 spot rates, 151 currencies |
+| **Validates** | Refuses to generate while an exchange rate is missing |
+| **Writes** | Only designated input cells; flags the workbook to recalculate on open |
+| **Records** | A full audit trail, exportable as JSON |
+| **Reviews** | Editable mappings and exceptions, policy-driven levelling, task board |
+
+Multiple entities are supported. Each keeps its own documents and produces its own
+workbook — Form 5471 is filed per foreign corporation, so nothing is consolidated.
+
+### PDF extraction
+
+PDFs are parsed by pdf.js, bundled and inlined at build time — no CDN, no separate
+worker file, no network access; the worker runs on the main thread. Glyph positions
+are reconstructed into rows and columns, so the existing mapping engine works on
+PDFs unchanged.
+
+A dependency-free fallback parser (the browser's own `DecompressionStream` for
+FlateDecode) is kept for producers pdf.js rejects. It handles compressed object
+streams, text inside Form XObjects, and Identity-H CID fonts with no ToUnicode map
+(recovering characters by inverting the embedded TrueType `cmap` table).
+
+Scanned PDFs have no text layer; the tool reports that plainly and offers the
+in-browser OCR card (Tesseract.js, on Document intake) to build a searchable copy.
+
+### Review workflow
+
+Every caption can be re-bound to a different template line from **Mapping &
+adjustments** (or sent back to the review queue) — the decision persists and
+survives re-processing. Exceptions in the **Exception center** can be signed
+off, or **edited and resubmitted**: the linked workbook cell takes the
+reviewer's number and the audit trail records old → new. **Settings ▸
+Policies** holds ordered rules that decide each exception's level (or
+suppress it); suppressing a blocking exception is a standing acknowledgement
+and is logged on every generation. The **Multilingual evidence** table leads
+with the current-year value and keeps the full multi-year figures as audit
+subtext.
 
 ---
 
-## First run: three things to set up
+## Backend (optional)
 
-The dashboard shows a checklist until these are done. Everything works before
-they are — you just get sample data and dry runs.
-
-### 1. Your company (Settings → Workspace)
-
-Company name, website, your own name. The name appears in the post preview and
-is stamped onto every generated image; your name greets you and signs the
-activity log. Nothing here leaves the browser.
-
-### 2. AI (Settings → AI)
-
-Every written feature — discovery, research, drafting, evidence checks, the
-health score, image and video prompts — runs on one provider, chosen here.
-
-**Groq is the default and it is free.** Its free tier meters requests and
-tokens per day and the counters reset 24 hours after your first call, which is
-why it suits a small internal team. Get a key at
-[console.groq.com/keys](https://console.groq.com/keys) — it takes about a
-minute and needs no card.
-
-Three ways to give the app a key, tried in this order:
-
-1. **The AI relay** (`api/ai.js`, see *Optional serverless relays* below). When
-   deployed, the key lives on the server and never reaches the browser. This is
-   the right choice for a shared URL.
-2. **Settings → AI.** Paste the key into the field. It is kept in this
-   browser's `localStorage` under `unison:ai:v1`, never in the saved session
-   and never in an export. Calls go straight to the provider. This is the right
-   choice for a laptop.
-3. **`.env.local`.** Copy `.env.example` to `.env.local` and set
-   `VITE_GROQ_API_KEY`. `npm run dev` picks it up so nobody has to paste a key
-   after a hard refresh.
-
-> **Option 3 puts the key inside the built JavaScript.** That is how Vite
-> works: every `VITE_*` variable is inlined at build time, so anyone who can
-> open the page can read it. `npm run build` prints a warning when it happens.
-> Fine for a build that stays on your own machines; use option 1 or 2 for
-> anything with a URL. The artifact builds (`build:preview`, `build:standalone`)
-> blank these variables, so a handover file never carries a key.
-
-Optionally, a **local model**: if [Ollama](https://ollama.com) is running on the
-same machine, turn it on and Unison will prefer it. It is off by default — the
-probe costs about 1.5 seconds and most machines do not run Ollama. Web search is
-not available on this route.
-
-**Choosing a model.** Groq retires model ids on its own schedule, so the picker
-asks your key what it can actually use — press **Refresh model list**. The
-shipped default is Llama 3.3 70B. Nothing in the app hard-codes a model name;
-`MODEL_REGISTRY` in `src/lib/ai.js` maps capabilities to providers.
-
-**Web search.** Groq runs search inside its `groq/compound` models rather than
-as a separate tool, so turning on Web search swaps the model for that one call.
-It is free and needs no extra key. On Anthropic the same switch attaches the
-server-side `web_search` tool, which is billed.
-
-**Anthropic** stays available for when a draft needs the strongest model
-available. Switch provider at the top of the tab; each provider keeps its own
-key and model, so switching back loses nothing. Thinking depth applies to
-Anthropic only.
-
-**Matching the model to the job.** One model for every task wastes the free
-allowance on throwaway prompts and under-serves the draft. On by default:
-
-| Job | Tier | Default on Groq |
-|---|---|---|
-| Drafting, evidence checks | Strong | `openai/gpt-oss-120b` |
-| Research, angles, health score | Standard | whatever **Model** is set to |
-| Image and video prompts | Fast | `llama-3.1-8b-instant` |
-
-Both ends are overridable in Settings → AI, and the whole thing switches off
-with one toggle if you would rather everything used the model you picked.
-
-**When the daily allowance runs out.** A long session can exhaust one model's
-free quota. Rather than dropping to sample data mid-post, Unison steps down a
-tier, carries on, and tells you once — output gets shorter and plainer, but the
-work continues. It remembers which model is spent for the rest of the day, so
-no later call wastes a round trip rediscovering it, and it reads the provider's
-own reset time instead of assuming a full 24 hours. Turn it off in Settings if
-you would rather be stopped than served by a lighter model.
-
-**Test connection** proves it works before you rely on it. If the free daily
-allowance is visible, it appears under the buttons — some providers do not
-expose those numbers to a browser, in which case nothing is shown rather than a
-guess.
-
-### 3. Publishing (Settings → LinkedIn)
-
-LinkedIn has no browser-callable posting API, so the post has to leave through
-something. Three routes, tried in this order:
-
-**Straight to LinkedIn (no Make needed).** Deploy `api/linkedin.js` and set
-`LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`. That function is the half a
-browser cannot do: it exchanges the OAuth code for a token, lists the Pages the
-account administers, and posts through LinkedIn's own API. Sign in under
-Settings → LinkedIn and text and article posts go direct, with LinkedIn's own
-post id in the reply. Nothing to configure in the app — it finds the endpoint
-itself.
-
-Image, video, document, poll and carousel posts still go through Make. Those
-need LinkedIn's upload handshake before the post can reference the asset, which
-is several round trips and exactly what a Make scenario already does well.
-Unison picks the route per post and the progress log names which one it used.
-
-**Make (recommended, works with no LinkedIn sign-in).** A Make.com scenario owns
-the LinkedIn connection. Unison POSTs the finished post to its webhook. Paste the
-webhook URL under Settings → LinkedIn. The payload:
-
-```jsonc
-{
-  "source": "unison-content-os",
-  "postId": "p-w-abc123",         // stable per post
-  "idempotencyKey": "p-w-abc123", // same value; drop repeats on this
-  "postType": "text|image|multi|video|document|poll|article|carousel",
-  "content": "the full post text including hashtags",
-  "company": "Acme Labs",
-  "companyUrn": "urn:li:organization:123",
-  "publishMode": "now" | "scheduled",
-  "scheduledDate": "2026-09-15",   // null when publishMode is "now"
-  "scheduledTime": "09:30",
-  "timezone": "Asia/Kolkata",
-  "submittedBy": { "name": "Priya Shah", "email": null },
-  "media": [{ "kind": "image", "filename": "…", "mimeType": "image/png",
-              "data": "<base64>", "altText": "…", "width": 1200, "height": 630 }],
-  "poll": { "question": "…", "options": ["…"], "duration": "1 week" }
-}
-```
-
-Unison marks a post **Published** only when the scenario's Webhook Response says
-so — `{"status":"published"}` or a real `urn:li:...`. A bare `200` means
-*delivered to Make*, nothing more, and the UI says exactly that. To let the
-browser read the reply, set an `Access-Control-Allow-Origin` header on the
-Webhook Response module; without it the post still arrives but Unison reports it
-as sent-unconfirmed rather than guessing.
-
-**Sign in with LinkedIn (optional, adds identity and Page selection).** Create an
-app at [linkedin.com/developers](https://www.linkedin.com/developers/), add this
-page's URL as an authorised redirect URL, and paste the Client ID under
-Settings → LinkedIn.
-
-A browser can send the user to LinkedIn's consent screen and receive the
-authorisation code back. It **cannot** exchange that code for a token — that
-needs the Client Secret, which must never sit in a web page. So finish in one of
-two ways:
-
-- **Token bridge.** Point Settings → LinkedIn at any URL (a second Make webhook
-  is easiest) that performs the exchange. Unison POSTs
-  `{"action":"exchange","code":"…","redirect_uri":"…","client_id":"…"}` and
-  expects `{"access_token":"…","expires_in":5184000,"profile":{…},"organizations":[…]}`
-  back, with an `Access-Control-Allow-Origin` header. It may also receive
-  `{"action":"organizations","access_token":"…"}` and return the Pages.
-- **Paste a token.** In the LinkedIn developer portal use
-  Auth → OAuth 2.0 tools → Token generator, and paste the token into the flow.
-  Stored in this browser only.
-
-Without either, sign-in stops at "authorised" and you can still add your Page by
-hand (its numeric ID is in the Page admin URL).
-
----
-
-## What is real and what is not
-
-Nothing in the app claims more than it can prove. This table is the whole truth.
-
-| Area | Real | Not real |
-|---|---|---|
-| Research and drafting | Live web search when a hosted key is set; sources carry real URLs | Without a key, sources are labelled **placeholders** and the draft is labelled **sample text** |
-| Trending stories | Hacker News, free and keyless, real links | Never ranked against your Page's history — tagged "Trending", gap shown as unknown |
-| Background reading | Wikipedia, free and keyless | Marked *Background*, tier 3, never used as evidence for a claim |
-| Grammar | LanguageTool, free and keyless | Your draft text is sent to `languagetool.org`. Turn it off in Settings → Advanced |
-| Holidays | Nager.Date, free and keyless | Country inferred from the chosen timezone |
-| Images | Real, downloadable PNG/SVG from brand templates; optionally AI photos via Pollinations | No commercial image model is wired in |
-| Video | A real, playable WebM encoded in the browser from the storyboard | Not the output of a video model, and the UI says so |
-| Publishing | Real when a Make webhook is set, or straight to LinkedIn with `api/linkedin.js` deployed | With nothing connected it is a **dry run**, labelled everywhere |
-| Source links | Marked **Retrieved** when the model's own search returned that URL | Marked **Unconfirmed link** when the model wrote it but the search did not return it, and **Not a real link** for a placeholder domain. With no search record, nothing is claimed either way |
-| Shared work | Real when `api/workspace.js` is deployed with a store behind it | Otherwise everything is local to one browser and Settings says so |
-| Performance | The numbers you enter from LinkedIn analytics, explained by the model | Not pulled automatically — the Make route has no read-back |
-| Scheduling | A real date, time and timezone, sent to Make | **A browser cannot run while closed.** A due post is flagged on Home and in Content; you press Publish, or hand it to Make to publish at that time |
-| Team list | A local list, shared when a workspace is deployed | Not a login. Roles are documentation, not enforcement |
-
-Sample rows that ship with the app are tagged `sample` and can be removed from
-Content. Clearing the saved session (Settings → Publishing) restores them.
-
----
-
-## Free APIs in use
-
-All keyless, all optional, all fail quietly. Toggle each under
-Settings → Advanced.
-
-| Service | Used for | Off by default |
-|---|---|---|
-| Hacker News (Algolia) | Trending stories in Discover | no |
-| Wikipedia | Background source in Research | no |
-| LanguageTool | Grammar and spelling on the draft | no |
-| Nager.Date | Public-holiday warning when scheduling | no |
-| Pollinations | AI photo instead of the brand renderer | **yes** |
-
----
-
-## Optional serverless relays
-
-`api/ai.js`, `api/publish.js`, `api/linkedin.js` and `api/workspace.js` are
-Vercel functions. None is **required** — the app detects each one and adapts.
-Deploy them to keep keys off the browser, post to LinkedIn without Make, and
-share a workspace across the team:
-
-| Variable | Used by | Purpose |
-|---|---|---|
-| `GROQ_API_KEY` | `api/ai.js` | Holds the free AI key server-side (default provider) |
-| `LINKEDIN_CLIENT_ID` | `api/linkedin.js` | The app's public id; the browser pre-fills it |
-| `LINKEDIN_CLIENT_SECRET` | `api/linkedin.js` | Never reaches the browser |
-| `UPSTASH_REDIS_REST_URL` | `api/workspace.js` | Shared workspace store (free tier, no SDK) |
-| `UPSTASH_REDIS_REST_TOKEN` | `api/workspace.js` | Its token |
-| `UNISON_WORKSPACE_KEY` | `api/workspace.js` | Optional; the key the document is stored under |
-| `ANTHROPIC_API_KEY` | `api/ai.js` | Optional; only if the team also uses Anthropic |
-| `MAKE_LINKEDIN_WEBHOOK_URL` | `api/publish.js` | Holds the webhook server-side |
-| `UNISON_RELAY_TOKEN` | both | Optional shared secret; set the same value in the browser under `localStorage["unison:relay-token"]` |
-
-Both answer `GET` with a health check that sends nothing:
+The standalone `dist/index.html` needs no backend. Add one and the app gains
+persistence (state, documents, sign-offs survive reloads and machines), the
+**Task management** board (pending → in progress → completed, auto-advancing
+as workpapers are processed and generated), and shared policies.
 
 ```bash
-curl https://<your-app>/api/ai        # {"service":"unison-ai-relay","providers":{"groq":true,...}}
-curl https://<your-app>/api/publish   # {"service":"unison-publish-relay",...}
+npm run build:server     # builds dist-server/server.cjs (dist/ is already committed)
+DATABASE_URL=postgres://… node dist-server/server.cjs
 ```
 
-The publish relay also de-duplicates by idempotency key on a warm instance.
+> **The backend has no authentication and no tenant isolation** — every
+> connected browser shares one workspace and `GET /api/workpapers` lists
+> everything. Run it only on a private network for a single team. Do not
+> expose it publicly until auth lands.
+
+One service serves both the API and the app (default port 8471). Env:
+`DATABASE_URL` (Postgres), optional `PORT`, `MAX_UPLOAD_MB` (default 25),
+`CORS_ORIGINS` (only for split hosting). SQL migrations in
+`server/migrations/` run at boot.
+
+**Railway**: create a project with a Postgres plugin, set the build command
+to `npm ci && npm run build:server` and the start command to `npm run start:server`,
+and reference the plugin's `DATABASE_URL`. A static Netlify/Pages build can
+attach to it via Settings ▸ Tool configuration ▸ Backend URL.
+
+**Sign-in is deliberately absent for now** — one shared workspace, task
+assignees are plain names. The schema and the auth seam are ready for
+Microsoft Entra ID: registering a *Web* app (redirect
+`https://<host>/api/auth/oidc/callback`) and adding the OIDC routes turns on
+per-user isolation without restructuring.
 
 ---
 
-## How the code is laid out
+## What it does not calculate
+
+By design, and for three different reasons.
+
+**Arithmetic that belongs to the template** — USD columns, subtotals, cross-schedule
+links, rounding. One source of truth; if the tool also computed these, two answers
+could exist for the same cell.
+
+**Judgment** — filer category, book-to-tax adjustments, E&P, Subpart F and GILTI,
+foreign tax credit, previously taxed E&P, functional currency determination.
+
+**Data the documents don't contain** — prior-year carryovers, and text in scanned
+images until you run them through the OCR card. (Fiscal / non-calendar year ends now
+get OFX daily rates over the actual period.)
+
+`docs/5471-workpaper-user-guide.docx` covers the concepts, but **predates the current UI** (tab numbering and stage counts have changed) — the in-app copy is authoritative.
+
+---
+
+## Where data lands in the template
+
+| Content | Cells |
+|---|---|
+| Client, entity, addresses, activity, currency | `Basic Information` B1:B4, B11:B27 |
+| Ownership facts | `Basic Information` C33:C40 |
+| Filing categories 1a–5c | `Basic Information` B42:B50 |
+| Exchange rates | `Basic Information` C59:C61 |
+| Income statement, local currency | `Income Statement` F7:F59 |
+| Balance sheet, local currency | `Balance Sheet` D10:D62 and F10:F62 |
+
+Plus a generated **Provenance** sheet listing every AI-placed figure and every
+exchange rate with its source. Nothing else is touched.
+
+---
+
+## Optional services
+
+None are required; all are keyless except Groq.
+
+| Provider | Use | Free allowance |
+|---|---|---|
+| MyMemory | Translation | 5,000 characters/day |
+| Lingva | Translation fallback | none published |
+| OFX | Historical daily FX — period averages and last-published-on-or-before date lookups (10-day search), tried first | none published |
+| Frankfurter (ECB) | Historical FX, after OFX | none published |
+| ExchangeRate-API | Live FX, latest only | none published |
+| Groq | Translation and automatic mapping of leftover captions | your own API key |
+
+Keys are entered by the user at runtime and are never bundled into the build.
+
+When a Groq API key is present, processing ends with an automatic AI pass that maps
+leftover trial-balance captions to schedule lines and unrecognised entity-particular
+captions (e.g. "company formation date") to profile fields, each with a model-reported
+confidence. It runs in one pass: anything unresolved on the first attempt is re-asked
+with its amounts, year tags and source document, and everything the model can place is
+booked — low-confidence results are booked *and* raised as review exceptions to verify,
+rather than handed back for a second manual AI round. Only captions the model rejects
+twice (subtotals, totals, non-financial rows) and rows with no unambiguous current-year
+figure return for manual assignment. Settings ▸ AI platform ▸ "Automatic AI mapping"
+turns this off. Without a key the pass is skipped silently and the tool remains fully
+offline.
+
+Exchange rates follow a fixed chain: (1) the bundled IRS yearly-average / US Treasury
+12/31 tables; (2) OFX daily data — a period average for C59 and the last daily rate published on or
+before the requested date (searching back 10 days) for C60/C61 and dividend payment dates, always
+labelled with the resolved date; (3) the other configured live providers; (4) manual
+entry. Every rate displays its source (IRS / Treasury / OFX / ECB / Manual) throughout
+the app. Fiscal-year entities skip the calendar tables but do receive the OFX steps
+over their actual fiscal period, flagged for review.
+
+(HTTPS reminder moved to Quick start.)
+
+---
+
+## Project layout
 
 ```
-src/
-  App.jsx              the root component: state, engines, publishing
-  main.jsx             entry point, wraps the app in an error boundary
-  styles.css           the whole design system
-  hooks.js
-  lib/
-    ai.js              model routing, settings, JSON repair, shape guards
-    linkedin.js        connection shape shared by every route
-    linkedinAuth.js    browser OAuth, token bridge, Page selection
-    publish.js         Make transport, reply reading, publish settings
-    freeApis.js        Hacker News, Wikipedia, LanguageTool, holidays, images
-    formats.js         post components and which stages each one needs
-    brand.js           SVG templates, canvas scenes, rasterising, downloads
-    media.js           the media engine and its providers
-    dates.js           local dates, week/month grids, timezones, due checks
-    image.js           downscaling uploads so they fit browser storage
-    store.js           persistence backend and relay token
-    text.jsx           claim location, LinkedIn preview segments, word diff
-    seed.js, util.js
-  components/          chrome, dashboard, workspace, media, views, modals,
-                       settings, panels, discover, toasts, error boundary
-api/                   two optional Vercel functions
-tests/                 Vitest unit tests
-e2e/                   Playwright journey tests
+assets/master-template.xlsx     the Form 5471 master workbook, inlined at build time
+scripts/build.mjs               bundles and inlines everything into dist/index.html
+src/entry.tsx                   mounts the app
+src/prototype/Shell.tsx         navigation shell (16 tabs; src/ is behind dist — see PROJECT-NOTES.md)
+src/prototype/PrototypeApp.tsx  view routing
+src/prototype/wp/
+  store.ts                      state, actions, validation, generation
+  engine.ts                     template cell map, mapping rules, spreadsheet reader
+  pdfText.ts                    PDF text extraction
+  detectProfile.ts              entity-detail detection
+  fxRates.ts                    IRS and Treasury rate tables
+  providers.ts                  translation and live-rate providers
+  xlsxPatch.ts                  template-preserving OOXML cell writer
+src/styles/                     base and application stylesheets
+docs/                           user guide
 ```
 
-Notes worth knowing:
+### Replacing the master template
 
-- **three.js and mammoth are lazy-loaded.** The ambient 3D scene is off by
-  default and its ~510 KB chunk is never fetched until someone turns it on;
-  `mammoth` loads on the first `.docx` upload.
-- **Storage is quota-aware.** Uploads are downscaled before they are kept. If
-  the browser runs out of room, Unison drops rendered media from older posts,
-  keeps all the text, and *tells you* — it never fails silently.
-- **Every async job is bound to the post it started on.** Opening another draft
-  mid-generation discards the stale result instead of writing it to the wrong
-  post.
+Drop your own workbook at `assets/master-template.xlsx` and rebuild. If its layout
+differs, update the cell coordinates in `src/prototype/wp/engine.ts` — they are
+declared in one place at the top of the file.
 
 ---
 
-## Handover checklist
+## Deploying
 
-Run `npm run check` first — lint, 91 unit tests and the build must all pass.
-Then walk this by hand with nothing configured:
+Any static host. `dist/` is the publish directory.
 
-- [ ] Home shows the setup checklist and honest AI / publishing status
-- [ ] Settings opens on all six tabs; company and your name persist
-- [ ] Type a topic, tick Poll, press Start → research runs and sources are
-      labelled placeholders when no AI key is set
-- [ ] Pick an angle → a draft appears, marked sample text, with a live character
-      count that includes hashtags
-- [ ] Edit the draft → the Evidence panel says the checks are stale and offers
-      Re-check
-- [ ] Approve → Schedule (works with nothing connected) → Publish now shows
-      **Simulated publish — nothing was sent**
-- [ ] Calendar shows the post exactly once, marks today, and navigates months
-- [ ] Content search and the state filters work; a due post offers Publish now
-- [ ] Reload the page → the work is still there and no stage is stuck "running"
-- [ ] Insights shows no invented numbers; add metrics to a published post and
-      press Explain
-- [ ] Settings → Publishing → Export JSON, then Import it back
-- [ ] Phone width: the menu reaches every view and nothing scrolls sideways
-- [ ] Light theme renders
-
-Then configure a free Groq key and a Make webhook and repeat the last three steps of
-the journey with a real post.
+- **Netlify** — drag `dist/` onto <https://app.netlify.com/drop>, or connect the repo (`netlify.toml` included)
+- **Vercel** — import the repo (`vercel.json` included)
+- **GitHub Pages** — commit `dist/` and serve from the branch, or use an Actions workflow
 
 ---
 
-## Sharing work across the team
+## Notes
 
-By default Unison is one browser: posts, calendar, approvals, the team list and
-the audit trail live in `localStorage` and nobody else can see them. **Export
-JSON** under Settings → Advanced is the way to hand work over.
-
-Deploy `api/workspace.js` with an [Upstash Redis](https://upstash.com) free
-database behind it and those become one shared document instead. Everyone reads
-it on load and writes back a few seconds after a change.
-
-- **Shared:** published and scheduled posts, calendar, team list, audit trail,
-  company profile, brand voice.
-- **Not shared, deliberately:** API keys and the LinkedIn token (per-person by
-  design), the draft someone is mid-sentence in (two people would fight over
-  it), and uploaded media (far too large for one document).
-- **Two people saving at once:** the second save is refused rather than allowed
-  to overwrite. Unison merges — posts and audit lines are unioned so nobody
-  loses an afternoon — and saves again, telling you whose changes it merged.
-- **Set `UNISON_RELAY_TOKEN`.** Without it, anyone who knows the URL can read
-  and write the workspace.
-
-Settings → Advanced always states which of the two you are in. It never
-pretends to have shared something it did not.
-
----
-
-## Known limits
-
-- **Nothing runs while the tab is closed.** Scheduling is a reminder plus an
-  optional hand-off to Make. If you need unattended publishing, let the Make
-  scenario schedule from `scheduledDate`/`scheduledTime`.
-- **Storage is per browser, per device.** Two people do not share a queue. Use
-  Export/Import to move work, or put the shared state in Make.
-- **LinkedIn document posts need a PDF** and **there is no organic carousel
-  API.** Unison sends the pages as images and says what the scenario has to do
-  with them.
-- **Articles cannot be created through the API.** The article travels with the
-  post so a scenario can store or route it; LinkedIn publishes the written post.
-- **Browser video encoding runs in real time** and caps at about 6 MB for a
-  single request.
+- Work persists in this browser (IndexedDB) and restores when you reopen the page.
+- Deep links work: `?view=fx`, `?view=entities`.
+- Eleven `#DIV/0!` cells on Schedule E and Entity Structure exist in the master
+  template before the tool touches it; they divide by inputs a preparer supplies.

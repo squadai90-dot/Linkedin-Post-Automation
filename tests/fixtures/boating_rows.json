@@ -1,0 +1,828 @@
+{
+ "pl": [
+  {
+   "page": 1,
+   "y": 841,
+   "cells": [
+    {
+     "text": "Profit and Loss - 2024",
+     "x0": 245.3,
+     "x1": 382.3
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 817.6,
+   "cells": [
+    {
+     "text": "Client Ltd.",
+     "x0": 250.1,
+     "x1": 377.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 800.4,
+   "cells": [
+    {
+     "text": "January 1-December 31, 2024",
+     "x0": 246.3,
+     "x1": 381.3
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 762,
+   "cells": [
+    {
+     "text": "DISTRIBUTION ACCOUNT",
+     "x0": 18,
+     "x1": 122.4
+    },
+    {
+     "text": "TOTAL",
+     "x0": 582.2,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 737.1,
+   "cells": [
+    {
+     "text": "Income",
+     "x0": 18,
+     "x1": 47.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 724.4,
+   "cells": [
+    {
+     "text": "Billable Expense Income",
+     "x0": 24,
+     "x1": 122.6
+    },
+    {
+     "text": "11,918.79",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 711.8,
+   "cells": [
+    {
+     "text": "Disbursements",
+     "x0": 24,
+     "x1": 84
+    },
+    {
+     "text": "35,739.68",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 699.1,
+   "cells": [
+    {
+     "text": "Discounts given",
+     "x0": 24,
+     "x1": 87.5
+    },
+    {
+     "text": "305.92",
+     "x0": 582.1,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 686.5,
+   "cells": [
+    {
+     "text": "Parts Sold",
+     "x0": 24,
+     "x1": 65.5
+    },
+    {
+     "text": "8,654.75",
+     "x0": 574.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 673.8,
+   "cells": [
+    {
+     "text": "Revenue - General",
+     "x0": 24,
+     "x1": 100
+    },
+    {
+     "text": "154,523.24",
+     "x0": 564.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 661.2,
+   "cells": [
+    {
+     "text": "Sales",
+     "x0": 24,
+     "x1": 46.5
+    },
+    {
+     "text": "15,577.40",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 648.5,
+   "cells": [
+    {
+     "text": "Uncategorised Income",
+     "x0": 24,
+     "x1": 114
+    },
+    {
+     "text": "123,866.19",
+     "x0": 564.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 635.6,
+   "cells": [
+    {
+     "text": "Total for Income",
+     "x0": 18,
+     "x1": 88
+    },
+    {
+     "text": "$350,585.97",
+     "x0": 559.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 616.9,
+   "cells": [
+    {
+     "text": "Cost of Sales",
+     "x0": 18,
+     "x1": 71.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 604,
+   "cells": [
+    {
+     "text": "Gross Profit",
+     "x0": 18,
+     "x1": 70
+    },
+    {
+     "text": "$350,585.97",
+     "x0": 559.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 585.3,
+   "cells": [
+    {
+     "text": "Other Income",
+     "x0": 18,
+     "x1": 72.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 572.7,
+   "cells": [
+    {
+     "text": "Expenses",
+     "x0": 18,
+     "x1": 57.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 560,
+   "cells": [
+    {
+     "text": "Bank charges",
+     "x0": 24,
+     "x1": 79
+    },
+    {
+     "text": "665.65",
+     "x0": 582.1,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 547.4,
+   "cells": [
+    {
+     "text": "Commissions and fees",
+     "x0": 24,
+     "x1": 115
+    },
+    {
+     "text": "49,457.93",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 534.7,
+   "cells": [
+    {
+     "text": "Dues and subscriptions",
+     "x0": 24,
+     "x1": 117.5
+    },
+    {
+     "text": "225.00",
+     "x0": 582.1,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 522.1,
+   "cells": [
+    {
+     "text": "Equipment rental",
+     "x0": 24,
+     "x1": 92
+    },
+    {
+     "text": "800.00",
+     "x0": 582.1,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 509.4,
+   "cells": [
+    {
+     "text": "Insurance - General",
+     "x0": 24,
+     "x1": 103.5
+    },
+    {
+     "text": "9,779.29",
+     "x0": 574.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 496.8,
+   "cells": [
+    {
+     "text": "Legal and professional fees",
+     "x0": 24,
+     "x1": 134.1
+    },
+    {
+     "text": "5,820.00",
+     "x0": 574.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 484.1,
+   "cells": [
+    {
+     "text": "Meals and entertainment",
+     "x0": 24,
+     "x1": 123.1
+    },
+    {
+     "text": "48.04",
+     "x0": 587.1,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 471.5,
+   "cells": [
+    {
+     "text": "Office expenses",
+     "x0": 24,
+     "x1": 88.5
+    },
+    {
+     "text": "35,305.17",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 458.8,
+   "cells": [
+    {
+     "text": "Other general and administrative expenses",
+     "x0": 24,
+     "x1": 195.6
+    },
+    {
+     "text": "553.61",
+     "x0": 582.1,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 446.2,
+   "cells": [
+    {
+     "text": "Other selling expenses",
+     "x0": 24,
+     "x1": 115.5
+    },
+    {
+     "text": "4,352.10",
+     "x0": 574.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 433.5,
+   "cells": [
+    {
+     "text": "Payroll Expenses",
+     "x0": 24,
+     "x1": 93.5
+    },
+    {
+     "text": "80,352.54",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 420.9,
+   "cells": [
+    {
+     "text": "Repairs and Maintenance",
+     "x0": 24,
+     "x1": 126.6
+    },
+    {
+     "text": "14,611.69",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 408.2,
+   "cells": [
+    {
+     "text": "Shipping and delivery expense",
+     "x0": 24,
+     "x1": 146.6
+    },
+    {
+     "text": "11,481.77",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 395.6,
+   "cells": [
+    {
+     "text": "Supplies",
+     "x0": 24,
+     "x1": 58.5
+    },
+    {
+     "text": "14,983.13",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 382.9,
+   "cells": [
+    {
+     "text": "Supplies and materials",
+     "x0": 24,
+     "x1": 115.1
+    },
+    {
+     "text": "34,103.35",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 370.3,
+   "cells": [
+    {
+     "text": "Utilities",
+     "x0": 24,
+     "x1": 53
+    },
+    {
+     "text": "3,103.56",
+     "x0": 574.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 357.6,
+   "cells": [
+    {
+     "text": "Wage expenses",
+     "x0": 24,
+     "x1": 88.5
+    },
+    {
+     "text": "72,067.40",
+     "x0": 569.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 344.7,
+   "cells": [
+    {
+     "text": "Total for Expenses",
+     "x0": 18,
+     "x1": 98.5
+    },
+    {
+     "text": "$337,710.23",
+     "x0": 559.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 326,
+   "cells": [
+    {
+     "text": "Other Expenses",
+     "x0": 18,
+     "x1": 82.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 313.1,
+   "cells": [
+    {
+     "text": "Net earnings",
+     "x0": 18,
+     "x1": 72.5
+    },
+    {
+     "text": "$12,875.74",
+     "x0": 564.6,
+     "x1": 609.6
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 21.7,
+   "cells": [
+    {
+     "text": "Accrual Basis Wednesday, June 11, 2025 09:58 PM GMTZ",
+     "x0": 181.1,
+     "x1": 428.7
+    },
+    {
+     "text": "1/1",
+     "x0": 597.1,
+     "x1": 609.6
+    }
+   ]
+  }
+ ],
+ "bs": [
+  {
+   "page": 1,
+   "y": 817.2,
+   "cells": [
+    {
+     "text": "Balance Sheet - 2024",
+     "x0": 238.1,
+     "x1": 372.7
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 793.8,
+   "cells": [
+    {
+     "text": "Client Ltd.",
+     "x0": 241.7,
+     "x1": 369.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 776.6,
+   "cells": [
+    {
+     "text": "As of December 31, 2024",
+     "x0": 248.7,
+     "x1": 362.1
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 738.2,
+   "cells": [
+    {
+     "text": "DISTRIBUTION ACCOUNT",
+     "x0": 18,
+     "x1": 122.4
+    },
+    {
+     "text": "TOTAL",
+     "x0": 565.4,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 713.3,
+   "cells": [
+    {
+     "text": "Assets",
+     "x0": 18,
+     "x1": 45
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 700.4,
+   "cells": [
+    {
+     "text": "Current Assets",
+     "x0": 24,
+     "x1": 83.5
+    },
+    {
+     "text": "$24,292.34",
+     "x0": 547.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 684,
+   "cells": [
+    {
+     "text": "Long-term assets",
+     "x0": 24,
+     "x1": 93.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 671.1,
+   "cells": [
+    {
+     "text": "Total for Assets",
+     "x0": 18,
+     "x1": 86
+    },
+    {
+     "text": "$24,292.34",
+     "x0": 547.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 652.4,
+   "cells": [
+    {
+     "text": "Liabilities and Shareholder's Equity",
+     "x0": 18,
+     "x1": 157.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 639.8,
+   "cells": [
+    {
+     "text": "Current Liabilities",
+     "x0": 24,
+     "x1": 93.5
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 627.1,
+   "cells": [
+    {
+     "text": "Accounts Payable",
+     "x0": 27,
+     "x1": 99
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 614.2,
+   "cells": [
+    {
+     "text": "Total for Current Liabilities",
+     "x0": 24,
+     "x1": 139
+    },
+    {
+     "text": "0",
+     "x0": 587.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 597.8,
+   "cells": [
+    {
+     "text": "Non-current Liabilities",
+     "x0": 24,
+     "x1": 111
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 585.2,
+   "cells": [
+    {
+     "text": "Shareholder's Equity",
+     "x0": 24,
+     "x1": 106.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 572.5,
+   "cells": [
+    {
+     "text": "Retained Earnings",
+     "x0": 27,
+     "x1": 101
+    },
+    {
+     "text": "11,416.60",
+     "x0": 552.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 559.9,
+   "cells": [
+    {
+     "text": "Net Income",
+     "x0": 27,
+     "x1": 73
+    },
+    {
+     "text": "12,875.74",
+     "x0": 552.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 547,
+   "cells": [
+    {
+     "text": "Total for Shareholder's Equity",
+     "x0": 24,
+     "x1": 152.2
+    },
+    {
+     "text": "$24,292.34",
+     "x0": 547.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 530.3,
+   "cells": [
+    {
+     "text": "Total for Liabilities and Shareholder's Equity",
+     "x0": 18,
+     "x1": 208.7
+    },
+    {
+     "text": "$24,292.34",
+     "x0": 547.8,
+     "x1": 592.8
+    }
+   ]
+  },
+  {
+   "page": 1,
+   "y": 21.7,
+   "cells": [
+    {
+     "text": "Accrual Basis Wednesday, June 11, 2025 09:55 PM GMTZ",
+     "x0": 172.7,
+     "x1": 420.3
+    },
+    {
+     "text": "1/1",
+     "x0": 580.3,
+     "x1": 592.8
+    }
+   ]
+  }
+ ]
+}
