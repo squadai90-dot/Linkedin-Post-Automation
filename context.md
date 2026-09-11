@@ -69,6 +69,24 @@ against the booted shipped bundle, not only against source.
 Bundle and single-file delivery verified: the unzipped bundle serves the full
 page on HTTP 200, and deep links fall back correctly.
 
+A second client reconciliation (SHORI CORPORATION 2024) on 2026-09-11 found
+three more defects and fixed them: QuickBooks group totals printed at the
+parent account's indent were booked as accounts, a sales return kept the sign
+its statement printed on a line the template subtracts, and — the one that
+mattered — six rule groups shipped unreachable. `test:all` is now 52 suites and
+1,325 assertions.
+
+## Rule catalogue upgrades
+
+Adding a group to `DEFAULT_RULES` is not enough. `upgradeRules` reaches a saved
+project only for groups registered in `RULES_ADDED_SINCE`, and only while
+`RULE_CATALOGUE_VERSION` is ahead of what that project stored. Both were missed
+on 2026-09-10 and six groups shipped that no existing user could ever receive;
+dist had no upgrade path at all until 2026-09-11. `tests/test_rule_upgrade.cjs`
+now fails if it recurs, comparing against the baseline in
+`tests/fixtures/rules_v3.json` — refresh that file and bump the version when
+cutting a release.
+
 ## Open issues
 
 - `dist/` and `src/` are not in parity; some fixes exist only in `dist/` (the
@@ -76,3 +94,8 @@ page on HTTP 200, and deep links fall back correctly.
   return's Item H boxes). See PROJECT-NOTES.md.
 - Schedule Q fills tested-income unit 1 only; a corporation with more than one
   tested unit needs the rest by hand.
+- Schedule M line 6 is pre-filled only from a questionnaire or a salary
+  schedule; with neither, a booked wage to a 100% shareholder is left off.
+- Acknowledging a blocking gate writes nothing, so the field ships blank
+  (Basic Information C35 on the SHORI run).
+- Basic Information B17 is written as an Excel date serial, not a date.
