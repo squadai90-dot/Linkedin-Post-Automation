@@ -95,6 +95,9 @@ function book(items, opts = {}) {
     if (alloc.relabel) relabels[alloc.target] = alloc.relabel;
     /* real signature: bF(entity, lines, contributions, relabels, target, row, via) */
     const rowIn = { ...norm, docId: it.docId, docName: it.docName, page: it.row.page };
+    /* Contra-revenue on line 1b carries the sign reversed when the statement
+       added it to its own income total — see EN9contraFlip. */
+    if (M.EN9contraFlip && M.EN9contraFlip(alloc.target, it.EN9inTotal)) rowIn.values = rowIn.values.map((v) => -v);
     const okBooked = M.bF(ENT, lines, contrib, relabels, alloc.target, rowIn, "fixture");
     if (!okBooked) unmatched.push({ label: norm.label, why: "bF refused (years/target)" });
   }

@@ -141,11 +141,16 @@ t("both kinds feed only what they should", () => {
 
 const store = fs.readFileSync(path.join(root, "src", "prototype", "wp", "store.ts"), "utf8");
 
-t("the wages figure that equals a booked P&L caption goes to Schedule M compensation PAID", () => {
-  assert.ok(store.includes('labelKey: { col: "B", contains: "compensation paid for technical" }'), "wrong Schedule M line");
-  assert.ok(store.includes('reviewId: "schm-compensation"'));
+/* Line 6, the row the preparer's own work paper uses. Read strictly the
+   caption is the other direction, so the write carries a note saying so
+   rather than quietly moving the figure to line 19. */
+t("the wages figure that equals a booked P&L caption goes to Schedule M line 6", () => {
+  assert.ok(store.includes('labelKey: { col: "B", contains: "compensation received for technical" }'), "wrong Schedule M line");
+  assert.ok(store.includes('reviewId: `schm-compensation-${col}`'));
   assert.ok(store.includes("Math.abs(c.value - fact.amount) <= 0.01"), "the tie is exact, to the cent");
-  assert.ok(store.includes('line 6 ("compensation received") is the other direction'), "the hand-prepared error must be called out");
+  assert.ok(store.includes("the figure belongs on line 19"), "the caption reading must be called out");
+  assert.ok(store.includes('const col = isFiler ? "E" : "K";'), "a schedule naming someone else gets its own column");
+  assert.ok(store.includes("facts.length && avgRate && relatedParty"), "no related party, no Schedule M transaction");
 });
 
 t("a stated wage with no matching caption is a warning, not a write", () => {

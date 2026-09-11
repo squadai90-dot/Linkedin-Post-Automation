@@ -8,7 +8,8 @@ import {
 } from "./engine";
 import { r2, r2add, sanitize } from "./hygiene";
 import { parseQuestionnaire, type Questionnaire } from "./questionnaire";
-import { collapsedRoute, collapsedSections, equityOverride, refeedBySection, sectionOk, sectionRoute, structRows, tagSections, type MapRow, type Section } from "./sections";
+import { irsCountryCode } from "./countryCodes";
+import { collapsedRoute, collapsedSections, contraRevenueFlip, equityOverride, gridStructRows, refeedBySection, sectionOk, sectionRoute, structRows, tagSections, type MapRow, type Section } from "./sections";
 import { asOfLabel, fxTag, providerTag, requireIso, toIsoLoose, yearBefore } from "./fxDates";
 import {
   AI_BATCH, TPM_BUDGET, aiMode, askResume, classifyFailure, estTokens, maxTokensFor,
@@ -240,6 +241,13 @@ export type Entity = {
   /** C-01: an auto-DETECTED functional currency must be confirmed by the
       preparer before the workbook can generate; manual entry confirms. */
   currencyConfirmed: boolean;
+  /* The prior return names a different foreign corporation from the
+     statements. Set during processing, cleared by confirmLegalName; while it
+     is set, generation blocks. `sameEntity` records the preparer's answer so
+     the next run can adopt (or keep refusing) the carry-forward instead of
+     asking again. */
+  nameMismatch?: { statementName: string; priorName: string; source: string } | null;
+  nameDecision?: { priorName: string; sameEntity: boolean } | null;
   detected: Record<string, DetectedField>;
   lines: Record<string, LineValue>;
   relabels: Record<string, string>;
@@ -387,6 +395,8 @@ export function makeEntity(name: string, stakeholder: string): Entity {
     fxMeta: {},
     fxAuto: false,
     currencyConfirmed: false,
+    nameMismatch: null,
+    nameDecision: null,
     detected: {},
     lines: {},
     relabels: {},
@@ -1019,6 +1029,33 @@ export const actions = {
     actions.autoFillRates(entityId, false);
   },
 
+  /** The preparer settles a statements-vs-prior-return name disagreement.
+   *
+   * `sameEntity` is the whole point of asking: it decides whether the prior
+   * return's carry-forward is used on the next run. The decision is stored,
+   * so re-processing does not ask again, and the corrected name is written
+   * everywhere the legal name goes (Basic Information B11, Schedule E B16,
+   * the file name). */
+  confirmLegalName(entityId: string, name: string, sameEntity: boolean) {
+    const ent = state.entities.find((e) => e.id === entityId);
+    if (!ent || !ent.nameMismatch) return;
+    const chosen = String(name || "").trim() || ent.nameMismatch.statementName;
+    const priorName = ent.nameMismatch.priorName;
+    updateEntity(entityId, {
+      profile: { ...ent.profile, legalName: chosen },
+      nameMismatch: null,
+      nameDecision: { priorName, sameEntity },
+    });
+    logEvent(
+      "Legal name confirmed",
+      sameEntity
+        ? `"${chosen}" confirmed as the same entity as "${priorName}" — re-process to carry the prior return forward`
+        : `"${chosen}" confirmed as a different entity from "${priorName}" — its carry-forward figures stay out`,
+      ent.name,
+    );
+    toast(sameEntity ? "Legal name confirmed — re-process to use the prior return" : "Legal name confirmed", "ok");
+  },
+
   /** Populate C59/C60/C61 from the published tables, then from live data.
    *
    * `force` is the difference between the preparer pressing Refresh and the
@@ -1506,6 +1543,7 @@ export const actions = {
     let ato: AtoFacts = {};
     let cf: CarryForward | null = null;
     let cfSource = "";
+    let nameMismatch: Entity["nameMismatch"] = null;
     // Every 5471 block found across the prior-year documents. Exactly one
     // feeds THIS entity; the remaining named blocks fan out to siblings.
     const cfCandidates: CfCandidate[] = [];
@@ -1735,10 +1773,19 @@ export const actions = {
             salary = summarizeSalary(parsed.grid, file.name) || salary;
             if (salary) log.push(`${file.name}: salary schedule${salary.person ? ` for ${salary.person}` : ""} — ${salary.lines.length} line(s), total ${(salary.statedTotal ?? salary.sumOfLines).toLocaleString()}${salary.warnings.length ? ` (${salary.warnings.join("; ")})` : ""}`);
           } else if (cls.kind === "trial-balance") {
-            for (const row of extractRows(parsed.grid)) {
-              mapRows.push({ row, docId: file.id, docName: file.name, feed: "both", kind: "grid" });
-              read++;
+            /* The grid twin of the structure pass above. Without it a
+               spreadsheet export's group subtotals were booked as accounts
+               and everything under them counted twice. */
+            const grid = gridStructRows<MapRow>(extractRows(parsed.grid).map((row) => (
+              { row, docId: file.id, docName: file.name, feed: "both" as const, kind: "grid" as const }
+            )));
+            let gridSkipped = 0;
+            for (const m of grid) {
+              if (m.skipReason) gridSkipped++;
+              else read++;
+              mapRows.push(m);
             }
+            if (gridSkipped) log.push(`${file.name}: ${gridSkipped} structural subtotal/total row(s) dropped before mapping`);
             profileGrids.push({ rows: parsed.grid, doc: file.name });
           }
           if (read) log.push(`${file.name}: ${read} candidate line items read`);
@@ -1798,13 +1845,38 @@ export const actions = {
             // it rather than silently dropping it (matches the prior gate).
             if (!selected) selected = deduped.find((c) => !c.cfcName) ?? null;
             if (!selected) {
-              for (const cand of deduped) {
-                rv({
-                  id: `cf-wrong-entity-${cand.fileId}`,
-                  level: "warn", category: "carry-forward",
-                  message: `${cand.source} names "${cand.cfcName}" as the foreign corporation, but this work paper's entity is "${knownName}" — its carry-forward figures were NOT used.`,
-                  source: cand.source,
-                });
+              /* The names disagree. A prior return is not wrong about the
+                 entity because it spells the name differently from the
+                 statements — a trading name, a re-registration, a typo in an
+                 export — and dropping it costs the opening balances, the
+                 filer categories, the shareholders and the opening E&P all at
+                 once. So it is the PREPARER who decides, once: until they do,
+                 generation blocks (see validateEntity), and their answer is
+                 remembered on the entity. */
+              const decided = state.entities.find((e) => e.id === entityId)?.nameDecision || null;
+              const named = deduped.filter((c) => !!c.cfcName);
+              let best: CfCandidate | null = null;
+              let bestSim = -1;
+              for (const cand of named) {
+                const sim = entitySimilarity(knownName, cand.cfcName);
+                if (sim > bestSim) { best = cand; bestSim = sim; }
+              }
+              if (best && decided && decided.sameEntity && entitySimilarity(decided.priorName, best.cfcName) >= 0.8) {
+                selected = best;
+                nameMismatch = null;
+                log.push(`${best.source}: "${best.cfcName}" accepted as the same entity as "${knownName}" by the preparer — carry-forward figures were used.`);
+              } else {
+                if (best && !decided) {
+                  nameMismatch = { statementName: knownName, priorName: best.cfcName, source: best.source };
+                }
+                for (const cand of deduped) {
+                  rv({
+                    id: `cf-wrong-entity-${cand.fileId}`,
+                    level: "warn", category: "carry-forward",
+                    message: `${cand.source} names "${cand.cfcName}" as the foreign corporation, but this work paper's entity is "${knownName}" — its carry-forward figures were NOT used.`,
+                    source: cand.source,
+                  });
+                }
               }
             }
           } else {
@@ -1837,7 +1909,7 @@ export const actions = {
             }
           }
         }
-        updateEntity(entityId, { log: [...log] });
+        updateEntity(entityId, { nameMismatch, log: [...log] });
       }
 
       /* Step 3 — map with year routing, pools and provenance; detect profile. */
@@ -1969,7 +2041,18 @@ export const actions = {
             continue;
           }
 
-          const routed = routeRow(m.row, target.startsWith("BS"), caseYears, m.kind);
+          let routed = routeRow(m.row, target.startsWith("BS"), caseYears, m.kind);
+          // The rule and its reasoning live in sections.ts.
+          if (contraRevenueFlip(target, m.inTotal) && Array.isArray(routed)) {
+            const asPrinted = routed[0]?.value ?? 0;
+            routed = routed.map((r) => ({ ...r, value: -r.value }));
+            rv({
+              id: `contra-revenue-${norm(m.row.label)}`,
+              level: "info", category: "mapping", sourceLabel: m.row.label,
+              message: `"${m.row.label}" (${asPrinted.toLocaleString()} as printed) was booked to Schedule C line 1b, returns and allowances, as ${r2(-asPrinted).toLocaleString()}. The statement ADDS this caption inside its own income total, and line 1b is subtracted from line 1a, so the sign is reversed to leave gross income exactly as the statement reports it. If the books have the sign the wrong way round, correct it in the books rather than here.`,
+              target: `${SHEET.is}!F8`, source: m.docName,
+            });
+          }
           if (routed === "ambiguous") {
             unmatched.push({
               ...m.row, docId: m.docId, docName: m.docName,
@@ -3457,11 +3540,43 @@ async function materializeCaseWrites(
       w({ sheet: SHEET.schJ, ref: "C10", value: code, source: `${cfSource} · separate category as filed` });
       w({ sheet: SHEET.schP, ref: "B10", value: code, source: `${cfSource} · separate category as filed` });
       w({ sheet: SHEET.schH, ref: "C8", value: code, source: `${cfSource} · separate category as filed` });
+      // Schedule Q asks the same question from the same dropdown.
+      w({ sheet: SHEET.schQ, ref: "C10", value: code, source: `${cfSource} · separate category as filed` });
     } else {
       rv({
         id: "cf-category-code", level: "info", category: "carry-forward",
-        message: `The separate-category code (GEN / PAS / FB / 901j / RBT / 951A) could not be read from ${cfSource}. Schedule J C10, Schedule P B10 and Sch-H C8 keep the template default "GEN - General" — confirm against the prior filing.`,
+        message: `The separate-category code (GEN / PAS / FB / 901j / RBT / 951A) could not be read from ${cfSource}. Schedule J C10, Schedule P B10, Sch-H C8 and Schedule Q C10 keep the template default "GEN - General" — confirm against the prior filing.`,
         target: `${SHEET.schJ}!C10`, source: cfSource,
+      });
+    }
+  }
+
+  /* ---- Schedule Q's tested-income unit ----
+     Schedule Q reports by unit, and the first unit of a single-CFC work paper
+     is the corporation itself: its name, and the country it is incorporated
+     in as the IRS's own two-letter code. Both are already answered on Basic
+     Information, and both were being left blank for the preparer to copy
+     across by hand. Nothing is written that is not already known. */
+  {
+    const unitName = ent.profile.legalName;
+    const code = irsCountryCode(ent.profile.countryInc);
+    if (unitName) {
+      w({ sheet: SHEET.schQ, ref: "C57", value: unitName, source: `Basic Information B11 · legal name`, reviewId: "schq-unit" });
+    }
+    if (code) {
+      w({ sheet: SHEET.schQ, ref: "F57", value: code, source: `Basic Information B19 "${ent.profile.countryInc}" · IRS country code`, reviewId: "schq-unit" });
+    }
+    if (unitName || code) {
+      rv({
+        id: "schq-unit", level: "info", category: "profile", applied: true,
+        message: `Schedule Q tested-income unit 1 defaulted from Basic Information: ${[unitName ? `name "${unitName}" (C57)` : "", code ? `country code ${code} (F57)` : ""].filter(Boolean).join(", ")}. Review if the corporation has more than one tested unit — the tool fills the first row only.`,
+        target: `${SHEET.schQ}!C57`,
+      });
+    } else if (ent.profile.countryInc) {
+      rv({
+        id: "schq-country-unknown", level: "warn", category: "profile",
+        message: `"${ent.profile.countryInc}" is not on the IRS country list, so Schedule Q F57 (country code) was left blank — enter the two-letter code from the Form 5471 instructions by hand.`,
+        target: `${SHEET.schQ}!F57`,
       });
     }
   }
@@ -3825,14 +3940,20 @@ async function materializeCaseWrites(
     }
   }
 
-  /* ---- the owner's compensation → Schedule M "compensation paid" ----
+  /* ---- the owner's compensation → Schedule M line 6 ----
      The questionnaire states what the filer was paid; a salary schedule
      states the same thing month by month; and a P&L wage caption equals it
      to the cent. That equality is the evidence: it ties a booked deduction to
-     a named related person, which is a Schedule M transaction — compensation
-     PAID by the corporation to the US person filing. (The hand-prepared work
-     paper put this on line 6, "compensation received"; that is the other
-     direction.) The template numbers this line 19, in its "paid" block. */
+     a named related person, which is a Schedule M transaction.
+
+     It goes on LINE 6, the row the preparer's own work paper uses. Read
+     strictly, line 6 is the compensation the corporation RECEIVED and line 19
+     what it PAID, so the figure sits on the row the reviewer expects with a
+     note recording that reading — the note is the honest part, and the row is
+     the preparer's call, not the tool's.
+
+     The column names the counterparty: (b) for the US person filing the
+     return, (e) for a 10% US shareholder who is someone else. */
   {
     const facts: { amount: number; source: string; who: string | null }[] = [];
     if (questionnaire?.wagesReceived !== undefined && questionnaire.wagesReceived > 0) {
@@ -3844,32 +3965,45 @@ async function materializeCaseWrites(
         facts.push({ amount: total, source: `${salary.fileName} · salary schedule${salary.person ? ` for ${salary.person}` : ""}`, who: salary.person });
       }
     }
-    if (facts.length && avgRate) {
+    /* A Schedule M transaction needs a counterparty. Compensation with no
+       related person anywhere in the case is just a payroll cost. */
+    const relatedParty = questionnaire?.taxpayerName || cf?.holderName || ledger?.counterparty || salary?.person || null;
+    if (facts.length && avgRate && relatedParty) {
       const booked = Object.entries(ent.contributions).flatMap(([target, list]) => list.map((c) => ({ target, ...c })));
-      let written = false;
+      const usedCols = new Set<string>();
       for (const fact of facts) {
         const hit = booked.find((c) => /^IS:/.test(c.target) && Math.abs(c.value - fact.amount) <= 0.01);
         if (!hit) {
           rv({
             id: `schm-compensation-unmatched-${r2(fact.amount)}`, level: "warn", category: "related-party",
-            message: `${fact.source} states ${fact.amount.toLocaleString()} paid to ${fact.who || "the related person"}, but no P&L caption was booked at that amount, so Schedule M was NOT pre-filled. If the wages are inside a larger payroll caption, enter the compensation paid on Schedule M by hand.`,
-            target: `${SHEET.schM}!E28`, source: fact.source, suggestedValue: Math.round(fact.amount / avgRate),
+            message: `${fact.source} states ${fact.amount.toLocaleString()} paid to ${fact.who || "the related person"}, but no P&L caption was booked at that amount, so Schedule M was NOT pre-filled. If the wages are inside a larger payroll caption, enter the compensation on Schedule M by hand.`,
+            target: `${SHEET.schM}!E15`, source: fact.source, suggestedValue: Math.round(fact.amount / avgRate),
           });
           continue;
         }
-        if (written) continue;
+        /* Column (b) is the person filing the return; a schedule naming
+           someone else is that person's own column (e). Two facts about two
+           people therefore both land, in different columns — one fact per
+           column, because a second figure in the same column would overwrite
+           the first rather than add to it. */
+        const isFiler = !fact.who || !cf?.holderName || entitySimilarity(fact.who, cf.holderName) >= 0.5;
+        const col = isFiler ? "E" : "K";
+        if (usedCols.has(col)) continue;
+        usedCols.add(col);
+        const ref = `${col}15`;
+        const colName = isFiler ? "(b) US person filing this return" : "(e) 10% US shareholder of the foreign corporation";
         const usd = Math.round(fact.amount / avgRate);
         w({
-          sheet: SHEET.schM, ref: "E28", value: usd,
-          labelKey: { col: "B", contains: "compensation paid for technical" },
-          source: `${fact.source} = P&L "${hit.label}" at the year-average rate`, reviewId: "schm-compensation",
+          sheet: SHEET.schM, ref, value: usd,
+          labelKey: { col: "B", contains: "compensation received for technical" },
+          source: `${fact.source} = P&L "${hit.label}" at the year-average rate`,
+          reviewId: `schm-compensation-${col}`,
         });
         rv({
-          id: "schm-compensation", level: "info", category: "related-party", applied: true,
-          message: `Schedule M compensation paid, column (b) US person filing: US$${usd.toLocaleString()} — ${fact.source} equals the P&L caption "${hit.label}" (${fact.amount.toLocaleString()} ${ent.profile.currency || ""}) to the cent, translated at the year-average rate ${avgRate}. Note this is compensation the corporation PAID; line 6 ("compensation received") is the other direction.${fact.who && cf?.holderName && entitySimilarity(fact.who, cf.holderName) < 0.5 ? ` The schedule names ${fact.who}, not the filer — move the figure to the related-person column if ${fact.who} is not the person filing.` : ""}`,
-          target: `${SHEET.schM}!E28`, source: fact.source,
+          id: `schm-compensation-${col}`, level: "info", category: "related-party", applied: true,
+          message: `Schedule M line 6, column ${colName}: US$${usd.toLocaleString()} — ${fact.source} equals the P&L caption "${hit.label}" (${fact.amount.toLocaleString()} ${ent.profile.currency || ""}) to the cent, translated at the year-average rate ${avgRate}. Line 6 is captioned "compensation received"; the corporation PAID this amount, so if you read the caption strictly the figure belongs on line 19. Move it if you disagree.`,
+          target: `${SHEET.schM}!${ref}`, source: fact.source,
         });
-        written = true;
       }
     }
   }
@@ -4272,6 +4406,28 @@ export function validateEntity(ent: Entity): ReviewItem[] {
       target: `${SHEET.basic}!B27`,
     });
   }
+  /* Item H on the face of the form: is the filer a director or officer? It is
+     a question only the preparer can answer when neither the questionnaire nor
+     the prior return's Item H boxes answered it, and a blank here is a blank
+     box on a filed form. Asked before generation rather than found afterwards. */
+  if (!ent.ownership.isOfficer && (ent.shareholders || []).length > 0) {
+    out.push({
+      id: "officer-flag-unconfirmed", level: "block", category: "profile",
+      message: "Is the filer a director or officer of the foreign corporation? Basic Information C35 is blank and neither the client questionnaire nor the prior return answered it — answer before generating.",
+      target: `${SHEET.basic}!C35`,
+    });
+  }
+  /* The statements and the prior return name different corporations. Asked
+     before the first generation, because the answer decides both the legal
+     name written throughout the workbook and whether a whole prior return's
+     figures are used at all. */
+  if (ent.nameMismatch) {
+    out.push({
+      id: "cf-name-unconfirmed", level: "block", category: "carry-forward",
+      message: `The statements name "${ent.nameMismatch.statementName}" but ${ent.nameMismatch.source} names "${ent.nameMismatch.priorName}" as the foreign corporation. Confirm the legal name: if these are the same entity, the prior return's opening balances, filer categories, shareholders and opening E&P are carried forward; if not, they are left out.`,
+      target: `${SHEET.basic}!B11`,
+    });
+  }
   // Fiscal year: the published tables are calendar-year — the guard leaves
   // the rates blank on purpose, and this item says what to enter by hand.
   /* A fiscal year always deserves a word about its rates, but not the same
@@ -4326,6 +4482,7 @@ export function validateEntity(ent: Entity): ReviewItem[] {
     must vanish once the underlying condition is resolved. */
 const DERIVED_IDS = new Set([
   "fx-avg-missing", "fx-cy-missing", "fx-py-missing", "fx-fiscal-manual", "fx-currency-unconfirmed",
+  "cf-name-unconfirmed", "officer-flag-unconfirmed",
   "no-lines-mapped", "mapping-language",
   "profile-currency", "profile-cyend", "mapping-unmatched", "profile-category",
 ]);

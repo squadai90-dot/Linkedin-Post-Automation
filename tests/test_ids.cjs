@@ -79,7 +79,9 @@ a(dist.includes("id:`ledger-cash-paid-${m.date}-${m.amount}`"), "dist keys the c
 for (const id of ["mapping-language", "no-lines-mapped"]) {
   a(new RegExp(`"${id}",`).test(src.slice(src.indexOf("const DERIVED_IDS"), src.indexOf("const DERIVED_IDS") + 500)),
     `src DERIVED_IDS covers ${id}`);
-  a(dist.includes(`"fx-currency-unconfirmed","no-lines-mapped","mapping-language"`), `dist DERIVED_IDS covers ${id}`);
+  /* Read the set itself rather than one adjacency of it: the ids next to
+     these two change whenever a derived check is added. */
+  a(new RegExp(`new Set\\(\\[[^\\]]*"${id}"`).test(dist), `dist DERIVED_IDS covers ${id}`);
 }
 
 // A category no policy rule can name is a category no reviewer can suppress.

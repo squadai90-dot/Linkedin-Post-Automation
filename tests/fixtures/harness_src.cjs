@@ -92,6 +92,9 @@ function book(items, opts = {}) {
     const alloc = STORE.resolvePool(S, target, norm.label);
     if (alloc.relabel) relabels[alloc.target] = alloc.relabel;
     const rowIn = { ...norm, docId: it.docId, docName: it.docName, page: it.row.page };
+    /* Contra-revenue on line 1b carries the sign reversed when the statement
+       added it to its own income total — see SECT.contraRevenueFlip. */
+    if (SECT.contraRevenueFlip(alloc.target, it.inTotal)) rowIn.values = rowIn.values.map((v) => -v);
     const okBooked = STORE.manualApply(ENT, lines, contrib, relabels, alloc.target, rowIn, "fixture");
     if (!okBooked) unmatched.push({ label: norm.label, why: "bF refused (years/target)" });
   }

@@ -52,6 +52,11 @@ export type MapRow = {
   /** A section heading that carries the section's whole figure on its own
       line, with nothing itemised beneath it. See collapsedSections. */
   collapsed?: Section;
+  /** This row is one of the figures a subtotal was PROVEN to add up, so the
+      statement's own arithmetic adds it with the sign it is printed with.
+      Set by structRows and gridStructRows; read when a caption is routed to a
+      contra line, where the sign is the whole question. */
+  inTotal?: boolean;
 };
 
 
@@ -160,6 +165,7 @@ export function structRows(rows: MapRow[]): MapRow[] {
     const summary = kidsSum(below);
     if (summary && same(summary.sum, amt)) {
       m.skipReason = `summary of the ${summary.rows.length} row(s) indented beneath it`;
+      for (const kid of summary.rows) (kid as MapRow).inTotal = true;
       continue;
     }
 
@@ -171,6 +177,7 @@ export function structRows(rows: MapRow[]): MapRow[] {
     const total = kidsSum(above);
     if (total && same(total.sum, amt)) {
       m.skipReason = `total of the ${total.rows.length} row(s) above it`;
+      for (const kid of total.rows) (kid as MapRow).inTotal = true;
       continue;
     }
 
@@ -180,6 +187,83 @@ export function structRows(rows: MapRow[]): MapRow[] {
   }
   return out;
 }
+
+/** Caption reduced to the letters and digits that carry meaning, so that
+    "Total Payroll Expenses" and "Payroll Expenses" compare equal. */
+const totalKey = (label: string) =>
+  String(label || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/** The same job structRows does, for feeds that have no indent to read.
+ *
+ * A spreadsheet export carries no x-geometry, so the whole arithmetic
+ * hierarchy in structRows is unavailable and every group subtotal arrived as
+ * an ordinary account — QuickBooks' "Total Payroll Expenses" was booked
+ * alongside the payroll accounts it totals, counting them twice. Two tests,
+ * both of which need the report's own words to agree with its own arithmetic
+ * before anything is dropped:
+ *
+ *   1. the caption is "Total <X>" and an earlier caption IS <X> — the group
+ *      opened by name and is closing by name — and the rows since that
+ *      caption add up to this figure;
+ *   2. the caption merely starts with a total word, and the rows since the
+ *      previous total add up to this figure.
+ *
+ * A total word with no arithmetic behind it is left as data: a real account
+ * can be called "Total Return Fund", and guessing costs the preparer a line
+ * they cannot see. */
+export function gridStructRows<T extends MapRow>(rows: T[]): T[] {
+  const out = rows.map((m) => ({ ...m }));
+  let sinceTotal = 0;
+  let runStart = 0;
+  for (let i = 0; i < out.length; i++) {
+    const m = out[i];
+    const amt = amtOf(m);
+    const label = String((m.row && m.row.label) || "").trim();
+    if (amt === null || m.skipReason) continue;
+    if (!TOTAL_WORD.test(label)) { sinceTotal += amt; continue; }
+
+    const named = totalKey(label.replace(/^(sub-?)?totals?\s+(for|of)?\s*/i, ""));
+    let matched = false;
+    if (named) {
+      for (let j = i - 1; j >= 0; j--) {
+        if (totalKey(String((out[j].row && out[j].row.label) || "")) !== named) continue;
+        let sum = 0;
+        for (let k = j; k < i; k++) {
+          const a = amtOf(out[k]);
+          if (a !== null && !out[k].skipReason) sum += a;
+        }
+        if (same(sum, amt)) {
+          out[i].skipReason = `total of the rows listed under "${String(out[j].row.label).trim()}"`;
+          for (let k = j; k < i; k++) if (amtOf(out[k]) !== null && !out[k].skipReason) out[k].inTotal = true;
+          matched = true;
+        }
+        break;
+      }
+    }
+    if (!matched && i > runStart && same(sinceTotal, amt)) {
+      out[i].skipReason = `total of the ${i - runStart} row(s) above it`;
+      for (let k = runStart; k < i; k++) if (amtOf(out[k]) !== null && !out[k].skipReason) out[k].inTotal = true;
+      matched = true;
+    }
+    if (matched) { sinceTotal = 0; runStart = i + 1; continue; }
+    sinceTotal += amt;
+  }
+  return out;
+}
+
+/** Does this booking need the contra-revenue sign reversed?
+ *
+ * Schedule C line 1b is SUBTRACTED from line 1a, so the figure that belongs
+ * on it is the negative of what the caption contributes to income — and what
+ * it contributes is whatever the statement's own total says. QuickBooks
+ * prints "Discounts given 305.92" inside the income group and ADDS it, so
+ * booking +305.92 to line 1b would take the discount off twice and move the
+ * client's bottom line. Only a row a subtotal was proven to add is flipped:
+ * the classic "Gross sales / Less returns / Net sales" layout fails that
+ * proof (its total does not add the returns line) and its figure is already
+ * the right way round. */
+export const contraRevenueFlip = (target: string | null | undefined, inTotal?: boolean) =>
+  target === "IS:8" && !!inTotal;
 
 /** Tag every row with the last banner seen above it. Sticky downward, first
     matching pattern wins, and a row that already carries a section is never
@@ -213,9 +297,22 @@ export function bsSide(target: string): "assets" | "liabilities" | null {
  * keyword match, and the statement wins. Pool ids that carry no side of their
  * own pass; so does a row with no banner above it, because absence of
  * evidence is not evidence. */
+/* The Schedule C lines that are revenue rather than cost. Rows 10-12 carry
+   the group "Income" in the line table because the form nets cost of goods
+   sold inside gross income, so the group name cannot be used to tell them
+   apart — they are listed here by row instead. */
+const INCOME_TARGETS = new Set(["IS:7", "IS:14", "IS:15", "IS:16", "IS:17", "IS:18", "IS:19", "IS:20", "IS:22", "IS:23", "IS:24", "IS:OI"]);
+
 export function sectionOk(section: Section | null | undefined, target: string | null | undefined): boolean {
   if (!section || !target) return true;
   const isBs = /^BS/.test(target);
+  /* A caption printed under "Cost of Sales" is a cost, whatever the keyword
+     scan made of its name. "Shopify payment fees" and "Freight" carry no cost
+     word at all, and the fee captions in particular used to reach gross
+     receipts and inflate income by their whole amount. Contra-revenue (IS:8)
+     and the cost lines themselves are left alone. */
+  if (section === "cogs") return !isBs && !INCOME_TARGETS.has(target);
+  if (section === "cash") return target === "BS:10";
   if (section === "assets" || section === "liabilities") {
     if (!isBs) return false;
     const side =
@@ -237,6 +334,17 @@ export function sectionOk(section: Section | null | undefined, target: string | 
  * catch-all, because each has a genuine "other" line built for exactly this. */
 export function sectionRoute(section: Section | null | undefined, label: string): string | null {
   const s = String(label || "").toLowerCase();
+  /* These two DO have a catch-all, for the same reason collapsedRoute does:
+     the banner already said what the figure is. Everything under a bank-
+     accounts heading is cash; everything under a cost-of-sales heading is a
+     cost of goods sold, and line 2 is where the form puts the ones that are
+     neither labour nor purchases. */
+  if (section === "cash") return "BS:10";
+  if (section === "cogs") {
+    if (/\b(labour|labor|wage|salar|payroll|subcontract|sub-contract)/.test(s)) return "IS:10";
+    if (/\b(purchase|goods|material|stock|inventor|supplier)/.test(s)) return "IS:11";
+    return "IS:12";
+  }
   if (section === "assets") {
     if (/\b(depreciat|amorti[sz])/.test(s)) return "BS:29";
     if (/\b(receivable|debtor)/.test(s)) return "BS:11";
@@ -256,7 +364,7 @@ export function sectionRoute(section: Section | null | undefined, label: string)
     return "IS:7";
   }
   if (section === "costs") {
-    if (/salar|wage|payroll|personnel|remuneration|directors? and managers|wkr/.test(s)) return "IS:26";
+    if (/salar|wage|personnel|remuneration|directors? and managers|wkr/.test(s)) return "IS:26";
     if (/\b(depreciat|amorti[sz])/.test(s)) return "IS:30";
     if (/interest/.test(s)) return "IS:29";
     if (/\bfx\b|exchange (gain|loss)|currency (gain|loss)/.test(s)) return "IS:19";
@@ -271,13 +379,15 @@ export function sectionRoute(section: Section | null | undefined, label: string)
     page they were read on. Returns the two feeds with those rows exchanged,
     and how many moved — the caller logs the count. */
 export function refeedBySection(isRows: MapRow[], bsRows: MapRow[]): { is: MapRow[]; bs: MapRow[]; moved: number } {
-  const toBs = isRows.filter((m) => m.section === "assets" || m.section === "liabilities");
-  const toIs = bsRows.filter((m) => m.section === "income" || m.section === "costs");
+  const onBs = (m: MapRow) => m.section === "assets" || m.section === "liabilities" || m.section === "cash";
+  const onIs = (m: MapRow) => m.section === "income" || m.section === "costs" || m.section === "cogs";
+  const toBs = isRows.filter(onBs);
+  const toIs = bsRows.filter(onIs);
   if (!toBs.length && !toIs.length) return { is: isRows, bs: bsRows, moved: 0 };
   return {
-    is: isRows.filter((m) => !(m.section === "assets" || m.section === "liabilities"))
+    is: isRows.filter((m) => !onBs(m))
       .concat(toIs.map((m) => ({ ...m, feed: "is" as const }))),
-    bs: bsRows.filter((m) => !(m.section === "income" || m.section === "costs"))
+    bs: bsRows.filter((m) => !onIs(m))
       .concat(toBs.map((m) => ({ ...m, feed: "bs" as const }))),
     moved: toBs.length + toIs.length,
   };
@@ -333,6 +443,8 @@ export function collapsedRoute(label: string, section: Section): string | null {
   }
   if (section === "income") return "IS:7";
   if (section === "costs") return "IS:OD";
+  if (section === "cash") return "BS:10";
+  if (section === "cogs") return "IS:12";
   return null;
 }
 

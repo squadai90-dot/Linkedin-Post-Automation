@@ -84,12 +84,23 @@ const rule = kws.split('","');
 
 /* --- C: the deliberate non-changes -------------------------------------- */
 // These are tax-treatment decisions awaiting the preparer and must NOT have
-// been quietly given a mapping.
-[["parts sold", "IS:"], ["discounts given", "IS:"], ["disbursements", "IS:"],
- ["billable expense income", "IS:"], ["uncategori", "IS:"]].forEach(([cap]) => {
-  const hit = new RegExp(`"${cap}[^"]*"\\s*\\]\\s*,\\s*t\\s*:\\s*"(IS|BS):`, "i").test(dist);
-  a(!hit, `'${cap}' still has no keyword mapping — left for the preparer`);
+// been quietly given a mapping. The check reads the catalogue itself rather
+// than the text of the bundle, so a keyword cannot pass by sitting anywhere
+// but last in its group.
+const RULES = (() => {
+  const m = /P1=(\[\{kw:\["cost of sales"[\s\S]*?\}\])(?=,|;|\))/.exec(dist);
+  a(!!m, "the rule catalogue is findable in the bundle");
+  return m ? new Function(`return ${m[1]}`)() : [];
+})();
+const mapped = (cap) => RULES.some((r) => r.kw.some((k) => k.toLowerCase().startsWith(cap)));
+["parts sold", "disbursements", "billable expense income", "uncategori"].forEach((cap) => {
+  a(!mapped(cap), `'${cap}' still has no keyword mapping — left for the preparer`);
 });
+/* "Discounts given" DOES have one now: it is contra-revenue, and leaving it
+   unmapped is what let the income banner's catch-all book it to gross
+   receipts, adding the discount to income instead of taking it off. */
+a(RULES.some((r) => r.t === "IS:8" && r.kw.includes("discounts given")),
+  "'discounts given' reduces income on line 1b");
 
 if (fails) { console.error(`${fails} FAILURE(S)`); process.exit(1); }
 console.log("ALL SCHEDULE-C TESTS PASSED");

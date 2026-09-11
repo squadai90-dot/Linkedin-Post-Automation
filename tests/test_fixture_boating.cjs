@@ -50,16 +50,33 @@ const OD = Object.keys(SRC.ENG.POOLS).length ? SRC.ENG.POOLS["IS:OD"].rows.map((
 
 /* ---- income statement ---- */
 
-t("gross receipts: the seven QuickBooks income captions, to the cent", () => {
-  assert.ok(near(v(P, "IS:7", "amount"), 350585.97), String(v(P, "IS:7", "amount")));
+/* Gross receipts is the six remaining income captions: "Discounts given" is
+   contra-revenue and now sits on line 1b. The statement ADDS it to its own
+   income total, so line 1b carries it negated and line 1a + line 1b still
+   comes to the QuickBooks total of 350,585.97 — see contraRevenueFlip. */
+t("gross receipts: the six QuickBooks income captions, to the cent", () => {
+  assert.ok(near(v(P, "IS:7", "amount"), 350280.05), String(v(P, "IS:7", "amount")));
 });
 
-t("compensation: payroll + wages", () => {
-  assert.ok(near(v(P, "IS:26", "amount"), 152419.94), String(v(P, "IS:26", "amount")));
+t('"Discounts given" is on line 1b, signed so gross income does not move', () => {
+  assert.ok(near(v(P, "IS:8", "amount"), -305.92), String(v(P, "IS:8", "amount")));
+  assert.ok(near(v(P, "IS:7", "amount") - v(P, "IS:8", "amount"), 350585.97), "line 1a less line 1b is the statement's own income total");
 });
 
-t("other deductions: the fifteen real captions and nothing else", () => {
-  assert.ok(near(sum(P, OD, "amount"), 185290.29), String(sum(P, OD, "amount")));
+/* Line 11 is for the wage and salary captions themselves. "Payroll Expenses"
+   is a QuickBooks parent group covering employer taxes and benefits too, and
+   belongs in other deductions on line 17. */
+t("compensation: the wage caption alone", () => {
+  assert.ok(near(v(P, "IS:26", "amount"), 72067.40), String(v(P, "IS:26", "amount")));
+});
+
+/* "Shipping and delivery expense" is a cost of sales and moved to line 2. */
+t("cost of sales: carriage is line 2, not an other deduction", () => {
+  assert.ok(near(v(P, "IS:12", "amount"), 11481.77), String(v(P, "IS:12", "amount")));
+});
+
+t("other deductions: the real captions and nothing else", () => {
+  assert.ok(near(sum(P, OD, "amount"), 254161.06), String(sum(P, OD, "amount")));
 });
 
 t('"Net earnings" is the closing line, not a deduction', () => {
@@ -81,10 +98,13 @@ t("the page footer is furniture: dropped before mapping, never worth 11", () => 
   assert.strictEqual(SRC.ENG.applyRowHygiene({ label: footer, values: [11], years: null, page: 1 }), null, footer);
 });
 
+/* The invariant behind every routing change above: however the captions are
+   spread across lines 1a, 1b, 2, 11 and 17, the bottom line is still the one
+   the client's own statement reports. Uses the engine's formula, not a
+   simplification of it, so a caption moved to a line the simplification
+   ignored cannot pass unnoticed. */
 t("net income is the QuickBooks figure", () => {
-  const income = v(P, "IS:7", "amount");
-  const deductions = v(P, "IS:26", "amount") + sum(P, OD, "amount");
-  assert.ok(near(income - deductions, 12875.74), String(income - deductions));
+  assert.ok(near(SRC.STORE.bookNetIncome(P.lines), 12875.74), String(SRC.STORE.bookNetIncome(P.lines)));
 });
 
 /* ---- balance sheet ---- */

@@ -638,6 +638,34 @@ export function ExceptionsView({ onNavigate }: { onNavigate: (v: ViewId) => void
                         <button type="button" className="button primary" onClick={() => actions.confirmCurrency(b.entityId)}>
                           Confirm {(state.entities.find((e) => e.id === b.entityId)?.profile.currency || "").toUpperCase()}
                         </button>
+                      ) : b.id === "cf-name-unconfirmed" ? (
+                        (() => {
+                          const mm = state.entities.find((e) => e.id === b.entityId)?.nameMismatch;
+                          const key = draftKey(b);
+                          const typed = drafts[key]?.value ?? mm?.statementName ?? "";
+                          return (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <input
+                                className="stake-input"
+                                style={{ maxWidth: 220, padding: "2px 6px" }}
+                                value={typed}
+                                onChange={(e) => setDrafts((d) => ({ ...d, [key]: { value: e.target.value, note: d[key]?.note ?? "" } }))}
+                                aria-label="Legal name of the foreign corporation"
+                              />
+                              <button type="button" className="button primary" onClick={() => actions.confirmLegalName(b.entityId, typed, true)}>
+                                Same entity — use the prior return
+                              </button>
+                              <button type="button" className="button" onClick={() => actions.confirmLegalName(b.entityId, typed, false)}>
+                                Different entity
+                              </button>
+                            </div>
+                          );
+                        })()
+                      ) : b.id === "officer-flag-unconfirmed" ? (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button type="button" className="button primary" onClick={() => actions.setField(b.entityId, "ownership", "isOfficer", "Yes")}>Yes</button>
+                          <button type="button" className="button" onClick={() => actions.setField(b.entityId, "ownership", "isOfficer", "No")}>No</button>
+                        </div>
                       ) : b.message.includes("rate (C") ? (
                         <button type="button" className="button" onClick={() => { actions.setActiveEntity(b.entityId); actions.autoFillRates(b.entityId); }}>Apply rates</button>
                       ) : (

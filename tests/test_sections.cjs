@@ -58,9 +58,12 @@ const R = (label, amt, x0, page = 1) => ({
   docId: "d1", docName: "Accounts.pdf", feed: "is", kind: "pdf", x0,
 });
 
-t("the two banner lexicons are the same 23 patterns", () => {
+/* 26 since the bank-accounts and cost-of-sales groups were added: a
+   QuickBooks sub-account is named after the bank or the supplier, so only its
+   heading says what it is. */
+t("the two banner lexicons are the same 26 patterns", () => {
   const BANNERS = load("src/prototype/wp/sectionBanners.ts").SECTION_BANNERS;
-  assert.strictEqual(BANNERS.length, 23);
+  assert.strictEqual(BANNERS.length, 26);
   assert.strictEqual(SHIPPED.SECTB.length, BANNERS.length);
   for (let i = 0; i < BANNERS.length; i++) {
     assert.strictEqual(String(BANNERS[i][0]), String(SHIPPED.SECTB[i][0]), "pattern " + i);

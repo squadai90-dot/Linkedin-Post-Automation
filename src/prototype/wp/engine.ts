@@ -13,6 +13,7 @@ export const SHEET = {
   schJ: "Schedule J",
   schM: "Schedule M",
   schP: "Schedule P",
+  schQ: "Schedule Q",
   schR: "Schedule R",
   /** The roll-forward tab: prior-filed opening + net income − distributions
       ± adjustments = closing per Schedule F. Where an unexplained difference
@@ -289,7 +290,13 @@ export const DEFAULT_RULES: MappingRule[] = [
   ], t: "SKIP" },
   { kw: ["gross receipt", "turnover", "revenue", "sales", "chiffre d'affaires", "ingresos", "ingresos operacionales", "ventas netas", "receita", "营业收入"], t: "IS:7" },
   { kw: ["service income", "services income", "consulting fees", "consultancy fees", "fees earned"], t: "IS:7" },
-  { kw: ["returns and allowance", "sales return"], t: "IS:8" },
+  /* Contra-revenue. Line 1b is subtracted by the template, so routing a
+     discount here IS the sign fix — booking it to gross receipts (which is
+     where "discounts given" landed, via the income banner's catch-all) added
+     the discount to income instead of taking it off. */
+  { kw: ["returns and allowance", "sales return", "discount given", "discounts given",
+         "sales discount", "trade discount", "discounts allowed", "sales allowance",
+         "refunds given", "customer refund", "returns and refunds"], t: "IS:8" },
   { kw: ["cost of labor", "cost of labour", "direct labour"], t: "IS:10" },
   { kw: ["purchase", "achats", "cost of goods", "cogs", "costo directo", "costo de venta",
          "costos de venta", "compras", "custo dos produtos",
@@ -299,7 +306,15 @@ export const DEFAULT_RULES: MappingRule[] = [
          "existencias, insumos", "insumos y servicios"], t: "IS:11" },
   // "Cost of sales" totals are deliberately absent: the components map here
   // and the template's F9 subtotal recomputes the total — both would double-count.
-  { kw: ["direct hotel", "direct meals", "direct car rental", "direct airfare", "direct fuel", "direct parking", "direct taxi", "uber", "job cost"], t: "IS:12" },
+  /* Line 2 "Other costs". The payment-processor and carriage captions name
+     the supplier, not the cost, so no cost keyword reaches them; left
+     unmatched they fell to whatever banner was above them, and under an
+     income banner they became gross receipts. */
+  { kw: ["direct hotel", "direct meals", "direct car rental", "direct airfare", "direct fuel", "direct parking", "direct taxi", "uber", "job cost",
+         "freight", "carriage", "shipping and delivery", "delivery expense",
+         "shopify fee", "paypal fee", "stripe fee", "merchant account fee",
+         "merchant fee", "payment processing fee", "payment fee",
+         "transaction fee", "processing fee"], t: "IS:12" },
   { kw: ["dividend income", "dividends received"], t: "IS:14" },
   { kw: ["interest income", "interest received", "produits financiers"], t: "IS:15" },
   { kw: ["rental income", "gross rent"], t: "IS:16" },
@@ -308,13 +323,16 @@ export const DEFAULT_RULES: MappingRule[] = [
   { kw: ["unrealised exchange", "unrealized exchange"], t: "IS:19" },
   { kw: ["realised exchange", "realized exchange", "exchange gain", "exchange loss"], t: "IS:20" },
   { kw: ["management fees earned", "management fee income", "management fees", "reimbursement", "recharge income", "sundry income", "other income", "other revenue", "other revenues", "otros ingresos", "outras receitas"], t: "IS:OI" },
-  { kw: ["salaries", "salary", "payroll", "compensation", "personnel", "staff cost", "charges de personnel", "wages", "superannuation", "pension contribution", "gastos del personal", "gasto de personal", "gastos de personal", "sueldos", "salarios", "nomina", "n\u00f3mina", "remuneracion", "remunera\u00e7", "cesantias", "cesant\u00edas", "vacaciones consolid", "primas consolid", "despesas com pessoal"], t: "IS:26" },
+  { kw: ["salaries", "salary", "compensation", "personnel", "staff cost", "charges de personnel", "wages", "superannuation", "pension contribution", "gastos del personal", "gasto de personal", "gastos de personal", "sueldos", "salarios", "nomina", "n\u00f3mina", "remuneracion", "remunera\u00e7", "cesantias", "cesant\u00edas", "vacaciones consolid", "primas consolid", "despesas com pessoal"], t: "IS:26" },
   { kw: ["rent expense", "rent", "loyer", "premises rent", "arriendo"], t: "IS:27" },
   { kw: ["royalty expense"], t: "IS:28" },
   { kw: ["interest expense", "finance cost", "charges financi", "gastos financieros", "intereses"], t: "IS:29" },
   { kw: ["depreciation", "amortisation expense", "amortization expense", "dotations aux amortissements", "depreciaciones", "amortizaciones", "depreciacion", "depreciaci\u00f3n"], t: "IS:30" },
   { kw: ["depletion"], t: "IS:31" },
-  { kw: ["taxes other than income", "business rates", "property tax", "impots et taxes"], t: "IS:32" },
+  { kw: ["taxes other than income", "business rates", "property tax", "impots et taxes",
+         "taxes and licenses", "taxes and licences", "taxes & licenses",
+         "licenses and permits", "licences and permits", "business license",
+         "business licence"], t: "IS:32" },
   { kw: ["accountancy", "accounting fees", "audit fee", "bookkeeping"], t: "IS:OD" },
   { kw: ["subscription", "membership fee"], t: "IS:OD" },
   { kw: ["telecommunication", "telephone", "internet"], t: "IS:OD" },
@@ -334,7 +352,7 @@ export const DEFAULT_RULES: MappingRule[] = [
          "de los ingresos"], t: "IS:OD" },
   { kw: ["income tax - current", "current tax", "corporation tax", "tax on profit", "tax on ordinary activities", "income tax revenue", "income tax expense", "impot sur les societes"], t: "IS:54" },
   { kw: ["deferred tax"], t: "IS:55" },
-  { kw: ["cash", "bank account", "cash at bank", "banque", "tr\u00e9sorerie", "caja general", "bancos nacionales", "cuentas de ahorro", "caixa", "bancos", "货币资金"], t: "BS:10" },
+  { kw: ["cash", "bank account", "cash at bank", "banque", "tr\u00e9sorerie", "caja general", "bancos nacionales", "cuentas de ahorro", "caixa", "bancos", "货币资金", "merchant account", "undeposited funds", "petty cash", "checking account", "savings account"], t: "BS:10" },
   { kw: ["trade receivable", "accounts receivable", "debtor", "trade debtor", "cr\u00e9ances clients", "deudores", "cuentas por cobrar", "contas a receber", "应收账款"], t: "BS:11" },
   { kw: ["allowance for bad debt", "provision for doubtful"], t: "BS:12" },
 
@@ -343,6 +361,25 @@ export const DEFAULT_RULES: MappingRule[] = [
   { kw: ["wkr expense", "werkkostenregeling"], t: "IS:26" },
   { kw: ["small material", "kleinmateriaal"], t: "IS:OD" },
   { kw: ["issued & paid up capital", "issued and paid up capital", "paid up capital", "issued capital"], t: "BS:59" },
+
+  /* Line 17, not line 11. "Payroll Expenses" is a QuickBooks parent group
+     covering wages, employer taxes and benefits together; the preparer's line
+     11 is reserved for the wage and salary captions themselves, which still
+     match "wages"/"salaries" above. */
+  { kw: ["payroll expense", "payroll cost", "payroll"], t: "IS:OD" },
+
+  /* Equity, which has no keyword rule of its own and therefore fell to the
+     liabilities catch-all and was reported as a current liability. Owner
+     contributions are paid-in surplus; draws and distributions reduce
+     retained earnings and arrive already signed. */
+  { kw: ["owner investment", "owner's investment", "owners investment",
+         "member capital", "members capital", "member's capital",
+         "opening balance equity", "owner contribution", "owners contribution",
+         "capital contribution", "partner capital", "partners capital"], t: "BS:60" },
+  { kw: ["owner draw", "owners draw", "owner's draw", "owner drawing",
+         "member draw", "members draw", "partner draw", "partners draw",
+         "shareholder distribution", "partner distribution", "member distribution",
+         "owner distribution", "distributions to owner"], t: "BS:61" },
 
   /* Periodic (rather than perpetual) inventory: the P&L carries the movement
      as two separate captions, and Schedule C line 2 wants the net. Opening
@@ -438,6 +475,14 @@ export function matchRule(label: string, rules: MappingRule[]): string | null {
      Checked before the keywords so that "Total for Assets" cannot fall
      through to the "assets" fragment. */
   if (/^(sub-?)?totals?\s+(for|of)\b/.test(l)) return "SKIP";
+  /* The same total without the "for". QuickBooks closes a group by repeating
+     the group's own name: "Bank Accounts" … "Total Bank Accounts". Anything
+     the banner lexicon recognises as a group name is a group name here too,
+     so "Total <banner>" is that group's subtotal and its components are
+     already listed above it. Left to the keyword scan, "Total Bank Accounts"
+     matched the "bank account" rule and cash was counted twice. */
+  const bare = l.replace(/^(sub-?)?totals?\s+/, "");
+  if (bare !== l && isBannerLabel(bare)) return "SKIP";
   let best: string | null = null;
   let bestLen = 0;
   for (const r of rules) {
