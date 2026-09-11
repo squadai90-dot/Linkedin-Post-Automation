@@ -4,10 +4,19 @@
 // Usage: node scripts/serve-local.mjs [port]     (default 8080)
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
+// Works both from scripts/ in the repo and from the root of the unzipped bundle.
+const here = dirname(fileURLToPath(import.meta.url));
+const root = [join(here, '..', 'dist'), join(here, 'dist')].find((d) =>
+  existsSync(join(d, 'index.html')),
+);
+if (!root) {
+  console.error('Could not find dist/index.html next to this script.');
+  process.exit(1);
+}
 const port = Number(process.argv[2] || process.env.PORT || 8080);
 
 const types = {
@@ -32,9 +41,15 @@ createServer(async (req, res) => {
     });
     res.end(body);
   } catch {
-    const body = await readFile(join(root, 'index.html'));
-    res.writeHead(200, { 'content-type': types['.html'], 'cache-control': 'no-store' });
-    res.end(body);
+    // Unknown path: fall back to the single-page app rather than 404-ing.
+    try {
+      const body = await readFile(join(root, 'index.html'));
+      res.writeHead(200, { 'content-type': types['.html'], 'cache-control': 'no-store' });
+      res.end(body);
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end(String(err && err.message ? err.message : err));
+    }
   }
 }).listen(port, () => {
   console.log(`5471 Work Paper running at http://localhost:${port}`);

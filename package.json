@@ -8,6 +8,7 @@
     "build": "node -e \"console.log('CI-safe build: dist/ is committed as reviewed (session fixes live in dist, not yet in src \\u2014 see PROJECT-NOTES.md). Skipping rebuild so Pages deploys the reviewed app. Use npm run build:full after porting fixes to src.')\"",
     "start": "npm run build && npx --yes serve dist",
     "start:local": "node scripts/serve-local.mjs",
+    "bundle": "node scripts/make-bundle.mjs",
     "typecheck": "tsc --noEmit",
     "build:app": "node scripts/build.mjs",
     "build:server": "node scripts/build-server.mjs",

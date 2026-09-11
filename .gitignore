@@ -7,3 +7,4 @@ dist/bundle.js
 .vercel
 .netlify
 dist-server/
+dist-bundle/

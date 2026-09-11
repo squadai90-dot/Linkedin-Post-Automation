@@ -19,10 +19,16 @@ npm install
 npm start          # serves the committed dist/ on localhost
 ```
 
-No install, no network? `npm start:local` (or `node scripts/serve-local.mjs`)
+No install, no network? `npm run start:local` (or `node scripts/serve-local.mjs`)
 serves the same committed `dist/` on <http://localhost:8080> using nothing but
 Node's standard library — no `npm install`, no `npx` download. Pass a port to
 change it: `node scripts/serve-local.mjs 3000`.
+
+Need to hand the app to someone who has no clone? `npm run bundle` writes
+`dist-bundle/5471-work-paper-local.zip` — the committed `dist/`, the same
+zero-dependency server, and a `start.sh` / `start.cmd`. Unzip it anywhere with
+Node 18+ and run `./start.sh` (Windows: `start.cmd`), then open
+<http://localhost:8080>.
 
 > **Serve over HTTPS (or localhost).** Browsers block the tool's network calls
 > and IndexedDB persistence from `file://` — do not open `index.html` directly.
