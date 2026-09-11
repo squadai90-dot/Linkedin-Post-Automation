@@ -673,3 +673,116 @@ Schedule F imbalance and its 12,876.02 net income are its own input rounding.
 Tests: `test:all` now 46 suites (449 named assertions + 15 whole-suite
 passes). The engine-logic workbook at `outputs/5471-engine-logic` was
 regenerated with the new rules, exceptions and cell writes.
+
+## Session 2026-09-11 — the reconciliation test's 19 findings
+
+A second cell-by-cell test of the tool against a hand-prepared work paper
+returned nineteen required fixes across mapping, FX, carry-forward and
+prefill. Parts of it the Boating session had already closed; what follows is
+what was still open, fixed as general rules in both trees. Commits `6bb1801`
+(mapping and classification) and `57ed49a` (FX, retained earnings, tests).
+
+**Mapping and classification.**
+- `Total <banner>` is a subtotal whatever the banner is (`matchRule`, dist
+  `/*EN9TOTBAN*/`). "Total Bank Accounts" carries no "for"/"of", fell through
+  to the keyword scan, matched the cash rule and counted the bank accounts
+  twice.
+- Grid feeds got a structure pass at last (`gridStructRows`, dist
+  `EN9GRIDTOT`). A spreadsheet export has no indent, so the arithmetic in
+  `structRows` is unavailable; the grid pass instead requires the report's own
+  words to agree with its own arithmetic — "Total <X>" after a caption X whose
+  rows sum to it, or a total word after rows that sum to it. A total word with
+  no arithmetic behind it stays data ("Total Return Fund" is an investment).
+- Two new sections, `cash` and `cogs` (`Section` gained two members;
+  `sectionBanners` 23 → 26 patterns). QuickBooks names a bank sub-account
+  after the bank ("Sales", "Property", "Merchant Account") and a cost of sales
+  after the supplier ("Shopify fees", "Freight"): unreachable by keyword, with
+  one right answer per group, so the banner carries it. `sectionOk` gained the
+  root-cause veto — a caption under cost of sales can never take an income
+  line (`INCOME_TARGETS`, dist `EN9INCTGT`). Rows 10-12 carry the group
+  "Income" in the line table because the form nets COGS inside gross income,
+  so the veto lists the revenue rows explicitly rather than reading the group.
+- Equity captions (owner investments, draws, opening balance equity, member
+  capital) reach BS:60/BS:61 instead of the liabilities catch-all. The
+  catch-all itself is unchanged, so a genuine unnamed liability still lands on
+  BS:OCL.
+- Contra-revenue reaches line 1b, and `contraRevenueFlip` decides its sign
+  from the statement's own arithmetic. Line 1b is subtracted from 1a, so the
+  figure belonging on it is the negative of what the caption contributes to
+  income — and QuickBooks prints "Discounts given 305.92" INSIDE its income
+  group and adds it. Only a row a subtotal was proven to add (the new
+  `inTotal` flag, set by both structure passes) is negated; the classic
+  "Gross sales / Less returns / Net sales" layout fails that proof because its
+  total does not add the returns line. Either way the client's bottom line
+  does not move, and the reversal is reported (`contra-revenue-<caption>`).
+- Taxes and licenses → line 16. Payroll Expenses → line 17, line 11 reserved
+  for the wage and salary captions (`sectionRoute`'s costs branch lost
+  `payroll` to match).
+
+**Entity identity.** A prior return naming the corporation differently from
+the statements used to be dropped in silence, with the opening balances,
+filer categories, shareholders and opening E&P. Now `cf-name-unconfirmed`
+blocks generation until the preparer confirms the legal name and says whether
+it is the same entity; `actions.confirmLegalName` stores the answer
+(`Entity.nameDecision`) so re-processing does not ask again, and "same
+entity" makes the gate adopt the candidate that similarity rejected. Same
+pattern as `fx-currency-unconfirmed`: a derived block item plus a dedicated
+Exception Center control. `officer-flag-unconfirmed` does the same for a
+blank Item H answer (C35).
+
+**FX and retained earnings.**
+- `PEGGED_SPOT` + `applyPeg` (dist `EN9PEG`): a hard dollar peg is the default
+  year-end rate, tagged "Pegged", with the published table still shown in the
+  FX view's Published column. The Treasury table's KYD 0.82 is the peg's 0.833
+  rounded, and translating an opening balance sheet at the rounded figure
+  moved every line ~1.6% against the filing it continues. `lookupRates` stays
+  a pure reading of the tables; the peg is applied where rates are FILLED, in
+  both trees, so a caller asking what the tables say still gets that. An
+  uploaded rate workbook outranks the peg.
+- `openingRateFor` (dist `EN9openingRate`) is the single answer to which rate
+  turns the prior return's filed USD back into opening local currency: the
+  rate the prior return printed, else the peg, else the rate in use. Schedule
+  F D61, Schedule J F15 and Retained Earnings F10 all read it —
+  `Entity.openingRate` records what was used, and it gets its own provenance
+  row, because it is often not C61.
+- `re-translation-adjustment`: the roll-forward residual can be booked to
+  Retained Earnings F24 in one action, but only through a sign-off — the item
+  carries NO write until the preparer saves a figure, and the write records
+  who booked it. Deliberately its own id: resubmitting against
+  `re-rollforward` would have overwritten its F10 write.
+
+**Prefill.** Schedule Q exists for the first time (`SHEET.schQ`): the
+separate-category code alongside J C10 / P B10 / H C8, and tested-income unit
+1 from the legal name (C57) and the IRS country code (F57). `countryCodes.ts`
+is the FIPS 10-4 list the IRS prints, NOT ISO — Cayman Islands is CJ, not KY;
+Switzerland SZ, not CH; United Kingdom UK, not GB. An unknown country returns
+null and the cell is left blank with a warning. Schedule M's compensation
+figure moved to line 6 (E15) per the owner's decision, with a note recording
+that the caption read strictly is the other direction, and a schedule naming
+someone other than the filer now lands in that person's own column (K15).
+
+**New dist sentinels:** `EN9TOTBAN`, `EN9BANKSEC`, `EN9COGS`, `EN9COGSVETO`,
+`EN9CASHROUTE`, `EN9GRIDTOT`, `EN9GRIDCALL`, `EN9INTOT`, `EN9CONTRA`,
+`EN9CONTRAFLIP`, `EN9NAMEGATE`, `EN9NAMEBLOCK`, `EN9NAMECONF`, `EN9OFFGATE`,
+`EN9PEG`, `EN9PEGRATE`, `EN9OPENRATE`, `EN9OPENPROV`, `EN9REONE`, `EN9TRADJ`,
+`EN9TRADJWRITE`, `EN9CCODE`, `EN9SCHQ`, `EN9SCHQCAT`. Bridge gained
+`EN9gridStructRows`, `EN9contraFlip`, `EN9countryCode`.
+
+**Tests:** 49 suites, 1,275 named assertions. Three new —
+`test_qb_groups.cjs` (every group rule, against both trees, driven through
+the booted bundle), `test_pegged_fx.cjs` (the peg, where it is applied, the
+single opening rate) and `test_gates_prefill.cjs` (both gates, the country
+codes against the ISO codes they are not, Schedule Q, B19 and C35). The
+country table is checked to cover every country `FX_META` names, which is how
+eleven of the tool's own spellings turned out to be missing.
+
+**Deliberate test changes**, each for a behaviour that genuinely moved:
+`test_fixture_boating` (IS:7 350,280.05 with IS:8 −305.92 — their difference
+is still the QuickBooks income total 350,585.97; IS:26 72,067.40; IS:12
+11,481.77; OD 254,161.06; net income still 12,875.74, now asserted through
+`bookNetIncome` rather than a simplification of it), `test_boating_p2` (F24 is
+written only through the sign-off), `test_schedc` ("discounts given" has a
+mapping now; the no-mapping check reads the catalogue instead of the bundle
+text, so a keyword can no longer pass by sitting anywhere but last in its
+group), `test_questionnaire` (line 6), `test_sections` (26 banners),
+`test_ids` (DERIVED_IDS read as a set, not as one adjacency of it).

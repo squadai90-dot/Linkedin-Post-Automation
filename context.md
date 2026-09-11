@@ -30,11 +30,26 @@ Mirror of `jaynilagrawal1103-lang/5471-work-paper`. Work branch:
   server, `start.sh`, `start.cmd`, `README.txt`. `dist-bundle/` is gitignored.
 - `npm run build` — intentionally a no-op that keeps the reviewed `dist/`. Use
   `build:full-DESTRUCTIVE` only after porting fixes to `src/`.
-- `npm run test:all` — the full test chain.
+- `npm run test:all` — the full test chain (49 suites, 1,275 assertions).
+  Needs `npm i` first, and `npm run build:server` once (test:aikey reads
+  `dist-server/server.cjs`).
 
 Node 18 or newer. Verified on Node 22.
 
 ## Decisions
+
+- Every engine rule lands in BOTH trees: `src/prototype/wp/*` and a surgical
+  patch to `dist/index.html` (EN9-prefixed identifiers, paired
+  `/*EN9NAME-BEGIN*/…/*EN9NAME-END*/` sentinels, anchored on unique minified
+  strings). Ten suites eval those regions, so never run `npm run build:app`
+  or `build:full-DESTRUCTIVE` — esbuild strips the sentinels.
+- A dist patch must be valid in its syntactic context: the `autoFillRates`
+  rate block is a comma expression, so a `var` declaration there breaks the
+  whole bundle. Check with `npx esbuild` on the extracted script (lines
+  449-1091) before running the suite.
+- Mapping rules live in `DEFAULT_RULES` (engine.ts) and the identical `P1`
+  literal in dist; regenerate the dist literal from src rather than editing
+  it by hand, escaping non-ASCII as uppercase `\uXXXX` as esbuild does.
 
 - `dist/index.html` stays committed and is the reviewed artifact; CI must not
   rebuild it.
@@ -46,9 +61,18 @@ Node 18 or newer. Verified on Node 22.
 
 ## Status
 
-Bundle and single-file delivery verified: unzipped bundle serves the full
-3,277,489-byte page on HTTP 200, and deep links fall back correctly.
+The reconciliation test's 19 findings are implemented in both trees — see the
+2026-09-11 section of `PROJECT-NOTES.md` for what each one was and where it
+lives. `npm run test:all` is green, and every new rule was also exercised
+against the booted shipped bundle, not only against source.
+
+Bundle and single-file delivery verified: the unzipped bundle serves the full
+page on HTTP 200, and deep links fall back correctly.
 
 ## Open issues
 
-- `dist/` and `src/` are not in parity; some fixes exist only in `dist/`.
+- `dist/` and `src/` are not in parity; some fixes exist only in `dist/` (the
+  OCR engine, the tie-out/Schedule E helpers, the C35 answer from the prior
+  return's Item H boxes). See PROJECT-NOTES.md.
+- Schedule Q fills tested-income unit 1 only; a corporation with more than one
+  tested unit needs the rest by hand.

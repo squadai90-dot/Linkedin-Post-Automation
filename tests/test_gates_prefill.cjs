@@ -155,6 +155,28 @@ t("the table is the same in both trees", () => {
   assert.deepStrictEqual(shipped, CC.IRS_COUNTRY_CODES);
 });
 
+/* ---- the Basic Information answers Schedule Q now depends on ---- */
+
+t("country of incorporation is answered from three sources, in order", () => {
+  assert.ok(store.includes('propose(profile, "countryInc", cf.countryInc || ""'), "the prior return's 5471 face");
+  assert.ok(store.includes('propose(profile, "countryInc", questionnaire.countryInc, qs)'), "the client questionnaire");
+  assert.ok(store.includes('propose(profile, "countryInc", country, `functional currency'), "the functional currency, last");
+  assert.strictEqual(ENG.PROFILE_FIELDS.find((f) => f.key === "countryInc").cell, "B19");
+});
+
+t("the country reaches B19 in the workbook writes", () => {
+  const w = STORE.buildWrites(entity({
+    profile: { countryInc: "Cayman Islands", entityShort: "Client" },
+  }));
+  assert.strictEqual(w[ENG.SHEET.basic].B19, "Cayman Islands");
+});
+
+t("the director/officer answer reaches C35", () => {
+  assert.strictEqual(ENG.OWNERSHIP_FIELDS.find((f) => f.key === "isOfficer").cell, "C35");
+  const w = STORE.buildWrites(entity({ ownership: { isOfficer: "Yes" }, profile: { entityShort: "Client" } }));
+  assert.strictEqual(w[ENG.SHEET.basic].C35, "Yes");
+});
+
 /* ---- Schedule Q, which had never been written ---- */
 
 t("Schedule Q is a sheet the engine knows about", () => {
