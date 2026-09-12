@@ -146,11 +146,17 @@ const store = fs.readFileSync(path.join(root, "src", "prototype", "wp", "store.t
    rather than quietly moving the figure to line 19. */
 t("the wages figure that equals a booked P&L caption goes to Schedule M line 6", () => {
   assert.ok(store.includes('labelKey: { col: "B", contains: "compensation received for technical" }'), "wrong Schedule M line");
-  assert.ok(store.includes('reviewId: `schm-compensation-${col}`'));
+  /* The reviewId became a ternary on 2026-09-12: a figure inferred from the
+     books alone carries its own id so an edit re-applies to the right write. */
+  assert.ok(store.includes('`schm-compensation-inferred-${col}` : `schm-compensation-${col}`'));
   assert.ok(store.includes("Math.abs(c.value - fact.amount) <= 0.01"), "the tie is exact, to the cent");
   assert.ok(store.includes("the figure belongs on line 19"), "the caption reading must be called out");
   assert.ok(store.includes('const col = isFiler ? "E" : "K";'), "a schedule naming someone else gets its own column");
-  assert.ok(store.includes("facts.length && avgRate && relatedParty"), "no related party, no Schedule M transaction");
+  /* Relaxed on 2026-09-12 for the inferred path only: with one shareholder
+     and no prior return there may be no name on file to quote, and sole
+     ownership IS the counterparty. A document-sourced fact still needs one. */
+  assert.ok(store.includes("facts.length && avgRate && (relatedParty || facts.some((f) => f.booked))"),
+    "no related party and no booked wage means no Schedule M transaction");
 });
 
 t("a stated wage with no matching caption is a warning, not a write", () => {

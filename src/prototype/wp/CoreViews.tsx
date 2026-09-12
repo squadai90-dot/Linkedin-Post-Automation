@@ -662,9 +662,14 @@ export function ExceptionsView({ onNavigate }: { onNavigate: (v: ViewId) => void
                           );
                         })()
                       ) : b.id === "officer-flag-unconfirmed" ? (
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button type="button" className="button primary" onClick={() => actions.setField(b.entityId, "ownership", "isOfficer", "Yes")}>Yes</button>
-                          <button type="button" className="button" onClick={() => actions.setField(b.entityId, "ownership", "isOfficer", "No")}>No</button>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button type="button" className="button primary" onClick={() => actions.setField(b.entityId, "ownership", "isOfficer", "Yes")}>Yes</button>
+                            <button type="button" className="button" onClick={() => actions.setField(b.entityId, "ownership", "isOfficer", "No")}>No</button>
+                          </div>
+                          {/* No acknowledge button, by design: acknowledging writes
+                              nothing, so signing off here would ship C35 blank. */}
+                          <em style={{ fontSize: 11, opacity: 0.7 }}>Answer to clear — this one cannot be acknowledged.</em>
                         </div>
                       ) : b.message.includes("rate (C") ? (
                         <button type="button" className="button" onClick={() => { actions.setActiveEntity(b.entityId); actions.autoFillRates(b.entityId); }}>Apply rates</button>

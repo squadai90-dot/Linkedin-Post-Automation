@@ -850,3 +850,48 @@ only from a questionnaire or salary schedule, and neither was supplied;
 acknowledging a blocking gate writes nothing, so C35 shipped blank; B17 is an
 Excel date serial. `4000 Cost of goods sold` books to Purchases rather than
 Cost of Labor — a row split inside line 2, with no effect on the return.
+
+### Follow-up 2026-09-12 — the three SHORI leftovers
+
+**Schedule M line 6 without a questionnaire.** The pre-fill read only
+`questionnaire.wagesReceived` and the salary schedule, so with neither document
+it did nothing at all — not even a warning — although the books said 82,000 of
+wages and the filer owned 100%. `materializeCaseWrites` gains a third fact
+source (`/*EN9SCHMINFER*/`), used only when the two document sources produced
+none: a booked `IS:26` contribution, ownership >= 50% and at most one
+shareholder on file. Deliberately narrow — a minority filer or a second
+shareholder gets nothing, because then the counterparty is a guess. The write
+carries its own `schm-compensation-inferred-<col>` reviewId and an info item
+that names the caption, the percentage it relied on, and the fact that nothing
+confirmed the filer personally received it. `materializeCaseWrites` is now
+exported so the inference can be tested directly.
+
+**A gate that must be answered.** C35 already blocked and the Exception Center
+already offered Yes/No, yet the work paper shipped it blank. There are two ways
+past a block and neither writes anything: acknowledging (a tombstone) and a
+policy that downgrades or suppresses. The bulk "Sign off selected" button
+reaches every selected block at once, which is the likely route. New
+`MUST_ANSWER` set (`/*EN9MUSTANSWER*/`): `dismissReviewItem` refuses, and
+`allReviewItems` skips `applyPolicy` for those ids. The Exception Center says
+so beside the Yes/No pair. One entry today, a list so the next one is a line.
+
+**The formation date was not a defect.** `Basic Information!B17` is
+`<c r="B17" s="663"/>` and `cellXfs[663]` is `numFmtId="14"` with
+`applyNumberFormat="1"`; `setCell` preserves the style index. `formedCell`
+writing the serial 43966 is correct and Excel renders it as a date — the
+earlier report called it a bug from a raw-XML dump that ignores number formats.
+What IS worth saying: when the day/month order cannot be resolved the helper
+returns the text unchanged and it lands in a date-formatted cell as a string.
+New derived check `profile-formed-ambiguous` (`/*EN9FORMEDAMB*/`) says so and
+suggests YYYY-MM-DD. The template's `mm-dd-yy` two-digit year is left alone.
+
+**Verified end to end** against a generated workbook: `Schedule M!E15` =
+`<c r="E15" s="569"><v>82000</v></c>`, `Basic Information!B17` =
+`<c r="B17" s="663"><v>43966</v></c>` with the date style intact, `C35` = Yes,
+52 cells written and no refused formulas.
+
+**New suites** `tests/test_schedule_m_inferred.cjs` (9) and
+`tests/test_must_answer.cjs` (10). Pins deliberately updated in
+`test_questionnaire.cjs`: the Schedule M reviewId is now a ternary and the
+related-party gate admits a booked-wage fact. `test:all` is 54 suites, 1,344
+assertions.

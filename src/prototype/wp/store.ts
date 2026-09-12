@@ -1443,6 +1443,17 @@ export const actions = {
     if (!ent) return;
     const item = ent.reviewItems.find((r) => r.id === id) || allReviewItems(ent).find((r) => r.id === id);
     if (!item) return;
+    /* Answering it is the only way past. The UI hides the acknowledge button
+       for these, and this is the belt to that pair of braces. */
+    if (MUST_ANSWER.has(id)) {
+      logEvent(
+        "Acknowledgement refused",
+        `"${item.message.slice(0, 120)}" must be answered, not acknowledged — it fills a required cell`,
+        ent.name,
+      );
+      toast("Answer this one — acknowledging would leave the cell blank", "bad");
+      return;
+    }
     const rest = ent.reviewItems.filter((r) => r.id !== id);
     updateEntity(entityId, { reviewItems: [...rest, { ...item, dismissed: true, dismissedNote: note || "" }] });
     logEvent(
@@ -3610,7 +3621,10 @@ type CaseFacts = {
   rv: (item: Omit<ReviewItem, "id"> & { id?: string }) => void;
 };
 
-async function materializeCaseWrites(
+/* Exported for the tests: this is where every Schedule J/M/R/E/P/H write is
+   created, and the Schedule M inference in particular is worth exercising
+   directly rather than through a whole document run. */
+export async function materializeCaseWrites(
   ent: Entity,
   facts: CaseFacts,
 ): Promise<{ list: CellWrite[]; dividends: DividendRec[] }> {
@@ -4068,7 +4082,7 @@ async function materializeCaseWrites(
      The column names the counterparty: (b) for the US person filing the
      return, (e) for a 10% US shareholder who is someone else. */
   {
-    const facts: { amount: number; source: string; who: string | null }[] = [];
+    const facts: { amount: number; source: string; who: string | null; booked?: { label: string; docName: string } }[] = [];
     if (questionnaire?.wagesReceived !== undefined && questionnaire.wagesReceived > 0) {
       facts.push({ amount: questionnaire.wagesReceived, source: `${questionnaire.fileName} · "Wages you received from the company"`, who: questionnaire.taxpayerName || null });
     }
@@ -4078,14 +4092,43 @@ async function materializeCaseWrites(
         facts.push({ amount: total, source: `${salary.fileName} · salary schedule${salary.person ? ` for ${salary.person}` : ""}`, who: salary.person });
       }
     }
+    /* Neither document supplied. The books still say a wage was paid, and
+       when one person owns the corporation outright there is only one person
+       it can have been paid to — which is a Schedule M transaction whether or
+       not anybody sent us a questionnaire. The SHORI 2024 run booked 82,000
+       on Schedule C line 11 for a 100% owner and shipped Schedule M blank.
+       Deliberately narrow: a minority filer, or a corporation with more than
+       one shareholder, gets nothing, because then the counterparty is a
+       guess rather than an inference. */
+    if (!facts.length) {
+      const wages = (ent.contributions["IS:26"] || []).filter((c) => c.field === "amount");
+      const pct = Number(ent.ownership.ownEnd || ent.ownership.ownStart || 0);
+      if (wages.length && pct >= 50 && (ent.shareholders || []).length <= 1) {
+        const amount = wages.reduce((n, c) => r2add(n, c.value), 0);
+        if (amount > 0) {
+          facts.push({
+            amount,
+            source: `Schedule C line 11 "${wages[0].label}" — inferred from the books, no questionnaire supplied`,
+            who: cf?.holderName || (ent.shareholders || [])[0]?.name || null,
+            booked: { label: wages[0].label, docName: wages[0].docName },
+          });
+        }
+      }
+    }
     /* A Schedule M transaction needs a counterparty. Compensation with no
-       related person anywhere in the case is just a payroll cost. */
+       related person anywhere in the case is just a payroll cost — unless the
+       books themselves supplied the fact, where sole ownership IS the
+       counterparty and there may be no name on file to quote. */
     const relatedParty = questionnaire?.taxpayerName || cf?.holderName || ledger?.counterparty || salary?.person || null;
-    if (facts.length && avgRate && relatedParty) {
+    if (facts.length && avgRate && (relatedParty || facts.some((f) => f.booked))) {
       const booked = Object.entries(ent.contributions).flatMap(([target, list]) => list.map((c) => ({ target, ...c })));
       const usedCols = new Set<string>();
       for (const fact of facts) {
-        const hit = booked.find((c) => /^IS:/.test(c.target) && Math.abs(c.value - fact.amount) <= 0.01);
+        /* The inferred fact IS the booked line, so re-matching it against the
+           books would only be circular. */
+        const hit = fact.booked
+          ? { label: fact.booked.label }
+          : booked.find((c) => /^IS:/.test(c.target) && Math.abs(c.value - fact.amount) <= 0.01);
         if (!hit) {
           rv({
             id: `schm-compensation-unmatched-${r2(fact.amount)}`, level: "warn", category: "related-party",
@@ -4110,12 +4153,16 @@ async function materializeCaseWrites(
           sheet: SHEET.schM, ref, value: usd,
           labelKey: { col: "B", contains: "compensation received for technical" },
           source: `${fact.source} = P&L "${hit.label}" at the year-average rate`,
-          reviewId: `schm-compensation-${col}`,
+          reviewId: fact.booked ? `schm-compensation-inferred-${col}` : `schm-compensation-${col}`,
         });
+        const pct = Number(ent.ownership.ownEnd || ent.ownership.ownStart || 0);
         rv({
-          id: `schm-compensation-${col}`, level: "info", category: "related-party", applied: true,
-          message: `Schedule M line 6, column ${colName}: US$${usd.toLocaleString()} — ${fact.source} equals the P&L caption "${hit.label}" (${fact.amount.toLocaleString()} ${ent.profile.currency || ""}) to the cent, translated at the year-average rate ${avgRate}. Line 6 is captioned "compensation received"; the corporation PAID this amount, so if you read the caption strictly the figure belongs on line 19. Move it if you disagree.`,
-          target: `${SHEET.schM}!${ref}`, source: fact.source,
+          id: fact.booked ? `schm-compensation-inferred-${col}` : `schm-compensation-${col}`,
+          level: "info", category: "related-party", applied: true,
+          message: fact.booked
+            ? `Schedule M line 6, column ${colName}: US$${usd.toLocaleString()} — INFERRED. The P&L caption "${hit.label}" (${fact.amount.toLocaleString()} ${ent.profile.currency || ""}) is booked as compensation on Schedule C line 11, and ${fact.who ? `${fact.who} owns` : "the filer owns"} ${pct}% of the corporation with no other shareholder on file, so the filer is the only person it can have been paid to. No questionnaire or salary schedule confirmed that, and nothing was matched to a named person — check it before filing, and clear the cell if the wage went to someone else.`
+            : `Schedule M line 6, column ${colName}: US$${usd.toLocaleString()} — ${fact.source} equals the P&L caption "${hit.label}" (${fact.amount.toLocaleString()} ${ent.profile.currency || ""}) to the cent, translated at the year-average rate ${avgRate}. Line 6 is captioned "compensation received"; the corporation PAID this amount, so if you read the caption strictly the figure belongs on line 19. Move it if you disagree.`,
+          target: `${SHEET.schM}!${ref}`, source: fact.booked ? fact.booked.docName : fact.source,
         });
       }
     }
@@ -4568,6 +4615,18 @@ export function validateEntity(ent: Entity): ReviewItem[] {
   if (!ent.profile.cyEnd) {
     out.push({ id: "profile-cyend", level: "warn", category: "profile", message: "Current year end is not set — the workbook header and rate year depend on it" });
   }
+  /* B17 carries a date number format, so formedCell writes an Excel serial and
+     Excel renders it as a date. When the day/month order cannot be resolved
+     the helper hands back the text unchanged, which then sits in a
+     date-formatted cell as a string — right value, wrong type, and easy to
+     miss. Say so rather than letting the preparer find it. */
+  if (ent.profile.formed && typeof formedCell(ent.profile.formed, ent.detected?.formed?.sourceLabel) === "string") {
+    out.push({
+      id: "profile-formed-ambiguous", level: "warn", category: "profile",
+      message: `Date of formation "${ent.profile.formed}" could not be read as a date — day and month are ambiguous, or the text is not a date at all. It is written to Basic Information B17 as text, in a cell formatted for a date. Retype it as YYYY-MM-DD to have it stored as a real date.`,
+      target: `${SHEET.basic}!B17`,
+    });
+  }
   if (ent.unmatched.length) {
     out.push({ id: "mapping-unmatched", level: "warn", category: "mapping", message: `${ent.unmatched.length} extracted label(s) are still unassigned` });
   }
@@ -4598,7 +4657,16 @@ const DERIVED_IDS = new Set([
   "cf-name-unconfirmed", "officer-flag-unconfirmed",
   "no-lines-mapped", "mapping-language",
   "profile-currency", "profile-cyend", "mapping-unmatched", "profile-category",
+  "profile-formed-ambiguous",
 ]);
+
+/** Blocking items that a preparer may NOT acknowledge past.
+ *
+ * Acknowledging writes nothing, so a gate whose whole purpose is to fill a
+ * required Form 5471 cell can be signed off into a blank field — which is how
+ * the SHORI 2024 work paper shipped with Basic Information C35 empty. For
+ * these ids the Exception Center offers the answer and nothing else. */
+export const MUST_ANSWER = new Set(["officer-flag-unconfirmed"]);
 
 const describePolicyRule = (p: PolicyRule) =>
   `${p.match.id ? `id=${p.match.id}` : p.match.category ? `category=${p.match.category}` : `message~"${p.match.message}"`} → ${p.action}`;
@@ -4623,7 +4691,13 @@ export function allReviewItems(ent: Entity, opts?: { raw?: boolean }): ReviewIte
       return en === r.sourceLabel ? r : { ...r, message: r.message.split(r.sourceLabel).join(en) };
     });
   if (opts?.raw || !state.policies.length) return merged;
-  return merged.map((r) => applyPolicy(r, state.policies)).filter((r): r is ReviewItem => r !== null);
+  /* A policy may downgrade or suppress almost anything, which is the point of
+     policies — but not a gate whose only job is to fill a required cell. That
+     is the route by which the SHORI 2024 C35 shipped blank: the question was
+     never answered and a policy waved the block through. */
+  return merged
+    .map((r) => (MUST_ANSWER.has(r.id) ? r : applyPolicy(r, state.policies)))
+    .filter((r): r is ReviewItem => r !== null);
 }
 
 export function blockingIssues(ent: Entity): ReviewItem[] {

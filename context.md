@@ -73,8 +73,11 @@ A second client reconciliation (SHORI CORPORATION 2024) on 2026-09-11 found
 three more defects and fixed them: QuickBooks group totals printed at the
 parent account's indent were booked as accounts, a sales return kept the sign
 its statement printed on a line the template subtracts, and — the one that
-mattered — six rule groups shipped unreachable. `test:all` is now 52 suites and
-1,325 assertions.
+mattered — six rule groups shipped unreachable. `test:all` is now 54 suites and
+1,344 assertions. A follow-up on 2026-09-12 closed the last three: Schedule M
+line 6 is inferred from a booked wage when one person owns the corporation,
+a gate that fills a required cell can no longer be acknowledged or
+policy-overridden past, and an unparseable date of formation is flagged.
 
 ## Rule catalogue upgrades
 
@@ -94,8 +97,6 @@ cutting a release.
   return's Item H boxes). See PROJECT-NOTES.md.
 - Schedule Q fills tested-income unit 1 only; a corporation with more than one
   tested unit needs the rest by hand.
-- Schedule M line 6 is pre-filled only from a questionnaire or a salary
-  schedule; with neither, a booked wage to a 100% shareholder is left off.
-- Acknowledging a blocking gate writes nothing, so the field ships blank
-  (Basic Information C35 on the SHORI run).
-- Basic Information B17 is written as an Excel date serial, not a date.
+- The template formats Basic Information B17 as `mm-dd-yy`, so a correct date
+  displays a two-digit year. The value is a real Excel date serial and the
+  style survives the patch; do not log this as a difference again.
