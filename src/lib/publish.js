@@ -10,7 +10,11 @@ import { bridge, bridgeHealth, isBridgeConfigured, getLinkedInSettings } from ".
    talks to that endpoint, and the URL lives in exactly one constant.
    ============================================================ */
 
-export const MAKE_LINKEDIN_WEBHOOK_URL = "https://hook.eu1.make.com/5sva21xc67b9vne5zovgbohnqgbll15k";
+/* Scenario "Unison LinkedIn Publisher" (7482325). It parses the payload below,
+   stamps a due time, and queues the post in a data store; a second scenario
+   drains that queue on a timer. The older hook that used to sit here fed a
+   scenario that is now retired. */
+export const MAKE_LINKEDIN_WEBHOOK_URL = "https://hook.eu1.make.com/mkm7o4tvytb4cgfs91se3qnjy5pvucge";
 
 /* Publishing settings kept on this device (Settings → LinkedIn). The webhook
    above is the team's default; it can be swapped without a code change. */
