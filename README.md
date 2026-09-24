@@ -184,16 +184,55 @@ webhook URL under Settings → LinkedIn. The payload:
   "submittedBy": { "name": "Priya Shah", "email": null },
   "media": [{ "kind": "image", "filename": "…", "mimeType": "image/png",
               "data": "<base64>", "altText": "…", "width": 1200, "height": 630 }],
-  "poll": { "question": "…", "options": ["…"], "duration": "1 week" }
+  "poll": { "question": "…", "options": ["…"], "duration": "1 week" },
+  "article": { "title": "…", "standfirst": "…",
+               "sections": [{ "heading": "…", "body": "…" }],
+               "conclusion": "…", "cta": "…" }   // article posts only
 }
 ```
 
-Unison marks a post **Published** only when the scenario's Webhook Response says
-so — `{"status":"published"}` or a real `urn:li:...`. A bare `200` means
-*delivered to Make*, nothing more, and the UI says exactly that. To let the
-browser read the reply, set an `Access-Control-Allow-Origin` header on the
-Webhook Response module; without it the post still arrives but Unison reports it
-as sent-unconfirmed rather than guessing.
+The blueprints for both scenarios live in [`make/`](make/), with a README
+covering how they are wired and why. They answer with what they actually did,
+and Unison reports each answer differently:
+
+| Reply | HTTP | Unison shows |
+|---|---|---|
+| `{"status":"published","urn":"urn:li:…"}` | 200 | **Published**, with LinkedIn's own post id |
+| `{"status":"queued","dueAt":…}` | 200 | **Queued in Make** — nothing on LinkedIn yet |
+| `{"status":"unsupported"}` | 200 | **Not published**, and why, with the post kept in Make |
+| `{"status":"failed","stage":…,"message":…}` | 502 | The failure, in LinkedIn's own words |
+| `{"status":"rejected"}` | 422 | Make has no route for this post |
+| anything else, e.g. `Accepted` | 200 | **Sent to Make** — LinkedIn has not confirmed |
+
+A bare `200` means *delivered to Make*, nothing more. Unison marks a post
+**Published** only on a real `urn:li:…` or an explicit `"status":"published"` —
+never because the webhook accepted the request.
+
+Each response carries `Access-Control-Allow-Origin: *`, which is what lets the
+browser read it. Without that header the post still arrives, but Unison reports
+it as sent-unconfirmed rather than guessing.
+
+**Test webhook** under Settings → Publishing asks Make whether the saved address
+is still live. A webhook whose scenario was deleted looks identical to a working
+one in a text box, and answers 4xx to every post — that button is how you tell
+them apart before writing a post rather than after.
+
+#### When a scheduled post actually goes out
+
+The scheduled publisher checks the queue on a timer, so a post goes out **at its
+time or within the hour after it, never before**. It is an hour rather than the
+15 minutes Make's free plan allows because every check spends one of the plan's
+1,000 monthly operations: hourly costs 720 a month and leaves room to publish,
+15-minute checks cost 2,880 and exhaust the plan in ten days.
+
+On a paid Make plan, set the scenario's interval to 900 seconds **and**
+`MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to `15 * 60 * 1000`.
+Change one without the other and Unison promises something Make does not do.
+
+Media on a scheduled post is capped at about 600 KB, because a queued post waits
+in Make's data store and the whole store is 1 MB for the team. Unison refuses a
+heavier scheduled post up front and says to publish it now instead — an
+immediate post streams straight through and is not subject to this.
 
 **Sign in with LinkedIn (optional, adds identity and Page selection).** Create an
 app at [linkedin.com/developers](https://www.linkedin.com/developers/), add this
@@ -233,11 +272,11 @@ Nothing in the app claims more than it can prove. This table is the whole truth.
 | Holidays | Nager.Date, free and keyless | Country inferred from the chosen timezone |
 | Images | Real, downloadable PNG/SVG from brand templates; optionally AI photos via Pollinations | No commercial image model is wired in |
 | Video | A real, playable WebM encoded in the browser from the storyboard | Not the output of a video model, and the UI says so |
-| Publishing | Real when a Make webhook is set, or straight to LinkedIn with `api/linkedin.js` deployed | With nothing connected it is a **dry run**, labelled everywhere |
+| Publishing | Real for text, article, image, video and poll posts | Multi-image, document and carousel posts are **stored, not published** — see the post-type table below. With nothing connected at all it is a **dry run**, labelled everywhere |
 | Source links | Marked **Retrieved** when the model's own search returned that URL | Marked **Unconfirmed link** when the model wrote it but the search did not return it, and **Not a real link** for a placeholder domain. With no search record, nothing is claimed either way |
 | Shared work | Real when `api/workspace.js` is deployed with a store behind it | Otherwise everything is local to one browser and Settings says so |
 | Performance | The numbers you enter from LinkedIn analytics, explained by the model | Not pulled automatically — the Make route has no read-back |
-| Scheduling | A real date, time and timezone, sent to Make | **A browser cannot run while closed.** A due post is flagged on Home and in Content; you press Publish, or hand it to Make to publish at that time |
+| Scheduling | Real: handed to Make, which publishes without Unison open | **A browser cannot run while closed.** Make checks hourly, so a post goes out at its time or within the hour after — never before. A due post is also flagged on Home and in Content so you can publish it yourself |
 | Team list | A local list, shared when a workspace is deployed | Not a login. Roles are documentation, not enforcement |
 
 Sample rows that ship with the app are tagged `sample` and can be removed from

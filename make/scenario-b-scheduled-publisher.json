@@ -733,31 +733,67 @@
               }
             },
             {
+              "id": 66,
+              "mapper": {
+                "author": "{{ifempty(19.data.companyUrn; \"urn:li:organization:146260120\")}}",
+                "commentary": "{{19.data.content}}",
+                "visibility": "PUBLIC",
+                "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": false,
+                "distribution": {
+                  "feedDistribution": "MAIN_FEED"
+                },
+                "content": {
+                  "poll": {
+                    "question": "{{19.data.poll.question}}",
+                    "options": "{{50.array}}",
+                    "settings": {
+                      "duration": "{{switch(19.data.poll.duration; \"1 day\"; \"ONE_DAY\"; \"3 days\"; \"THREE_DAYS\"; \"1 week\"; \"SEVEN_DAYS\"; \"2 weeks\"; \"FOURTEEN_DAYS\"; \"SEVEN_DAYS\")}}",
+                      "voteSelectionType": "SINGLE_VOTE"
+                    }
+                  }
+                }
+              },
+              "module": "json:CreateJSON",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "content": {
+                      "nested": {
+                        "poll": {
+                          "nested": {
+                            "options": {
+                              "mode": "edit"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "isReshareDisabledByAuthor": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "type": {
+                      "label": "Unison LinkedIn Poll Body"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1403,
+                  "y": 120
+                }
+              },
+              "parameters": {
+                "type": 597911
+              }
+            },
+            {
               "id": 18,
               "mapper": {
                 "url": "/rest/posts",
-                "body": {
-                  "author": "{{ifempty(19.data.companyUrn; \"urn:li:organization:146260120\")}}",
-                  "content": {
-                    "poll": {
-                      "options": "{{50.array}}",
-                      "question": "{{19.data.poll.question}}",
-                      "settings": {
-                        "duration": "{{switch(19.data.poll.duration; \"1 day\"; \"ONE_DAY\"; \"3 days\"; \"THREE_DAYS\"; \"1 week\"; \"SEVEN_DAYS\"; \"2 weeks\"; \"FOURTEEN_DAYS\"; \"SEVEN_DAYS\")}}",
-                        "voteSelectionType": "SINGLE_VOTE"
-                      }
-                    }
-                  },
-                  "commentary": "{{19.data.content}}",
-                  "visibility": "PUBLIC",
-                  "distribution": {
-                    "targetEntities": [],
-                    "feedDistribution": "MAIN_FEED",
-                    "thirdPartyDistributionChannels": []
-                  },
-                  "lifecycleState": "PUBLISHED",
-                  "isReshareDisabledByAuthor": false
-                },
+                "body": "{{66.json}}",
                 "method": "POST",
                 "headers": [
                   {
@@ -811,7 +847,7 @@
                 },
                 "advanced": true,
                 "designer": {
-                  "x": 1403,
+                  "x": 1683,
                   "y": 120
                 }
               },
@@ -839,7 +875,7 @@
                       }
                     },
                     "designer": {
-                      "x": 1683,
+                      "x": 1963,
                       "y": -20
                     }
                   },
@@ -854,7 +890,7 @@
                   "mapper": {},
                   "metadata": {
                     "designer": {
-                      "x": 1963,
+                      "x": 2243,
                       "y": -20
                     }
                   }
@@ -883,7 +919,7 @@
                   }
                 },
                 "designer": {
-                  "x": 1683,
+                  "x": 1963,
                   "y": 120
                 }
               },
