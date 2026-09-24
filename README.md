@@ -257,6 +257,27 @@ two ways:
 Without either, sign-in stops at "authorised" and you can still add your Page by
 hand (its numeric ID is in the Page admin URL).
 
+#### What LinkedIn's API will and will not publish
+
+Unison offers eight post types. LinkedIn's public API does not support eight,
+and the difference is stated here rather than discovered on the day of a
+campaign. Nothing is silently downgraded: a post LinkedIn cannot take is kept
+in Make with its text and its media, and Unison says so on screen.
+
+| Type | LinkedIn API | What happens |
+|---|---|---|
+| Text | `CreateTextShare` | Published |
+| Article | `CreateTextShare` | **The written post is published.** LinkedIn's API cannot create an Article — there is no endpoint for long-form. The article body is stored with the post so someone can paste it into LinkedIn's article editor |
+| Image | `CreateCompanyImagePost` | Published, one image |
+| Video | `createOrganizationVideoPost` | Published |
+| Poll | `POST /rest/posts` with `content.poll` | Published |
+| Multi-image | exists, not built | **Stored, not published.** LinkedIn's `content.multiImage` needs each image registered through `/rest/images?action=initializeUpload` and uploaded before the post can reference it — one round trip per image. Make's LinkedIn app has no module for it, so it would be built by hand out of API-call and HTTP modules, and each image costs operations the free plan does not have |
+| Document | exists, needs a PDF | **Stored, not published.** `/rest/documents?action=initializeUpload` takes a PDF. Unison renders document pages as images, so a PDF has to be assembled first. The account has a PDF.co connection that could do it; it is not wired in |
+| Carousel | does not exist | **Stored, not published.** LinkedIn has no organic carousel API. Carousels exist only as ads, through the Ads API. The slides are kept as images to post or export |
+
+"Stored, not published" is a real state in the UI — the post shows **NOT
+PUBLISHED** with the reason, not a tick and not a spinner that never resolves.
+
 ---
 
 ## What is real and what is not
