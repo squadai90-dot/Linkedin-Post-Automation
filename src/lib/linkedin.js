@@ -63,11 +63,21 @@ export async function liFetch(path, opts = {}) {
   }
 }
 
+/* The modes a Unison API can legitimately report. Anything else did not come
+   from one. */
+const API_MODES = ["real", "simulation"];
+
 export const linkedinService = {
   /* Is the Unison API there, and is real OAuth configured behind it? */
   async status() {
     try {
       const r = await liFetch("/status", { timeout: 4000 });
+      /* Most static hosts answer an unknown path with the app's own
+         index.html and a 200. That is not the API replying — and believing it
+         leaves publishing stuck in dry run on a page where Make is perfectly
+         well configured. A reply that does not name a mode we serve is no
+         reply at all. */
+      if (!API_MODES.includes(r?.mode)) throw Object.assign(new Error("Not the Unison API."), { code: "not_unison_api" });
       return {
         reachable: true,
         mode: r.mode,

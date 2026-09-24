@@ -7,8 +7,8 @@ import { MAKE_CONFIG, makeLinkedInService, publishPost, publishRoute } from "./l
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
 import { SEED_POSTS, NAV, DEFAULT_VOICE, SEED_TEAM, DEFAULT_PROFILE } from "./lib/seed.js";
 import { now } from "./lib/util.js";
-import { tplPage, svgToPng } from "./lib/brand.js";
-import { createMediaEngine } from "./lib/media.js";
+import { svgToPng } from "./lib/brand.js";
+import { createMediaEngine, containerOf, extensionOf, VIDEO_PROFILES } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
 import { Header, MobileRail, Rail } from "./components/chrome.jsx";
 import { Toasts } from "./components/toast.jsx";
@@ -278,7 +278,7 @@ export default function UnisonContentOS() {
         /* Over quota. Drop the heaviest, most reproducible parts (rendered
            media on old posts) and try once more, so text is never lost. */
         try {
-          const slim = { ...full, posts: posts.map(({ image, images, pages, upload, ...rest }) => ({ ...rest, mediaDropped: !!(image || (images || []).length || pages || upload) })), drafts: drafts.map((d) => ({ ...d, assets: { ...(d.assets || {}), images: [], doc: null, carousel: [] } })) };
+          const slim = { ...full, posts: posts.map(({ image, images, pages, upload, ...rest }) => ({ ...rest, mediaDropped: !!(image || (images || []).length || pages || upload) })), drafts: drafts.map((d) => ({ ...d, assets: { ...(d.assets || {}), images: [] } })) };
           await persistentStore.set(STORE_KEY, JSON.stringify(slim));
           if (!storageWarnedRef.current) { storageWarnedRef.current = true; setStorageIssue("partial"); notify("Browser storage is nearly full — text was saved, but rendered media on older posts was dropped.", { tone: "warn", ms: 8000 }); }
         } catch (e2) {
@@ -562,8 +562,7 @@ export default function UnisonContentOS() {
     if (angles) reached = "angle";
     if (draft) reached = "draft";
     if (assets.poll && stages.includes("poll")) reached = "poll";
-    if (assets.article && stages.includes("article")) reached = "article";
-    if (assets.images.length || assets.video || assets.doc || assets.carousel.length) reached = stages.includes("media") ? "media" : "slides";
+    if (assets.images.length || assets.video) reached = "media";
     if (verification && stages.includes("evidence")) reached = "evidence";
     if (quality) reached = "health";
     if (["APPROVED", "SCHEDULED", "PUBLISHING", "FAILED", "PUBLISHED", "ANALYZING"].includes(stage)) reached = "schedule";
@@ -771,8 +770,6 @@ CTA style: ${voice.cta}. Paragraphs: ${voice.paragraphs}. Hashtags: ${voice.hash
 Never use: ${voice.avoid.join(", ")}. Prefer: ${voice.prefer.join(", ")}.
 Controls: tone=${tone}, point of view=${pov}, length=${length}
 ${formats.includes("poll") ? "This post carries a LinkedIn poll. Set up the question in the body and make the CTA invite readers to vote — do not list the options in the text." : ""}
-${formats.includes("article") ? "This post introduces a long-form article; the CTA should point readers to it." : ""}
-${formats.includes("carousel") ? "This post introduces a slide carousel; the CTA should tell readers to swipe through." : ""}
 ${formats.includes("video") ? "This post has a short video attached; refer to it once." : ""}
 ${feedback ? `Reviewer feedback to fix: ${feedback}` : ""}
 No corporate clichés, no motivational filler, no headings.
@@ -793,7 +790,7 @@ Claims must be quoted verbatim from the post text so they can be highlighted.
       if (!keepMedia) jobs.push(askJSON({
         capability: "reasoning",
         system: `You are the media engine. ${JSON_RULE}`,
-        user: `Suggest a format for this post. Answer with one id from: text, image, video, document, multi, poll, article, carousel.
+        user: `Suggest a format for this post. Answer with one id from: text, image, video, poll.
 Post: ${d.hook} ${d.body}
 {"format":"","reason":"one sentence","concept":"one sentence describing the visual"}`,
         fallback: fb.media, onNotice, track: track("Media"), signal,
@@ -862,8 +859,8 @@ Scores 0-100. "Evidence verified" passes only if every factual statement is one 
 
   /* "Let Unison pick the format": the idea text goes to the reasoning model,
      which chooses the components that suit it (every post is written text;
-     it may add one visual and/or a poll, article or carousel) and says why in
-     one sentence. If the model is unreachable the answer is plain text. */
+     it may add one visual and/or a poll) and says why in one sentence. If the
+     model is unreachable the answer is plain text. */
   /* Reads the finished post and says what it thinks would suit it. It never
      applies the answer: someone who has already made and edited an image
      should not lose it to a suggestion they only wanted to see. */
@@ -876,9 +873,9 @@ Scores 0-100. "Evidence verified" passes only if every factual statement is one 
 """
 ${String(text || "").slice(0, 2000)}
 """
-Every post is written text. Choose up to two extra components that genuinely help THIS post, from: image, multi, video, document, poll, article, carousel.
-At most one of image, multi, video, document. Prefer nothing extra over a weak fit.
-Rules of thumb: a debatable question or a choice → poll; a number or a single claim → image; a step-by-step or a list → document or carousel; a deep explanation → article; a demo or a story → video.
+Every post is written text. Choose up to two extra components that genuinely help THIS post, from: image, video, poll.
+At most one of image, video. Prefer nothing extra over a weak fit.
+Rules of thumb: a debatable question or a choice → poll; a number or a single claim → image; a demo or a story → video.
 {"formats":["poll"],"why":"one short sentence"}`,
       fallback: () => ({ formats: [], why: "A written post is the safest default." }),
       onNotice, track: track("Intelligence"),
@@ -926,25 +923,6 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
     patchAssets({ images: [a], upload: null });
   });
 
-  const makeImageSet = (count = 3) => run("multi", async (live) => {
-    const set = await engine.imageSet(ctxOf(), { count });
-    if (!live()) return;
-    patchAssets({ images: set, upload: null });
-  });
-
-  const retile = (i) => run("tile-" + i, async (live) => {
-    const tile = assets.images[i];
-    const next = await engine.retile(tile, ctxOf());
-    if (!live()) return;
-    setAssets((a) => ({ ...a, images: a.images.map((x) => (x.id === tile.id ? next : x)) }));
-  });
-
-  const addTile = () => run("multi", async (live) => {
-    const [t] = await engine.imageSet(ctxOf(), { count: 1 });
-    if (!live()) return;
-    setAssets((a) => ({ ...a, images: [...a.images, t].slice(0, 4) }));
-  });
-
   const makeVideo = () => run("video", async (live) => {
     const previous = assets.video?.url;
     const a = await engine.video(ctxOf());
@@ -962,50 +940,8 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
     if (cur.url) URL.revokeObjectURL(cur.url);
     const file = await engine.encodeVideo(cur, { onProgress: (p) => live() && mset("encode", { status: "generating", progress: p }) });
     if (!live()) { URL.revokeObjectURL(file.url); return; }   // superseded: don't pin the blob
-    setAssets((a) => ({ ...a, video: { ...a.video, blob: file.blob, url: file.url, mime: file.mime, bytes: file.blob.size } }));
-    logAudit("Video encoded to WebM");
-  });
-
-  const makeDocument = (pages = 5) => run("doc", async (live) => {
-    const d = await engine.document(ctxOf(), { pages });
-    if (!live()) return;
-    patchAssets({ doc: d });
-  });
-
-  const makeCarousel = (slides = 6) => run("carousel", async (live) => {
-    const c = await engine.carousel(ctxOf(), { slides });
-    if (!live()) return;
-    patchAssets({ carousel: c });
-  });
-
-  const reslide = (i) => run("slide-" + i, async (live) => {
-    const slide = assets.carousel[i];
-    const next = await engine.reslide(slide, i, assets.carousel.length, ctxOf());
-    if (!live()) return;
-    setAssets((a) => ({ ...a, carousel: engine.renumber(a.carousel.map((x) => (x.id === slide.id ? { ...next, id: slide.id } : x))) }));
-  });
-
-  const moveItem = (listKey, from, to) => setAssets((a) => {
-    const list = [...a[listKey]];
-    if (to < 0 || to >= list.length) return a;
-    const [x] = list.splice(from, 1);
-    list.splice(to, 0, x);
-    return { ...a, [listKey]: listKey === "carousel" ? engine.renumber(list) : list };
-  });
-
-  const dropItem = (listKey, i) => setAssets((a) => {
-    const list = a[listKey].filter((_, j) => j !== i);
-    return { ...a, [listKey]: listKey === "carousel" ? engine.renumber(list) : list };
-  });
-
-  const editSlide = (i, patch) => setAssets((a) => {
-    const list = a.carousel.map((s, j) => (j === i ? { ...s, ...patch } : s));
-    return { ...a, carousel: engine.renumber(list) };
-  });
-
-  const editDocPage = (i, patch) => setAssets((a) => {
-    const pages = a.doc.pages.map((s, j) => (j === i ? { ...s, ...patch } : s));
-    return { ...a, doc: { ...a.doc, pages: pages.map((pg, k) => ({ ...pg, svg: tplPage(k + 1, pages.length, pg.heading, pg.body) })) } };
+    setAssets((a) => ({ ...a, video: { ...a.video, blob: file.blob, url: file.url, mime: file.mime, profile: file.profile, bytes: file.blob.size } }));
+    logAudit(`Video encoded — ${containerOf(file.mime)}`);
   });
 
   const makePoll = () => run("poll", async (live) => {
@@ -1032,30 +968,6 @@ The question must be under 140 characters and read naturally. Give 3 or 4 option
     });
   });
 
-  const makeArticle = () => run("article", async (live) => {
-    const r = await askJSON({
-      capability: "writing",
-      system: `You write long-form LinkedIn articles. ${JSON_RULE}`,
-      user: `Write an article on: ${idea}
-Angle: ${angle?.headline || "your choice"}
-Voice (0-100): professional ${voice.professional}, conversational ${voice.conversational}, technical ${voice.technical}, opinionated ${voice.opinionated}.
-Never use: ${voice.avoid.join(", ")}.
-Four sections, each body 50-70 words. No headings inside the body text.
-{"title":"under 12 words","standfirst":"one sentence","sections":[{"heading":"under 6 words","body":""}],"conclusion":"2 sentences","cta":"one line"}`,
-      fallback: () => ({
-        title: idea, standfirst: "Why this matters now.",
-        sections: [{ heading: "The problem", body: "" }, { heading: "What changed", body: "" }, { heading: "How to think about it", body: "" }, { heading: "What to do", body: "" }],
-        conclusion: "", cta: "",
-      }),
-      onNotice, track: track("Writing"),
-    });
-    const sections = (Array.isArray(r.sections) ? r.sections : []).filter((x) => x && x.heading);
-    if (!live()) return;
-    patchAssets({ article: { ...r, title: r.title || idea, sections: sections.length ? sections : [{ heading: "The problem", body: "" }, { heading: "What changed", body: "" }] } });
-  });
-
-  const editArticle = (patch) => setAssets((a) => ({ ...a, article: { ...a.article, ...patch } }));
-
   /* Once the copy is ready, the asset the chosen format needs is produced
      automatically — picking "Image" should give you an image, not a button.
      Fires once per idea+format so a text rewrite never regenerates media, and
@@ -1068,18 +980,14 @@ Four sections, each body 50-70 words. No headings inside the body text.
     autoRef.current = key;
     const starters = {
       image: [() => makeImage(0), () => assets.images.length || assets.upload],
-      multi: [() => makeImageSet(3), () => assets.images.length || assets.upload],
       video: [makeVideo, () => assets.video || assets.upload],
-      document: [() => makeDocument(5), () => assets.doc],
-      carousel: [() => makeCarousel(6), () => assets.carousel.length],
       poll: [makePoll, () => assets.poll],
-      article: [makeArticle, () => assets.article],
     };
     let todo = fmt.list.filter((f) => starters[f] && !starters[f][1]());
     /* A file the user uploaded was too large to keep across a reload. Do not
        quietly generate a different picture in its place — say what happened. */
-    if (assets.uploadDropped && todo.some((f) => ["image", "multi", "video"].includes(f))) {
-      todo = todo.filter((f) => !["image", "multi", "video"].includes(f));
+    if (assets.uploadDropped && todo.some((f) => ["image", "video"].includes(f))) {
+      todo = todo.filter((f) => !["image", "video"].includes(f));
       notify(`"${assets.uploadDropped.name}" was too large to keep when the page reloaded. Upload it again in the Media step.`, { tone: "warn", ms: 9000 });
       patchAssets({ uploadDropped: null });
     }
@@ -1185,7 +1093,6 @@ Give up to 4 of each. Only include what the document actually says.`,
     content: draft ? { hook: draft.hook, body: draft.body, cta: draft.cta, hashtags: draft.hashtags || [] } : null,
     poll: assets.poll, image: assets.images[0]?.svg || null, images: assets.images.map((x) => x.svg),
     upload: assets.upload && !assets.upload.type.startsWith("video") ? assets.upload.data : null,
-    pages: assets.doc?.pages?.map((x) => x.svg) || (assets.carousel.length ? assets.carousel.map((x) => x.svg) : null),
     snapshot: snapshotWork(),           // enough to reopen the post in the workspace
     submittedBy: profile.userName || null,
     time: schedule.time, tz: schedule.tz, ...extra,
@@ -1238,17 +1145,15 @@ Give up to 4 of each. Only include what the document actually says.`,
     ? `${draft.hook}\n\n${draft.body}\n\n${draft.cta}${(draft.hashtags || []).length ? "\n\n" + draft.hashtags.join(" ") : ""}`.trim()
     : idea;
 
-  /* What this post is, for LinkedIn's purposes. A poll, article or carousel
-     defines the post type; otherwise the attachment does; otherwise text. */
+  /* What this post is, for LinkedIn's purposes. A poll defines the post type;
+     otherwise the attachment does; otherwise text. Every value this returns is
+     a type the publisher can actually put on the Page — there is no branch
+     here that leads to a post LinkedIn will refuse. */
   const postTypeOf = () => {
     if (assets.poll || formats.includes("poll")) return "poll";
-    if (assets.article || formats.includes("article")) return "article";
-    if (assets.carousel.length || formats.includes("carousel")) return "carousel";
     if (assets.upload) return assets.upload.type.startsWith("video") ? "video" : "image";
     if (assets.video) return "video";
-    if (assets.doc) return "document";
-    if (assets.images.length > 1) return "multi";
-    if (assets.images.length === 1) return "image";
+    if (assets.images.length) return "image";
     return "text";
   };
 
@@ -1258,7 +1163,7 @@ Give up to 4 of each. Only include what the document actually says.`,
   /* Rasterises the media engine's assets into something a webhook can carry.
      Returns the media list plus any limitation that means the post should
      not be described as carrying that media. */
-  async function collectMedia(postType) {
+  async function collectMedia(postType, { scheduled = false } = {}) {
     const media = []; const limits = [];
     const png = async (svg, filename, altText, extra = {}) => {
       const vb = /viewBox="0 0 (\d+) (\d+)"/.exec(svg || "");
@@ -1286,19 +1191,39 @@ Give up to 4 of each. Only include what the document actually says.`,
       const img = assets.images[0];
       if (img.kind === "url") await photo(img, "unison-image.jpg", img.brief?.subject); else await png(img.svg, "unison-image.png", img.brief?.subject);
     }
-    if (postType === "multi") for (let i = 0; i < assets.images.length; i++) await png(assets.images[i].svg, `unison-image-${i + 1}.png`, assets.images[i].brief?.subject, { index: i });
     if (postType === "video") {
-      const v = assets.video;
-      if (!v?.blob) limits.push("The video hasn't been encoded yet — use Export in the Media step first. Only the storyboard exists so far.");
+      /* A generated video is a storyboard until something encodes it, and the
+         blob does not survive a reload either. Publishing used to refuse in
+         both cases and tell the user to go and press Export, which is a
+         chore the tool can simply do itself. Encoding is real-time capture,
+         so this is slow — but it is the difference between a video post and
+         no post, and the progress is on screen while it runs.
+
+         A scheduled post is encoded small from the start: it has to wait in
+         Make's data store, and a 720p file does not fit there. Doing it here
+         rather than re-encoding afterwards means the capture runs once. */
+      const profile = scheduled ? "compact" : "full";
+      let v = assets.video;
+      const needsEncode = v?.storyboard?.length && (!v.blob || (v.profile || "full") !== profile);
+      if (needsEncode) {
+        const file = await engine.encodeVideo(v, { profile, onProgress: (p) => mset("encode", { status: "generating", progress: p }) });
+        mset("encode", { status: "idle" });
+        if (v.url) URL.revokeObjectURL(v.url);
+        v = { ...v, blob: file.blob, url: file.url, mime: file.mime, profile: file.profile, bytes: file.blob.size };
+        setAssets((a) => (a.video ? { ...a, video: { ...a.video, blob: file.blob, url: file.url, mime: file.mime, profile: file.profile, bytes: file.blob.size } } : a));
+        logAudit(`Video encoded for publishing — ${containerOf(file.mime)}, ${profile}`);
+      }
+      if (scheduled && v?.blob && v.profile === "compact") {
+        limits.push(`Encoded at ${VIDEO_PROFILES.compact.height}p so it fits the scheduled queue — Make's data store holds 1 MB for the whole team. Publishing now instead sends the full-size version.`);
+      }
+      if (!v?.blob) limits.push("There is no video to send yet. Generate one in the Media step, or upload a file.");
       else if (v.blob.size > 6 * 1024 * 1024) limits.push(`The encoded video is ${(v.blob.size / 1048576).toFixed(1)} MB, more than can be sent from the browser in one request.`);
-      else media.push({ kind: "video", filename: "unison-video.webm", mimeType: v.mime || v.blob.type || "video/webm", data: await blobToBase64(v.blob), altText: v.brief?.subject || "", seconds: v.seconds || null, sizeBytes: v.blob.size });
+      else {
+        const mimeType = containerOf(v.mime || v.blob.type);
+        if (mimeType !== "video/mp4") limits.push(`This browser recorded the video as ${mimeType} rather than MP4. LinkedIn accepts it, but MP4 is the format it documents — Chrome produces MP4 directly.`);
+        media.push({ kind: "video", filename: `unison-video.${extensionOf(mimeType)}`, mimeType, data: await blobToBase64(v.blob), altText: v.brief?.subject || "", seconds: v.seconds || null, sizeBytes: v.blob.size });
+      }
       if (v?.poster) await png(v.poster, "unison-video-poster.png", v.brief?.subject, { role: "poster" });
-    }
-    if (postType === "document" && assets.doc?.pages?.length) {
-      for (let i = 0; i < assets.doc.pages.length; i++) await png(assets.doc.pages[i].svg, `unison-document-page-${i + 1}.png`, assets.doc.pages[i].heading, { kind: "document-page", index: i, of: assets.doc.pages.length });
-    }
-    if (postType === "carousel" && assets.carousel.length) {
-      for (let i = 0; i < assets.carousel.length; i++) await png(assets.carousel[i].svg, `unison-slide-${i + 1}.png`, assets.carousel[i].heading, { kind: "slide", index: i, of: assets.carousel.length });
     }
     return { media, limits };
   }
@@ -1306,7 +1231,7 @@ Give up to 4 of each. Only include what the document actually says.`,
   /* Everything the scenario needs, from live state — nothing placeholder. */
   async function buildPublishPayload(postId, { scheduled = false } = {}) {
     const postType = postTypeOf();
-    const { media, limits } = await collectMedia(postType);
+    const { media, limits } = await collectMedia(postType, { scheduled });
     const payload = {
       source: MAKE_CONFIG.source,
       postId,
@@ -1326,21 +1251,11 @@ Give up to 4 of each. Only include what the document actually says.`,
         ? { question: assets.poll.question, options: (assets.poll.options || []).filter(Boolean), duration: assets.poll.duration }
         : null,
     };
-    if (postType === "article" && assets.article) payload.article = assets.article;
     return { payload, limits };
   }
 
   const publishingRef = useRef(false);   // hard guard against a second click landing mid-request
   const lastPayloadRef = useRef(null);   // kept so a manual "send anyway" resends exactly the same body
-
-  /* Sent in full, with a note where LinkedIn itself constrains what the
-     scenario can do with it. These are notes, not blocks — nothing is
-     downgraded to another format. */
-  const TYPE_NOTES = {
-    document: "LinkedIn document posts need a PDF. The pages are sent as images; the Make scenario has to assemble them into a PDF before LinkedIn will accept a document post.",
-    carousel: "LinkedIn has no organic carousel API. The slides are sent as images for the scenario to post or export — LinkedIn will not render them as a swipeable carousel.",
-    article: "LinkedIn Articles can't be created through the API. The article is sent with the post so the scenario can store or route it, but LinkedIn will only publish the written post.",
-  };
 
   /* A dry run that looks like the real thing, used whenever no real
      publishing route is connected. Nothing leaves the browser. */
@@ -1423,7 +1338,6 @@ Give up to 4 of each. Only include what the document actually says.`,
       if (failMode) throw Object.assign(new Error("Simulated failure."), { kind: "simulated" });
       const { payload, limits } = await buildPublishPayload(postId, { scheduled });
       if (postType === "video" && !payload.media.some((m) => m.kind === "video")) throw Object.assign(new Error("No video file to send."), { kind: "no-video" });
-      if (TYPE_NOTES[postType]) limits.push(TYPE_NOTES[postType]);
       if (!live()) return;
       setPublishLimits(limits);
       lastPayloadRef.current = payload;
@@ -1699,8 +1613,7 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
   const appProps = {
     idea, stage, steps, research, angles, angle, draft, setDraft, verification, setVerification,
     quality, dupDismissed, setDupDismissed, media, format, formats, setFormats, fmt, versions, schedule, setSchedule, publishState, attempts, publishError, publishVia,
-    assets, patchAssets, mstate, makeImage, makeImageSet, retile, addTile, makeVideo, makeDocument,
-    makeCarousel, reslide, moveItem, dropItem, editSlide, editDocPage, makePoll, makeArticle, editArticle,
+    assets, patchAssets, mstate, makeImage, makeVideo, makePoll,
     ingestDocument, attachUpload, exportVideo,
     analytics, busy, tone, setTone, pov, setPov, length, setLength, showDetail, setShowDetail,
     openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter, approve, reject, confirmSchedule,

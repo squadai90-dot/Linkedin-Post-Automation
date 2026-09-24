@@ -1,27 +1,30 @@
 /* ---------- formats ----------
    Each format declares which pipeline stages it needs, so the workspace
-   only reveals what is relevant. The engines underneath are unchanged. */
+   only reveals what is relevant. The engines underneath are unchanged.
+
+   Only what LinkedIn can actually be given from here is listed. Article,
+   carousel, multi-image and document were all offered once; none of them
+   could be published end to end — LinkedIn has no organic carousel API at
+   all, and the binary upload that multi-image and document need cannot be
+   signed by the LinkedIn connection this tool publishes through. An option
+   that can be chosen and then fails at the last step is worse than no
+   option, so they are gone rather than disabled. */
 
 export const FORMATS = [
   { id: "text", label: "Text", hint: "A written post, nothing attached.", stages: ["research", "angle", "draft", "evidence", "health", "approval", "schedule"] },
   { id: "image", label: "Image", hint: "A post with one branded visual.", stages: ["research", "angle", "draft", "media", "evidence", "health", "approval", "schedule"] },
   { id: "video", label: "Video", hint: "A post with a short video.", stages: ["research", "angle", "draft", "media", "evidence", "health", "approval", "schedule"] },
-  { id: "document", label: "Document", hint: "A multi-page PDF-style document.", stages: ["research", "angle", "draft", "media", "evidence", "health", "approval", "schedule"] },
-  { id: "multi", label: "Multi-image", hint: "Two to four images as one set.", stages: ["research", "angle", "draft", "media", "evidence", "health", "approval", "schedule"] },
   { id: "poll", label: "Poll", hint: "A written post that carries a poll with up to four options.", stages: ["research", "angle", "draft", "poll", "health", "approval", "schedule"] },
-  { id: "article", label: "Article", hint: "Long-form, no post character limit.", stages: ["research", "angle", "draft", "article", "evidence", "health", "approval", "schedule"] },
-  { id: "carousel", label: "Carousel", hint: "Slide story. Export only — LinkedIn has no organic carousel API.", stages: ["research", "angle", "draft", "story", "slides", "health", "approval", "schedule"] },
 ];
 
 export const FORMAT_BY_ID = Object.fromEntries(FORMATS.map((f) => [f.id, f]));
 
 /* ---------- combining formats ----------
    A post is written content plus any number of components. "text" is always
-   present. LinkedIn accepts one attachment type per post, so the four visual
-   formats are mutually exclusive; a poll, an article or a carousel can sit
-   alongside any of them. */
-export const VISUAL_FORMATS = ["image", "multi", "video", "document"];
-export const STAGE_ORDER = ["research", "angle", "draft", "poll", "article", "story", "slides", "media", "evidence", "health", "approval", "schedule"];
+   present. LinkedIn accepts one attachment type per post, so the visual
+   formats are mutually exclusive; a poll can sit alongside one of them. */
+export const VISUAL_FORMATS = ["image", "video"];
+export const STAGE_ORDER = ["research", "angle", "draft", "poll", "media", "evidence", "health", "approval", "schedule"];
 
 export const normalizeFormats = (v) => {
   const list = Array.isArray(v) ? v : [v];
@@ -48,28 +51,30 @@ export const labelFor = (formats) => {
 /* The composite the rest of the app treats as "the format". */
 export const composeFormat = (formats) => ({ id: normalizeFormats(formats).join("+"), label: labelFor(formats), stages: stagesFor(formats), list: normalizeFormats(formats) });
 
-/* Older sessions and the recommendation engine used display labels rather than
-   ids. Anything unrecognised resolves to a real format instead of leaving the
-   workspace with no media stage at all. */
+/* Older sessions and the recommendation engine used display labels rather
+   than ids, and sessions saved before the format list was cut down may name
+   a format that no longer exists. Everything resolves to something that can
+   actually be published: a document or a carousel becomes plain text, a
+   multi-image set becomes the single image it always had. */
 export const LEGACY_FORMAT = {
   "text": "text", "image + text": "image", "image": "image", "video + text": "video", "video": "video",
-  "document + text": "document", "document": "document", "multi-image": "multi", "multi": "multi",
-  "poll": "poll", "article": "article", "carousel": "carousel",
+  "multi-image": "image", "multi": "image", "poll": "poll",
+  "document + text": "text", "document": "text", "article": "text", "carousel": "text",
 };
 export const normalizeFormat = (v) => FORMAT_BY_ID[v] ? v : (LEGACY_FORMAT[String(v || "").trim().toLowerCase()] || "text");
 
 export const STAGE_LABEL = {
-  research: "Research", angle: "Angle", draft: "Draft", article: "Article",
-  media: "Media", poll: "Poll", story: "Story", slides: "Slides",
+  research: "Research", angle: "Angle", draft: "Draft",
+  media: "Media", poll: "Poll",
   evidence: "Evidence", health: "Health", approval: "Approval", schedule: "Publish",
 };
 
-export const EMPTY_ASSETS = { images: [], video: null, doc: null, carousel: [], poll: null, article: null, upload: null, uploadDropped: null, sourceDoc: null, imageDesign: null };
-/* what is safe to persist: blobs and object URLs don't survive a reload */
+export const EMPTY_ASSETS = { images: [], video: null, poll: null, upload: null, uploadDropped: null, sourceDoc: null, imageDesign: null };
 /* What survives a reload. Object URLs and Blobs do not, so the video keeps
-   only its storyboard. An uploaded image is already downscaled, so it is kept
-   unless it is large; when it has to be dropped, `uploadDropped` records that
-   so the UI can say so instead of silently regenerating something else. */
+   only its storyboard — publishing re-encodes it from that. An uploaded
+   image is already downscaled, so it is kept unless it is large; when it has
+   to be dropped, `uploadDropped` records that so the UI can say so instead
+   of silently regenerating something else. */
 export const MAX_PERSISTED_UPLOAD = 700 * 1024;
 export const compactAssets = (a) => {
   const keepUpload = a.upload && !String(a.upload.type || "").startsWith("video") && String(a.upload.data || "").length <= MAX_PERSISTED_UPLOAD;

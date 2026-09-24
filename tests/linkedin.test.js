@@ -47,9 +47,9 @@ describe("choosing a bridge", () => {
 
 describe("posting straight to LinkedIn", () => {
   it("only claims the post types it can actually complete", () => {
-    // Image, video and document posts need an upload handshake first, so they
-    // stay with Make rather than half-working here.
-    expect(DIRECT_POST_TYPES).toEqual(["text", "article"]);
+    // Image and video posts need an upload handshake first, so they stay with
+    // Make rather than half-working here.
+    expect(DIRECT_POST_TYPES).toEqual(["text"]);
     expect(directLinkedInService.supports("text")).toBe(true);
     expect(directLinkedInService.supports("image")).toBe(false);
   });
@@ -81,14 +81,13 @@ describe("posting straight to LinkedIn", () => {
     expect(body.access_token).toBe("li_tok");
   });
 
-  it("attaches an article link when the post has one", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(bridgeUp()).mockResolvedValueOnce(res(200, { published: true, urn: "x" }));
-    vi.stubGlobal("fetch", fetchMock);
+  it("refuses a post type it cannot complete rather than sending a bare text post", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(bridgeUp()));
     connected();
-    await directLinkedInService.publish({ postId: "p", postType: "article", content: "Read this", companyUrn: "urn:li:organization:1", article: { url: "https://acme.com/post", title: "T" } });
-    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
-    expect(body.link).toBe("https://acme.com/post");
-    expect(body.linkTitle).toBe("T");
+    for (const t of ["image", "video", "poll", "document", "carousel", "article", "multi"]) {
+      expect(directLinkedInService.supports(t), t).toBe(false);
+      expect(await directLinkedInService.available({ postType: t, companyUrn: "urn:li:organization:1" }), t).toBe(false);
+    }
   });
 
   it("names an expired token as something to fix, not a generic failure", async () => {

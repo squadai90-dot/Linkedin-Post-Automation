@@ -53,7 +53,7 @@ export const MAKE_CONFIG = {
      scenario receives it alongside the post. */
   company: { name: null, urn: null },
   /* Every post type is handed to Make; the scenario routes on postType. */
-  supportedPostTypes: ["text", "image", "multi", "video", "document", "poll", "article", "carousel"],
+  supportedPostTypes: ["text", "image", "video", "poll"],
   /* How often "Unison Scheduled Publisher" looks for posts that have come
      due. Make's free plan allows 1,000 operations a month and every check
      spends one, so a check an hour is what fits with room left to publish.
@@ -314,16 +314,15 @@ export const makeLinkedInService = {
 };
 
 /* ---------- straight to LinkedIn (#6) ----------
- With the bridge deployed (api/linkedin.js) and a signed-in Page, a text or
- article post needs no Make scenario at all: the bridge holds the token and
- posts through LinkedIn's own API, and LinkedIn confirms the post id in the
- reply.
+ With the bridge deployed (api/linkedin.js) and a signed-in Page, a text post
+ needs no Make scenario at all: the bridge holds the token and posts through
+ LinkedIn's own API, and LinkedIn confirms the post id in the reply.
 
- Media is deliberately not handled here. An image, video or document post
- has to be registered and uploaded to LinkedIn before the post can reference
- it, which is several round trips and exactly the part a Make scenario
- already does well. Those keep going to Make. */
-export const DIRECT_POST_TYPES = ["text", "article"];
+ Media is deliberately not handled here. An image or video post has to be
+ registered and uploaded to LinkedIn before the post can reference it, which
+ is several round trips and exactly the part a Make scenario already does
+ well. Those keep going to Make. */
+export const DIRECT_POST_TYPES = ["text"];
 
 export const directLinkedInService = {
 supports: (postType) => DIRECT_POST_TYPES.includes(postType),
@@ -348,9 +347,6 @@ async publish(payload) {
       access_token: li.connection.accessToken,
       author,
       text: payload.content,
-      link: payload.article?.url || undefined,
-      linkTitle: payload.article?.title || undefined,
-      linkDescription: payload.article?.description || undefined,
     }, li, { timeoutMs: MAKE_CONFIG.timeoutMs });
   } catch (e) {
     /* An expired token is worth saying plainly — it is the one failure the

@@ -16,11 +16,13 @@
 
 const WEBHOOK_URL =
   process.env.MAKE_LINKEDIN_WEBHOOK_URL ||
-  "https://hook.eu1.make.com/5sva21xc67b9vne5zovgbohnqgbll15k";
+  "https://hook.eu1.make.com/mkm7o4tvytb4cgfs91se3qnjy5pvucge";
 
 const FORWARD_TIMEOUT_MS = Number(process.env.PUBLISH_TIMEOUT_MS || 55000);
 const RELAY_TOKEN = process.env.UNISON_RELAY_TOKEN || "";
-const POST_TYPES = ["text", "image", "multi", "video", "document", "poll", "article", "carousel"];
+/* The types the scenario has a route for. Anything else is rejected here
+   rather than forwarded to a router that would silently drop it. */
+const POST_TYPES = ["text", "image", "video", "poll"];
 
 /**
  * Idempotency.

@@ -42,7 +42,7 @@ const usedCaps = new Set(sites.flatMap(capsOf));
 
 describe("AI call sites", () => {
   it("finds them all, so an empty pass cannot look like success", () => {
-    expect(sites.length).toBeGreaterThan(15);
+    expect(sites.length).toBeGreaterThan(12);
   });
 
   it("every call declares the capability it is performing", () => {

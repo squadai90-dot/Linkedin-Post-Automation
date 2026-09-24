@@ -1,6 +1,6 @@
 import { askJSON, askText, JSON_RULE } from "./ai.js";
 
-import { tplPage, tplTile, tplPoster, drawScene, renderBrandImage, BRAND_TEXT } from "./brand.js";
+import { tplPoster, drawScene, renderBrandImage, BRAND_TEXT } from "./brand.js";
 import { pollinationsUrl } from "./freeApis.js";
 
 /* The model can return an object, a string or nothing where a list is
@@ -55,14 +55,44 @@ export const imageProvider = {
    real video file you can play, scrub and download — it is not the output of
    a video model, and the UI says so. */
 
+/* Preference order for the recorder. MP4 first: it is what LinkedIn's Videos
+   API documents, and what every player handles without re-encoding. */
+export const VIDEO_MIMES = [
+  "video/mp4;codecs=avc1.42E01E",
+  "video/mp4;codecs=h264",
+  "video/mp4",
+  "video/webm;codecs=vp9",
+  "video/webm;codecs=vp8",
+  "video/webm",
+];
+
+/* The container, stripped of codec parameters — "video/mp4;codecs=avc1" is a
+   recorder instruction, not a media type LinkedIn should be sent. */
+export const containerOf = (mime) => (String(mime || "").split(";")[0].trim() || "video/webm");
+export const extensionOf = (mime) => (containerOf(mime) === "video/mp4" ? "mp4" : "webm");
+
+/* Two encodes of the same storyboard.
+
+   "full" is what a post published straight away gets. "compact" exists for a
+   scheduled post, which has to sit in Make's data store until its time comes
+   — and that store holds one megabyte for the whole team, which a 720p encode
+   uses several times over. The storyboard is flat colour and type, so a much
+   lower bitrate costs very little that anyone can see, and it is the
+   difference between being able to schedule a video and not. */
+export const VIDEO_PROFILES = {
+  full: { width: 1280, height: 720, bitrate: 2_500_000 },
+  compact: { width: 854, height: 480, bitrate: 700_000 },
+};
+
 export const videoProvider = {
   id: "prototype-renderer",
   configured: false,
   label: "Local storyboard renderer (prototype)",
   supported: () => typeof window !== "undefined" && !!window.MediaRecorder && !!document.createElement("canvas").captureStream,
-  async generate({ storyboard, brief, onProgress }) {
+  async generate({ storyboard, brief, onProgress, profile = "full" }) {
     if (!this.supported()) throw new Error("recorder unavailable");
-    const W = 1280, H = 720, FPS = 30, PER = SCENE_SECONDS;
+    const { width: W, height: H, bitrate } = VIDEO_PROFILES[profile] || VIDEO_PROFILES.full;
+    const FPS = 30, PER = SCENE_SECONDS;
     const scenes = (storyboard || []).slice(0, 5);
     if (!scenes.length) throw new Error("no scenes");
 
@@ -70,8 +100,12 @@ export const videoProvider = {
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
     const stream = canvas.captureStream(FPS);
-    const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
-    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+    /* LinkedIn wants MP4. Recent Chrome can record H.264 in MP4 directly, so
+       ask for that first and only fall back to WebM where it cannot — the
+       caller is told which one it actually got rather than being promised
+       MP4 and handed something else. */
+    const mime = VIDEO_MIMES.find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
@@ -109,7 +143,8 @@ export const videoProvider = {
       kind: "video",
       blob,                                   // kept so downloads get real bytes
       url: URL.createObjectURL(blob),
-      mime,
+      mime: containerOf(mime),
+      profile,
       seconds: Math.round(scenes.length * PER),
       source: this.id,
       generated: false,
@@ -173,38 +208,6 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
       return { ...asset, brief: b, prompt, id: "img-" + Math.random().toString(36).slice(2, 8) };
     },
 
-    async imageSet(ctx, { count = 3, signal } = {}) {
-      const r = await askJSON({
-        capability: "reasoning",
-        system: `You plan branded image sets for LinkedIn. ${JSON_RULE}`,
-        user: `Turn this post into ${count} image tiles that read as one set.
-Post: ${ctx.hook} ${ctx.body || ""}
-{"tiles":[{"stat":"a number or short figure, under 6 characters","label":"under 8 words"}]}`,
-        fallback: () => ({ tiles: [{ stat: "01", label: "The problem" }, { stat: "02", label: "What changed" }, { stat: "03", label: "What to do" }] }),
-        track, onNotice, signal,
-      });
-      let tiles = arr(r.tiles).filter((t) => t && (t.label || t.stat)).slice(0, count);
-      if (!tiles.length) tiles = [{ stat: "01", label: "The problem" }, { stat: "02", label: "What changed" }, { stat: "03", label: "What to do" }].slice(0, count);
-      log?.(`Image set rendered — ${tiles.length} tiles`);
-      return tiles.map((t, i) => ({
-        kind: "svg", svg: tplTile(t.label, t.stat), source: imageProvider.id, generated: false,
-        meta: t, id: "tile-" + i + "-" + Math.random().toString(36).slice(2, 6),
-      }));
-    },
-
-    async retile(tile, ctx, { signal } = {}) {
-      const r = await askJSON({
-        capability: "reasoning",
-        system: `You rewrite one tile in a branded image set. ${JSON_RULE}`,
-        user: `Post: ${ctx.hook}
-Rewrite this single tile so it says something different but still fits the set. Current: ${JSON.stringify(tile.meta || {})}
-{"stat":"under 6 characters","label":"under 8 words"}`,
-        fallback: () => ({ stat: tile.meta?.stat || "02", label: "A different angle on the same point" }),
-        track, onNotice, signal,
-      });
-      return { ...tile, svg: tplTile(r.label, r.stat), meta: r, id: tile.id };
-    },
-
     /* Building the storyboard is instant. Encoding a file is not, so that only
        happens when the user actually asks to export one. */
     async video(ctx, { signal } = {}) {
@@ -230,94 +233,11 @@ Rewrite this single tile so it says something different but still fits the set. 
       };
     },
 
-    /* Encode the storyboard to a real WebM. Only called on export. */
-    async encodeVideo(asset, { onProgress } = {}) {
-      return videoProvider.generate({ storyboard: asset.storyboard, brief: asset.brief, onProgress });
+    /* Encode the storyboard to a real file. `profile` picks the size — see
+       VIDEO_PROFILES for why a scheduled post needs the smaller one. */
+    async encodeVideo(asset, { onProgress, profile = "full" } = {}) {
+      return videoProvider.generate({ storyboard: asset.storyboard, brief: asset.brief, onProgress, profile });
     },
 
-    async document(ctx, { pages = 5, signal } = {}) {
-      const r = await askJSON({
-        capability: "reasoning",
-        system: `You structure branded LinkedIn documents. ${JSON_RULE}`,
-        user: `Break this into a ${pages}-page document. Page 1 is the cover, the last page is the takeaway.
-Topic: ${ctx.hook}
-${ctx.body || ""}
-{"title":"under 8 words","pages":[{"heading":"under 6 words","body":"under 20 words"}]}`,
-        fallback: () => ({
-          title: ctx.hook?.slice(0, 50) || "Document",
-          pages: [
-            { heading: ctx.hook?.slice(0, 40) || "Overview", body: "" },
-            { heading: "The problem", body: "What slows teams down today." },
-            { heading: "What changed", body: "The shift worth paying attention to." },
-            { heading: "What to do", body: "One concrete step you can take." },
-            { heading: "The takeaway", body: "What this means for your team." },
-          ],
-        }),
-        track, onNotice, signal,
-      });
-      let pgs = arr(r.pages).filter((x) => x && x.heading).slice(0, 8);
-      if (!pgs.length) pgs = [
-        { heading: String(ctx.hook || "Overview").slice(0, 40), body: "" },
-        { heading: "The problem", body: "What slows teams down today." },
-        { heading: "What changed", body: "The shift worth paying attention to." },
-        { heading: "What to do", body: "One concrete step you can take." },
-        { heading: "The takeaway", body: "What this means for your team." },
-      ];
-      log?.(`Document rendered — ${pgs.length} pages`);
-      return { title: r.title || ctx.hook, pages: pgs.map((pg, i) => ({ ...pg, svg: tplPage(i + 1, pgs.length, pg.heading, pg.body), id: "pg-" + i + "-" + Math.random().toString(36).slice(2, 6) })) };
-    },
-
-    async carousel(ctx, { slides = 6, signal } = {}) {
-      const r = await askJSON({
-        capability: "reasoning",
-        system: `You structure visual carousels. ${JSON_RULE}`,
-        user: `Turn this into a ${slides}-slide carousel story.
-Topic: ${ctx.hook}
-${ctx.body || ""}
-Use this arc: hook, problem, insight, framework, example, conclusion.
-{"slides":[{"role":"Hook|Problem|Insight|Framework|Example|Conclusion","heading":"under 6 words","body":"under 18 words"}]}`,
-        fallback: () => ({
-          slides: [
-            { role: "Hook", heading: ctx.hook?.slice(0, 40) || "Start here", body: "" },
-            { role: "Problem", heading: "Where it breaks", body: "The step everyone skips." },
-            { role: "Insight", heading: "What actually matters", body: "The part that changes the outcome." },
-            { role: "Framework", heading: "How to think about it", body: "Three moves, in order." },
-            { role: "Example", heading: "In practice", body: "What this looked like for one team." },
-            { role: "Conclusion", heading: "The takeaway", body: "What to do on Monday." },
-          ],
-        }),
-        track, onNotice, signal,
-      });
-      let sl = arr(r.slides).filter((x) => x && x.heading).slice(0, 10);
-      if (!sl.length) sl = [
-        { role: "Hook", heading: String(ctx.hook || "Start here").slice(0, 40), body: "" },
-        { role: "Problem", heading: "Where it breaks", body: "The step everyone skips." },
-        { role: "Insight", heading: "What actually matters", body: "The part that changes the outcome." },
-        { role: "Framework", heading: "How to think about it", body: "Three moves, in order." },
-        { role: "Example", heading: "In practice", body: "What one team did." },
-        { role: "Conclusion", heading: "The takeaway", body: "What to do on Monday." },
-      ];
-      log?.(`Carousel rendered — ${sl.length} slides`);
-      return sl.map((s, i) => ({ ...s, svg: tplPage(i + 1, sl.length, s.heading, s.body), id: "sl-" + i + "-" + Math.random().toString(36).slice(2, 6) }));
-    },
-
-    async reslide(slide, index, total, ctx, { signal } = {}) {
-      const r = await askJSON({
-        capability: "reasoning",
-        system: `You rewrite one carousel slide. ${JSON_RULE}`,
-        user: `Post topic: ${ctx.hook}
-Rewrite only this slide (${slide.role}), keeping its job in the story but changing the wording.
-Current: ${JSON.stringify({ heading: slide.heading, body: slide.body })}
-{"heading":"under 6 words","body":"under 18 words"}`,
-        fallback: () => ({ heading: slide.heading, body: slide.body }),
-        track, onNotice, signal,
-      });
-      return { ...slide, ...r, svg: tplPage(index + 1, total, r.heading, r.body) };
-    },
-
-    /* renumber after a reorder / delete so page badges stay correct */
-    renumber(items) {
-      return items.map((it, i) => ({ ...it, svg: tplPage(i + 1, items.length, it.heading, it.body) }));
-    },
   };
 }

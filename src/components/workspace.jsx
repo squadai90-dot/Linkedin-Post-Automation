@@ -6,7 +6,7 @@ import { scheduledWindow } from "../lib/publish.js";
 import { pad, tierLabel, host, LI_LIMIT, LI_FOLD } from "../lib/util.js";
 import { locateClaim, segments } from "../lib/text.jsx";
 import { useNarrow } from "../hooks.js";
-import { AssetPreview, MediaSection } from "./media.jsx";
+import { AssetPreview, MediaSection, SourceDocPanel } from "./media.jsx";
 import { TIMEZONES, localTimezone, countryForTimezone, isDue, todayISO } from "../lib/dates.js";
 import { grammarCheck, applyReplacement, holidayOn } from "../lib/freeApis.js";
 
@@ -99,9 +99,8 @@ export function Workspace(p) {
     publishState, attempts, publishError, publishVia, publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload, confirmPublished, workId, posts, relay, analytics, busy, tone, setTone, pov, setPov, length, setLength,
     showDetail, setShowDetail, openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter,
     approve, reject, confirmSchedule, publishNow, runDiscovery, setDrawer, setModal, reset, cancelWork,
-    setFailMode, undoStack, undo, pushUndo, assets, patchAssets, mstate, makeImage, makeImageSet,
-    retile, addTile, makeVideo, makeDocument, makeCarousel, reslide, moveItem, dropItem, editSlide,
-    editDocPage, makePoll, makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady, setFormats,
+    setFailMode, undoStack, undo, pushUndo, assets, patchAssets, mstate, makeImage,
+    makeVideo, makePoll, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady, setFormats,
     recommendFormat, recommending, recommended,
   } = p;
 
@@ -121,7 +120,7 @@ export function Workspace(p) {
   const publishedLength = full.length + (tags ? tags.length + 2 : 0);
   const activeClaim = openClaim != null ? verification?.claims?.[openClaim] : null;
   const hl = useMemo(() => (activeClaim ? locateClaim(full, activeClaim.claim) : null), [activeClaim, full]);
-  const over = shows("draft") && publishedLength > LI_LIMIT;   // never applied to articles or documents
+  const over = shows("draft") && publishedLength > LI_LIMIT;
 
   /* Decided once in App so the button label and the send path agree. */
   const realRoute = !!publishReady;
@@ -136,22 +135,19 @@ export function Workspace(p) {
   }, [schedule.date, schedule.tz, extras.holidays]);
 
   const assetSummary = [
-    assets.images.length > 1 ? `${assets.images.length} images` : assets.images.length === 1 ? "1 image" : null,
+    assets.images.length ? "1 image" : null,
     assets.video ? (assets.video.url ? "video" : "storyboard") : null,
-    assets.doc ? `${assets.doc.pages.length}-page document` : null,
-    assets.carousel.length ? `${assets.carousel.length} slides` : null,
-    assets.poll ? "poll" : null, assets.article ? "article" : null, assets.upload ? "uploaded file" : null,
+    assets.poll ? "poll" : null, assets.upload ? "uploaded file" : null,
   ].filter(Boolean).join(", ");
   const missing = fmt.list.filter((f) => ({
-    image: !assets.images.length && !assets.upload, multi: assets.images.length < 2 && !assets.upload, video: !assets.video && !assets.upload,
-    document: !assets.doc, carousel: !assets.carousel.length, poll: !assets.poll, article: !assets.article,
+    image: !assets.images.length && !assets.upload,
+    video: !assets.video && !assets.upload,
+    poll: !assets.poll,
   })[f]);
-  const videoNotExported = fmt.list.includes("video") && assets.video && !assets.video.url && !assets.upload;
 
   const mediaProps = {
-    format, formats, assets, patchAssets, mstate, makeImage, makeImageSet, retile, addTile, makeVideo,
-    makeDocument, makeCarousel, reslide, moveItem, dropItem, editSlide, editDocPage, makePoll,
-    makeArticle, editArticle, ingestDocument, attachUpload, exportVideo, locked, extras,
+    format, formats, assets, patchAssets, mstate, makeImage, makeVideo, makePoll,
+    ingestDocument, attachUpload, exportVideo, locked, extras,
     draft, profile, notify,
   };
 
@@ -280,6 +276,7 @@ export function Workspace(p) {
               <button className="btn sm" style={{ marginTop: 10 }} onClick={() => runDiscovery(idea, formats, workId)}>Run research again</button>
             )}
           </div>
+          <SourceDocPanel assets={assets} mstate={mstate} ingestDocument={ingestDocument} />
           {research && (
             <>
               <div className="card">
@@ -375,18 +372,6 @@ export function Workspace(p) {
         </Section>
       )}
 
-      {shows("article") && draft && (
-        <Section n={n("article")} title="Article" engine="Writer">
-          <MediaSection {...mediaProps} format="article" />
-        </Section>
-      )}
-
-      {shows("slides") && draft && (
-        <Section n={n("slides")} title="Slides" engine="Media engine">
-          <MediaSection {...mediaProps} format="carousel" />
-        </Section>
-      )}
-
       {shows("media") && draft && format !== "text" && (
         <Section n={n("media")} title="Media" engine="Media engine">
           <MediaSection {...mediaProps} format={format} />
@@ -432,7 +417,7 @@ export function Workspace(p) {
         </Section>
       )}
 
-      {(quality || assets.article || assets.poll || assets.carousel.length > 0) && !["APPROVED", "SCHEDULED", "PUBLISHING", "PUBLISHED", "ANALYZING", "FAILED"].includes(stage) && (
+      {(quality || assets.poll) && !["APPROVED", "SCHEDULED", "PUBLISHING", "PUBLISHED", "ANALYZING", "FAILED"].includes(stage) && (
         <Section n={n("approval")} title="Approval" engine="Human in the loop">
           <div className="card">
             <div className="eyebrow">Content status</div>
@@ -447,9 +432,7 @@ export function Workspace(p) {
             <div className="chk"><span style={{ color: (research?.sources || []).some((s) => s.tier <= 2 && s.url) ? "var(--ok)" : "var(--warn)" }}>{(research?.sources || []).some((s) => s.tier <= 2 && s.url) ? "✓" : "!"}</span> {(research?.sources || []).filter((s) => s.tier <= 2 && s.url).length} strong sources with links{research?.degraded ? " — research was not retrieved live" : ""}</div>
             <div className="chk"><span style={{ color: "var(--ok)" }}>✓</span> Brand voice applied</div>
             <div className="chk"><span style={{ color: missing.length ? "var(--bad)" : "var(--ok)" }}>{missing.length ? "✕" : "✓"}</span> {fmt.label}{assetSummary ? ` · ${assetSummary}` : ""}{missing.length ? ` — still missing: ${missing.map((f) => FORMAT_BY_ID[f].label.toLowerCase()).join(", ")}` : " ready"}</div>
-            {videoNotExported && <div className="badge warn" style={{ marginTop: 12 }}>The video is only a storyboard so far — press Export in the Media step before publishing.</div>}
-            {formats.includes("carousel") && <div className="badge warn" style={{ marginTop: 12 }}>Carousel exports as slides — LinkedIn has no organic carousel API.</div>}
-            {formats.includes("poll") && (assets.images.length || assets.video || assets.doc || assets.upload) ? <div className="badge warn" style={{ marginTop: 12 }}>LinkedIn shows a poll instead of an attached visual on the same post. Unison keeps both; check how it lands on the Page.</div> : null}
+            {formats.includes("poll") && (assets.images.length || assets.video || assets.upload) ? <div className="badge warn" style={{ marginTop: 12 }}>LinkedIn shows a poll instead of an attached visual on the same post. Unison keeps both; check how it lands on the Page.</div> : null}
             {!linkedin.connected && (
               <div className="row" style={{ marginTop: 14 }}>
                 <span className="badge warn">No Company Page connected</span>
@@ -689,16 +672,12 @@ export function Control({ label, value, setValue, options }) {
    stays changeable: read the post, decide it wants a poll, add one; change
    your mind, remove it. Nothing regenerates the text. */
 
-const ADDABLE = ["image", "multi", "video", "document", "poll", "article", "carousel"];
+const ADDABLE = ["image", "video", "poll"];
 
 const HAS_ASSET = {
   image: (a) => a.images.length > 0 || !!a.upload,
-  multi: (a) => a.images.length > 1 || !!a.upload,
   video: (a) => !!a.video || !!a.upload,
-  document: (a) => !!a.doc,
   poll: (a) => !!a.poll,
-  article: (a) => !!a.article,
-  carousel: (a) => a.carousel.length > 0,
 };
 
 export function AddComponents({ formats, setFormats, assets, busy, recommend, recommending, recommended }) {
@@ -713,7 +692,7 @@ export function AddComponents({ formats, setFormats, assets, busy, recommend, re
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
         <span className="eyebrow">{chosen.length ? `Text + ${chosen.map((f) => FORMAT_BY_ID[f].label).join(" + ")}` : "Text only"}</span>
-        <span className="u-muted" style={{ fontSize: 12.5 }}>LinkedIn allows one visual per post. A poll, an article or a carousel can sit alongside it.</span>
+        <span className="u-muted" style={{ fontSize: 12.5 }}>LinkedIn allows one visual per post. A poll can sit alongside it.</span>
       </div>
       <p className="u-muted" style={{ fontSize: 13.5, margin: "0 0 14px" }}>
         Nothing here is required — plain text is a perfectly good LinkedIn post. Add something and it is

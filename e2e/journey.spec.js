@@ -5,8 +5,17 @@ import { test, expect } from "@playwright/test";
    every engine is expected to degrade to labelled sample data rather than
    fail. Anything that would send a real post must stay a dry run. */
 
+/* The build ships the team's Make webhook, so a fresh page really can
+   publish. These tests are about the unconfigured product, so the webhook is
+   pointed away from Make first — which is what an empty Settings → Publishing
+   field amounts to, and the only honest way to exercise the dry run without
+   a request that could reach the live Company Page. */
+const noPublishingRoute = async (page) =>
+  page.addInitScript(() => localStorage.setItem("unison:publish:v1", JSON.stringify({ webhookUrl: "https://publishing.not.configured.invalid/none" })));
+
 const stubExternals = async (page) => {
   // Nothing should reach the network in a test run.
+  await noPublishingRoute(page);
   await page.route("**://api.anthropic.com/**", (r) => r.abort());
   await page.route("**://api.groq.com/**", (r) => r.abort());
   await page.route("**://hook.*.make.com/**", (r) => r.abort());

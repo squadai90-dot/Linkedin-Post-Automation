@@ -17,11 +17,9 @@ export function postVisuals(post) {
   const a = post.snapshot?.assets;
   if (a) {
     const images = (a.images || []).map((x) => x.svg || x.url).filter(Boolean);
-    const pages = (a.doc?.pages || []).map((x) => x.svg).filter(Boolean);
-    const slides = (a.carousel || []).map((x) => x.svg).filter(Boolean);
-    return { upload: post.upload || null, images, image: images[0] || null, pages: pages.length ? pages : slides.length ? slides : null, urls: (a.images || []).filter((x) => x.kind === "url").map((x) => x.url) };
+    return { upload: post.upload || null, images, image: images[0] || null, urls: (a.images || []).filter((x) => x.kind === "url").map((x) => x.url) };
   }
-  return { upload: post.upload || null, images: post.images || (post.image ? [post.image] : []), image: post.image || null, pages: post.pages || null, urls: [] };
+  return { upload: post.upload || null, images: post.images || (post.image ? [post.image] : []), image: post.image || null, urls: [] };
 }
 
 const asImgSrc = (s) => (typeof s === "string" && /^(https?:|data:)/.test(s) ? s : svgDataUrl(s));
@@ -190,7 +188,6 @@ export function PostDetail({ post, linkedin, company, cancel, confirm: confirmLi
   const c = post.content || post.snapshot?.draft;
   const full = c ? [c.hook, c.body, c.cta].filter(Boolean).join("\n\n") : "";
   const v = postVisuals(post);
-  const [pi, setPi] = useState(0);
   const due = postDue(post);
   const when = post.state === "SCHEDULED" ? `${fmtLong(post.date)}${post.time ? ` at ${post.time}` : ""}${post.tz ? ` ${post.tz}` : ""}` : post.date;
 
@@ -217,18 +214,8 @@ export function PostDetail({ post, linkedin, company, cancel, confirm: confirmLi
             {(c.hashtags || []).length > 0 && <div style={{ color: "#3E63DD", marginTop: 10 }}>{c.hashtags.join("  ")}</div>}
           </div>
           {v.upload ? <div className="li-visual"><img src={v.upload} alt="" /></div>
-            : v.images.length > 1 ? <div className={"li-mosaic n" + Math.min(4, v.images.length)}>{v.images.slice(0, 4).map((sv, k) => <img key={k} src={asImgSrc(sv)} alt="" />)}</div>
             : v.image ? <div className="li-visual"><img src={asImgSrc(v.image)} alt="" /></div>
-            : v.pages?.length ? (
-              <div className="li-visual li-doc">
-                <img src={asImgSrc(v.pages[Math.min(pi, v.pages.length - 1)])} alt="" />
-                <div className="li-pager">
-                  <button onClick={() => setPi(Math.max(0, pi - 1))} disabled={pi === 0} aria-label="Previous page">←</button>
-                  <span>{Math.min(pi, v.pages.length - 1) + 1} / {v.pages.length}</span>
-                  <button onClick={() => setPi(Math.min(v.pages.length - 1, pi + 1))} disabled={pi >= v.pages.length - 1} aria-label="Next page">→</button>
-                </div>
-              </div>
-            ) : null}
+            : null}
           {post.poll && (
             <div className="li-poll">
               <div style={{ fontWeight: 600, marginBottom: 10 }}>{post.poll.question}</div>
