@@ -152,11 +152,15 @@ no post.
 
 ## Operations budget
 
-Make's free plan allows 1,000 operations a month, resetting **2026-10-03**.
-The scheduler spends 24 a day checking the queue — 720 a month — leaving
-roughly 280 for publishing, about 70 scheduled posts. Each immediate post now
-costs one operation more than before, for the record that keeps its LinkedIn
-id; a text post is 4 operations instead of 3.
+Make's free plan allows 1,000 operations a month. **460 used, 540 left**,
+resetting **2026-10-03**. The scheduler spends 24 a day checking the queue, so
+about 216 of those 540 go on queue checks over the next nine days and the rest
+is yours for publishing.
+
+Steady state after the reset is 720 a month for the queue checks, leaving
+roughly 280 — about 70 scheduled posts. Each immediate post now costs one
+operation more than before, for the record that keeps its LinkedIn id; a text
+post is 4 operations instead of 3.
 
 If the team will post more than that, or wants publishing nearer the minute
 than the hour, the Make plan is the thing to change, not the scenarios.
