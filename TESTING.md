@@ -27,7 +27,7 @@ scheduler. Those results are real LinkedIn posts.
 |---|---|---|---|
 | 1 | Text | **PASS** | `urn:li:share:7508756712405929985` · record `t-sched-text-01` → `published` |
 | 2 | Article | **PASS** | `urn:li:share:7508756911819956227` · record `t-sched-article-01` → `published`, article body still on the record |
-| 3 | Image | **PASS** | `urn:li:share:7508760940100833280` · record `t-sched-image-01`, real base64 PNG uploaded by the scenario |
+| 3 | Image | **PASS** | `urn:li:share:7508766855591997440` · record `t-sched-image-01`, real base64 PNG uploaded by the scenario (earlier passes: `…7508760940100833280`, `…7508766041884221440`) |
 | 4 | Poll | **PASS** | `urn:li:ugcPost:7508760528153071616` · record `t-sched-poll-01`, urn read from LinkedIn's `x-restli-id` header |
 | 5 | Video | **NOT TESTED** | No video file could be produced in this container (no ffmpeg, no encoder). The route is the same shape as the image route and was verified at module level on 2026-09-22, but **no scheduled video post has been seen on LinkedIn** |
 | 6 | Multi-image | **PASS as held** | Routed to the unsupported branch; nothing published, nothing discarded |
@@ -46,7 +46,7 @@ those three from a single call. See the post-type table in the README.
 | 11 | It cannot publish twice | **PASS** | An immediate second run, `f0d71453…`, produced no execution at all: the search found nothing to do, and the urn on the record was unchanged |
 | 12 | An interrupted run is recovered, not repeated | **PASS** | `t-sched-stuck-01` planted as `publishing` with a stale claim → became `stuck` with a note telling the reader to check the page first. **Not** republished |
 | 13 | Timezone is respected | **PASS** | `dueAt 1790078880` = 12:08 UTC = 17:38 Asia/Calcutta, the time that was asked for |
-| 14 | A published record stops holding its media | **PASS** | The image record's media is dropped once the post is live, so the 1 MB store is not filled by posts already out |
+| 14 | A published record stops holding its media | **PASS** | `t-sched-image-01` after publishing: `media=0/0B`, everything else on the record intact. Took three attempts — an empty array and `slice()` are both read by *Update a record* as "leave it alone"; *Add/replace* was the answer |
 
 ## Failure handling
 
@@ -113,5 +113,17 @@ Deleting them is a destructive change to the live store, so I have left them
 for you to approve. `python3 make/dump-records.py` prints the store in one
 readable line per record.
 
-Four real posts went to the test page during this run: one text, one article,
-one image, one poll, plus a second image on the media-clearing re-test.
+Six real posts went to the test page during this run: one text, one article,
+one poll and three images (the image route was re-run twice while proving the
+media-clearing fix).
+
+## Operations budget
+
+324 of Make's 1,000 monthly operations used at the end of this run, 676 left,
+resetting 2026-10-03. At the hourly interval the scheduler spends 24 a day, so
+216 of those 676 go on checking the queue over the next nine days and the rest
+is yours for publishing. Steady state after the reset is 720 a month for the
+queue checks, leaving roughly 280 — about 70 scheduled posts — for publishing.
+
+If the team will post more than that, or wants publishing nearer the minute,
+the Make plan is the thing to change, not the scenarios.

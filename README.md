@@ -51,7 +51,7 @@ sandbox, where outbound requests are blocked and file downloads are unavailable.
 | `npm run build` | Production bundle into `dist/` |
 | `npm run preview` | Serve the built bundle on port 4173 |
 | `npm run lint` | ESLint over the app, the API routes and the tests |
-| `npm test` | Vitest unit tests (91 tests, no network) |
+| `npm test` | Vitest unit tests (262 tests, no network) |
 | `npm run test:e2e` | Playwright journey tests against the built app |
 | `npm run check` | lint + unit tests + build, in that order |
 | `npm run build:standalone` | One self-contained `unison-content-os.html` you can email or double-click |
@@ -393,9 +393,33 @@ Notes worth knowing:
 
 ---
 
+## Demo checklist, for showing a manager
+
+Ten minutes, in this order. What was actually tested end to end, and what
+was not, is in [`TESTING.md`](TESTING.md).
+
+- [ ] **First, once:** Settings → Publishing → paste the webhook address from
+      the Make scenario, press **Test webhook**, see it confirmed live.
+      A stale address saved in the browser is the single most likely reason a
+      demo fails, and this button finds it in two seconds.
+- [ ] Write a short post from a topic. Show the sources, the character count
+      and the approval step.
+- [ ] **Publish now** on a text post → **Published**, with LinkedIn's own post
+      id on screen. Open the Company Page and show it.
+- [ ] **Publish now** on an image post → **Published**, with the image.
+- [ ] Switch the same post to **Carousel** and publish → **NOT PUBLISHED**,
+      with the reason. This is the point to make out loud: the tool refuses to
+      claim something LinkedIn's API cannot do, and the post is kept, not lost.
+- [ ] **Schedule** a post a few minutes ahead → **Queued in Make. Nothing is
+      on LinkedIn yet.** Show that it says queued, not published.
+- [ ] Come back within the hour and show it live on the page.
+- [ ] Optional, if asked what happens when something breaks: Settings →
+      Advanced → *Simulate a publishing failure*, then publish. The draft and
+      its media survive, and the message says what failed.
+
 ## Handover checklist
 
-Run `npm run check` first — lint, 91 unit tests and the build must all pass.
+Run `npm run check` first — lint, 262 unit tests and the build must all pass.
 Then walk this by hand with nothing configured:
 
 - [ ] Home shows the setup checklist and honest AI / publishing status
@@ -450,9 +474,17 @@ pretends to have shared something it did not.
 
 ## Known limits
 
-- **Nothing runs while the tab is closed.** Scheduling is a reminder plus an
-  optional hand-off to Make. If you need unattended publishing, let the Make
-  scenario schedule from `scheduledDate`/`scheduledTime`.
+- **Nothing runs while the tab is closed.** Hand a scheduled post to Make and
+  it publishes without Unison open. Keep it in Unison and it is only a
+  reminder, flagged on Home when it comes due.
+- **Make's free plan is the binding constraint.** 1,000 operations a month,
+  two active scenarios, a 1 MB data store, and a 15-minute minimum interval
+  it cannot afford to use. That is why the scheduler checks hourly, why a
+  scheduled post's media is capped at about 600 KB, and why multi-image and
+  document posts are not built: each image is another round trip and another
+  operation. A paid plan (10,000 operations) removes all three. Watch the
+  budget under Make → Organization; `python3 make/dump-records.py` shows how
+  full the store is.
 - **Storage is per browser, per device.** Two people do not share a queue. Use
   Export/Import to move work, or put the shared state in Make.
 - **LinkedIn document posts need a PDF** and **there is no organic carousel
