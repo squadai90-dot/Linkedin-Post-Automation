@@ -30,14 +30,14 @@ import {
 function settleStage(d) {
   const s = d.stage || "IDEA";
   if (["RESEARCHING", "DRAFT", "AI_REVIEW"].includes(s)) return d.draft ? "HUMAN_REVIEW" : d.angles ? "RESEARCH_COMPLETE" : "RESEARCHING";
-  if (s === "PUBLISHING") return d.publishState === "SENT" ? "PUBLISHING" : d.publishState === "PUBLISHED" ? "PUBLISHED" : "SCHEDULED";
+  if (s === "PUBLISHING") return ["SENT", "HELD"].includes(d.publishState) ? "PUBLISHING" : d.publishState === "PUBLISHED" ? "PUBLISHED" : "SCHEDULED";
   if (s === "ANALYZING") return "PUBLISHED";
   return s;
 }
 const settleSteps = (steps) => (steps || []).map((x) => ({ ...x, status: x.status === "active" ? "done" : x.status }));
 const textOf = (d) => (d ? `${d.hook}\n\n${d.body}\n\n${d.cta}` : "");
 /* The state a post record maps to when it is reopened in the workspace. */
-const stageOfPost = (post) => (post.state === "PUBLISHED" ? "PUBLISHED" : post.state === "SENT" ? "PUBLISHING" : post.state === "SCHEDULED" ? "SCHEDULED" : "APPROVED");
+const stageOfPost = (post) => (post.state === "PUBLISHED" ? "PUBLISHED" : ["SENT", "HELD"].includes(post.state) ? "PUBLISHING" : post.state === "SCHEDULED" ? "SCHEDULED" : "APPROVED");
 
 /* three.js is ~600 KB; only people who turn the ambient scene on pay for it. */
 const PipelineScene = lazy(() => import("./components/scene3d.jsx").then((m) => ({ default: m.PipelineScene })));
@@ -199,7 +199,7 @@ export default function UnisonContentOS() {
           if (!busyAlready) d.stage && setStage(settleStage(d));
           if (!busyAlready) d.steps && setSteps(settleSteps(d.steps));
           d.tone && setTone(d.tone); d.pov && setPov(d.pov); d.length && setLength(d.length);
-          if (d.publishState && ["SENT", "PUBLISHED", "FAILED", "SIMULATED"].includes(d.publishState)) {
+          if (d.publishState && ["SENT", "HELD", "PUBLISHED", "FAILED", "SIMULATED"].includes(d.publishState)) {
             setPublishState(d.publishState); d.publishVia && setPublishVia(d.publishVia);
             Array.isArray(d.attempts) && setAttempts(d.attempts); d.publishError && setPublishError(d.publishError);
             Array.isArray(d.publishLimits) && setPublishLimits(d.publishLimits); d.publishKind && setPublishKind(d.publishKind);
@@ -423,7 +423,7 @@ export default function UnisonContentOS() {
     if (publish) autoPublishRef.current = id;
     openDraft({ ...snap, id, idea: snap.idea || post.topic || post.title, savedAt: snap.savedAt || post.scheduledAt }, {
       stage: stageOfPost(post),
-      publishState: post.state === "SENT" ? "SENT" : post.state === "PUBLISHED" ? (post.simulated ? "SIMULATED" : "PUBLISHED") : null,
+      publishState: post.state === "SENT" ? "SENT" : post.state === "HELD" ? "HELD" : post.state === "PUBLISHED" ? (post.simulated ? "SIMULATED" : "PUBLISHED") : null,
       limits: post.limits || [], unverified: !!post.unverified,
     });
     if (post.state === "SCHEDULED" && post.date) setSchedule((sc) => ({ ...sc, date: post.date, time: post.time || sc.time, tz: post.tz || sc.tz }));
@@ -1442,24 +1442,50 @@ Give up to 4 of each. Only include what the document actually says.`,
         setPosts((p) => [{ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         return;
       }
-      step(viaLinkedIn ? "LinkedIn accepted the post" : r.duplicate ? "Already delivered — not sent again" : r.unverified ? "Sent — Make's reply couldn't be read from this browser" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service", "ok");
+      /* The scenario answers with what it actually did, and the six answers
+         are different things. Reporting "sent" for all of them is how a post
+         LinkedIn never took ends up looking published. */
+      const state = viaLinkedIn ? "published" : r.unverified ? "unverified" : r.state || "accepted";
+      const handoff = {
+        published: viaLinkedIn ? "LinkedIn accepted the post" : "Make published it to LinkedIn",
+        queued: `Make queued it for ${schedule.date} at ${schedule.time}`,
+        unsupported: "Make stored it — LinkedIn can't post this type",
+        unverified: "Sent — Make's reply couldn't be read from this browser",
+        accepted: r.duplicate ? "Already delivered — not sent again" : r.fallback ? "Sent to Make" : "Sent to Make via the publishing service",
+      }[state] || "Sent to Make";
+      step(handoff, "ok");
       if (r.unverified) setPublishUnverified(true);
       const sentRecord = postRecord({
         id: postId, state: "SENT", date: scheduled ? schedule.date : todayISO(), viaMake: !viaLinkedIn, scheduledHandoff: scheduled,
-        postType, mediaSent: payload.media.length, limits, sentAt: r.at, reference: r.urn || null, url: r.url || null, unverified: !!r.unverified,
+        postType, mediaSent: payload.media.length, limits, sentAt: r.at, reference: r.urn || null, url: r.url || null,
+        unverified: !!r.unverified, makeState: state, makeNote: r.message || null,
       });
       if (r.published) {
-        step("Publishing through LinkedIn", "ok"); step("Published", "ok");
+        step("Published", "ok");
         setPublishState("PUBLISHED"); setStage("PUBLISHED");
         setPosts((p) => [{ ...sentRecord, state: "PUBLISHED", publishedAt: r.at }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         logAudit(`Published to LinkedIn${viaLinkedIn ? " directly" : " via Make"}${r.urn ? ` — ${r.urn}` : ""}`);
         notify("Published to LinkedIn.");
+      } else if (state === "unsupported") {
+        /* Nothing is on LinkedIn and nothing will be. Say it plainly rather
+           than leaving a pending tick that never resolves. */
+        step("Not published — LinkedIn's API has no route for this type", "failed");
+        setPublishState("HELD");
+        setPublishLimits((l) => [...l, r.message || "Make kept the post and its media. LinkedIn's API cannot create this post type."]);
+        setPosts((p) => [{ ...sentRecord, state: "HELD" }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        logAudit(`Held in Make — ${postType} is not publishable through LinkedIn's API`);
+        notify("Not published. LinkedIn's API can't create this post type — everything is saved in Make.", { tone: "warn", ms: 9000 });
       } else {
-        step(scheduled ? `Make will publish on ${schedule.date} at ${schedule.time}` : "Publishing through LinkedIn", "pending");
+        step(state === "queued" || scheduled
+          ? `Make will publish on ${schedule.date} at ${schedule.time}`
+          : "Waiting for LinkedIn to confirm", "pending");
         setPublishState("SENT");
         setPosts((p) => [sentRecord, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
-        logAudit(`Sent to Make — ${postType} post${payload.media.length ? `, ${payload.media.length} media file(s)` : ""}${r.unverified ? " (reply unreadable)" : ""}`);
-        notify(r.unverified ? "Sent to Make. The reply couldn't be read from this browser, so check the scenario before sending again." : scheduled ? "Handed to Make with the schedule." : "Sent to Make — LinkedIn publishing is being processed.", { tone: r.unverified ? "warn" : "ok" });
+        logAudit(`Sent to Make — ${postType} post, Make said "${state}"${payload.media.length ? `, ${payload.media.length} media file(s)` : ""}${r.unverified ? " (reply unreadable)" : ""}`);
+        notify(r.unverified ? "Sent to Make. The reply couldn't be read from this browser, so check the scenario before sending again."
+          : state === "queued" ? "Queued in Make. Nothing is on LinkedIn yet — it goes out at the scheduled time."
+          : scheduled ? "Handed to Make with the schedule."
+          : "Sent to Make. LinkedIn hasn't confirmed the post yet.", { tone: r.unverified ? "warn" : "ok" });
       }
     } catch (e) {
       if (!live()) return;
@@ -1473,6 +1499,8 @@ Give up to 4 of each. Only include what the document actually says.`,
       else if (kind === "timeout") label = "Make didn't respond in time";
       else if (kind === "too-large") label = "Post too large to send";
       else if (kind === "no-video") label = "No video file to send";
+      else if (kind === "failed") label = e?.stage === "datastore" ? "Make could not store the post" : "LinkedIn refused the post";
+      else if (kind === "rejected") label = "Make has no route for this post";
       else if (kind === "hook-dead") label = "The saved webhook address no longer exists";
       else if (kind === "store-full") label = "Too much media to hold until the scheduled time";
       else if (kind === "relay-missing") { kind = "sandbox"; label = "No publishing service is deployed here"; }
@@ -1485,6 +1513,7 @@ Give up to 4 of each. Only include what the document actually says.`,
         : kind === "too-large" ? "The post and its media are too large to send in one request. Reduce the media and try again."
         : kind === "no-video" ? "This is a video post but there is no video file yet. Export the video in the Media step (or upload one), then publish."
         : kind === "timeout" ? "Make didn't answer in time. The post may already have reached it — check the scenario before sending again."
+        : kind === "failed" || kind === "rejected" ? (e?.message || "Make refused the post. Nothing was published.")
         : kind === "hook-dead" ? `Make says the webhook saved in Settings no longer exists, so nothing was sent. This happens when the scenario behind it was deleted or rebuilt. Open the scenario in Make, copy the address shown on its webhook module, and paste it into Settings \u2192 Publishing \u2192 Make webhook URL. Retrying without changing it will fail the same way.`
         : kind === "store-full" ? (e?.message || "The media on this post is too large for Make to hold until the scheduled time.")
         : kind === "cors" ? "Make received the request but didn't allow this page to read the reply, so Unison can't confirm what happened. Sending without confirmation will get the post through."

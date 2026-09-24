@@ -46,16 +46,22 @@ function priorDelivery(key) {
   return hit.result;
 }
 
-/** Anything the scenario says that unambiguously means LinkedIn published. */
+/** What the scenario said, in the six answers it can give: published,
+    queued, unsupported, rejected, failed, or a bare accepted. Only a real
+    LinkedIn urn counts as proof of publishing — the post's own id is not
+    one, and neither is the webhook's default "Accepted". */
+const REPLY_STATES = ["published", "queued", "unsupported", "rejected", "failed"];
+
 function readMakeReply(body) {
-  if (!body || typeof body !== "object") return { published: false, urn: null, url: null };
-  const urn = body.urn || body.postUrn || body.linkedinUrn || body.postId || body.id || null;
-  const url = body.url || body.postUrl || null;
+  const none = { state: "accepted", published: false, urn: null, url: null, message: null, stage: null };
+  if (!body || typeof body !== "object") return none;
+  const urn = [body.urn, body.postUrn, body.linkedinUrn, body.shareUrn, body.ugcPostUrn]
+    .map((x) => (x == null ? "" : String(x))).find((x) => /^urn:li:/.test(x)) || null;
+  const url = [body.url, body.postUrl, body.linkedinUrl].find((x) => typeof x === "string" && /^https?:\/\//.test(x)) || null;
   const status = String(body.status || body.result || "").toLowerCase();
-  const published =
-    status === "published" || status === "success" ||
-    (status === "ok" && !!urn) || (!!urn && /^urn:li:/.test(String(urn)));
-  return { published: !!published, urn, url };
+  const published = status === "published" || !!urn || (!!url && /linkedin\.com/.test(url));
+  const state = published ? "published" : REPLY_STATES.includes(status) ? status : "accepted";
+  return { state, published, urn, url, message: body.message || body.error || null, stage: body.stage || null };
 }
 
 /** Keep base64 media out of the logs; keep everything else. */
@@ -162,10 +168,17 @@ export default async function handler(req, res) {
   console.log("[unison:relay] Make responded", { status: upstream.status, ms: Date.now() - startedAt, body: String(raw).slice(0, 300) });
 
   if (!upstream.ok) {
+    /* The scenario answers a refused post with its own reason. Passing that
+       through is the difference between "something went wrong" and "LinkedIn
+       said the video is too long". */
+    const refusal = readMakeReply(parsed);
     return res.status(502).json({
-      error: `The publishing workflow rejected the post (${upstream.status}).`,
+      error: refusal.message || `The publishing workflow rejected the post (${upstream.status}).`,
       delivered: false,
+      state: refusal.state === "accepted" ? "failed" : refusal.state,
+      stage: refusal.stage,
       makeStatus: upstream.status,
+      make: parsed ?? String(raw).slice(0, 500),
     });
   }
 

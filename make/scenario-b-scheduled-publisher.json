@@ -1,0 +1,1003 @@
+{
+  "flow": [
+    {
+      "id": 19,
+      "mapper": {
+        "sort": [],
+        "mappAbleLimit": "",
+        "filter": [
+          [
+            {
+              "a": "status",
+              "b": "queued",
+              "o": "text:equal"
+            },
+            {
+              "a": "dueAt",
+              "b": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+              "o": "number:lessorequal"
+            }
+          ],
+          [
+            {
+              "a": "status",
+              "b": "publishing",
+              "o": "text:equal"
+            },
+            {
+              "a": "attemptAt",
+              "b": "{{parseNumber(formatDate(addMinutes(now; -45); \"X\"); \".\")}}",
+              "o": "number:lessorequal"
+            }
+          ]
+        ]
+      },
+      "module": "datastore:SearchRecord",
+      "version": 1,
+      "metadata": {
+        "restore": {
+          "parameters": {
+            "datastore": {
+              "label": "Unison Scheduled Posts"
+            }
+          }
+        },
+        "advanced": true,
+        "designer": {
+          "x": -126,
+          "y": 19
+        }
+      },
+      "parameters": {
+        "limit": 5,
+        "datastore": 193288,
+        "continueWhenNoRes": false
+      }
+    },
+    {
+      "id": 7,
+      "mapper": null,
+      "module": "builtin:BasicRouter",
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 53,
+              "filter": {
+                "name": "Interrupted mid-publish",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "publishing",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "stuck",
+                  "note": "A previous run claimed this post and did not finish. It is NOT published again automatically, because LinkedIn may already have it. Check the Company Page: if the post is not there, set status back to queued."
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 563,
+                  "y": -1020
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 54,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "publishing",
+                  "attemptAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "note": "Claimed by the scheduled publisher. If it is still claimed after the claim goes stale, the run was interrupted."
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 563,
+                  "y": -748
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              },
+              "filter": {
+                "name": "Text or Article",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "text",
+                      "o": "text:equal"
+                    }
+                  ],
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "article",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 9,
+              "mapper": {
+                "content": "{{19.data.content}}",
+                "visibility": "PUBLIC",
+                "organization": "{{ifempty(19.data.companyUrn; \"urn:li:organization:146260120\")}}",
+                "feedDistribution": "MAIN_FEED",
+                "isReshareDisabledByAuthor": false
+              },
+              "module": "linkedin:CreateTextShare",
+              "version": 2,
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "type": {
+                      "mode": "chose",
+                      "empty": true
+                    },
+                    "mentions": {
+                      "mode": "chose"
+                    },
+                    "visibility": {
+                      "mode": "chose",
+                      "label": "Public"
+                    },
+                    "feedDistribution": {
+                      "mode": "chose",
+                      "label": "Main feed"
+                    },
+                    "isReshareDisabledByAuthor": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "__IMTCONN__": {
+                      "data": {
+                        "scoped": "true",
+                        "connection": "linkedin2"
+                      },
+                      "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 843,
+                  "y": -748
+                }
+              },
+              "parameters": {
+                "__IMTCONN__": 10513797
+              },
+              "onerror": [
+                {
+                  "id": 55,
+                  "mapper": {
+                    "key": "{{19.key}}",
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                    }
+                  },
+                  "module": "datastore:UpdateRecord",
+                  "version": 1,
+                  "metadata": {
+                    "restore": {
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
+                        }
+                      }
+                    },
+                    "designer": {
+                      "x": 1123,
+                      "y": -880
+                    }
+                  },
+                  "parameters": {
+                    "datastore": 193288
+                  }
+                },
+                {
+                  "id": 56,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1403,
+                      "y": -880
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 30,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "published",
+                  "note": "",
+                  "media": [],
+                  "publishedUrn": "{{9.id}}"
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1403,
+                  "y": -748
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 57,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "publishing",
+                  "attemptAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "note": "Claimed by the scheduled publisher. If it is still claimed after the claim goes stale, the run was interrupted."
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 563,
+                  "y": -448
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              },
+              "filter": {
+                "name": "Image",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "image",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 10,
+              "mapper": {
+                "data": "{{toBinary(19.data.media[1].data; \"base64\")}}",
+                "method": "upload",
+                "altText": "{{19.data.media[1].altText}}",
+                "content": "{{19.data.content}}",
+                "fileName": "{{19.data.media[1].filename}}",
+                "visibility": "PUBLIC",
+                "organization": "{{ifempty(19.data.companyUrn; \"urn:li:organization:146260120\")}}",
+                "feedDistribution": "MAIN_FEED",
+                "isReshareDisabledByAuthor": false
+              },
+              "module": "linkedin:CreateCompanyImagePost",
+              "version": 2,
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "method": {
+                      "label": "Upload by file"
+                    },
+                    "visibility": {
+                      "mode": "chose",
+                      "label": "Anyone"
+                    },
+                    "feedDistribution": {
+                      "mode": "chose",
+                      "label": "Main feed"
+                    },
+                    "isReshareDisabledByAuthor": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "__IMTCONN__": {
+                      "data": {
+                        "scoped": "true",
+                        "connection": "linkedin2"
+                      },
+                      "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+                    }
+                  }
+                },
+                "advanced": true,
+                "designer": {
+                  "x": 843,
+                  "y": -448
+                }
+              },
+              "parameters": {
+                "__IMTCONN__": 10513797
+              },
+              "onerror": [
+                {
+                  "id": 58,
+                  "mapper": {
+                    "key": "{{19.key}}",
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                    }
+                  },
+                  "module": "datastore:UpdateRecord",
+                  "version": 1,
+                  "metadata": {
+                    "restore": {
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
+                        }
+                      }
+                    },
+                    "designer": {
+                      "x": 1123,
+                      "y": -580
+                    }
+                  },
+                  "parameters": {
+                    "datastore": 193288
+                  }
+                },
+                {
+                  "id": 59,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1403,
+                      "y": -580
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 31,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "published",
+                  "note": "",
+                  "media": [],
+                  "publishedUrn": "{{10.id}}"
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1403,
+                  "y": -448
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 60,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "publishing",
+                  "attemptAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "note": "Claimed by the scheduled publisher. If it is still claimed after the claim goes stale, the run was interrupted."
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 563,
+                  "y": -160
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              },
+              "filter": {
+                "name": "Video",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "video",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 12,
+              "mapper": {
+                "video": "{{toBinary(19.data.media[1].data; \"base64\")}}",
+                "method": "upload",
+                "content": "{{19.data.content}}",
+                "videoName": "{{19.data.media[1].filename}}",
+                "visibility": "PUBLIC",
+                "organization": "{{ifempty(19.data.companyUrn; \"urn:li:organization:146260120\")}}",
+                "feedDistribution": "MAIN_FEED",
+                "isReshareDisabledByAuthor": false
+              },
+              "module": "linkedin:createOrganizationVideoPost",
+              "version": 2,
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "method": {
+                      "label": "Upload by file"
+                    },
+                    "visibility": {
+                      "mode": "chose",
+                      "label": "Anyone"
+                    },
+                    "feedDistribution": {
+                      "mode": "chose",
+                      "label": "Main feed"
+                    },
+                    "isReshareDisabledByAuthor": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "__IMTCONN__": {
+                      "data": {
+                        "scoped": "true",
+                        "connection": "linkedin2"
+                      },
+                      "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+                    }
+                  }
+                },
+                "advanced": true,
+                "designer": {
+                  "x": 843,
+                  "y": -160
+                }
+              },
+              "parameters": {
+                "__IMTCONN__": 10513797
+              },
+              "onerror": [
+                {
+                  "id": 61,
+                  "mapper": {
+                    "key": "{{19.key}}",
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                    }
+                  },
+                  "module": "datastore:UpdateRecord",
+                  "version": 1,
+                  "metadata": {
+                    "restore": {
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
+                        }
+                      }
+                    },
+                    "designer": {
+                      "x": 1123,
+                      "y": -292
+                    }
+                  },
+                  "parameters": {
+                    "datastore": 193288
+                  }
+                },
+                {
+                  "id": 62,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1403,
+                      "y": -292
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 32,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "published",
+                  "note": "",
+                  "media": [],
+                  "publishedUrn": "{{12.id}}"
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1403,
+                  "y": -160
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 63,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "publishing",
+                  "attemptAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "note": "Claimed by the scheduled publisher. If it is still claimed after the claim goes stale, the run was interrupted."
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 563,
+                  "y": 120
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              },
+              "filter": {
+                "name": "Poll",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "poll",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 20,
+              "mapper": {
+                "array": "{{19.data.poll.options}}"
+              },
+              "module": "builtin:BasicFeeder",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "array": {
+                      "mode": "edit"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 843,
+                  "y": 120
+                }
+              },
+              "parameters": {}
+            },
+            {
+              "id": 50,
+              "mapper": {
+                "text": "{{20.value}}"
+              },
+              "module": "builtin:BasicAggregator",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "extra": {
+                    "feeder": {
+                      "label": "Iterator [20]"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1123,
+                  "y": 120
+                }
+              },
+              "parameters": {
+                "feeder": 20
+              }
+            },
+            {
+              "id": 18,
+              "mapper": {
+                "url": "/rest/posts",
+                "body": {
+                  "author": "{{ifempty(19.data.companyUrn; \"urn:li:organization:146260120\")}}",
+                  "content": {
+                    "poll": {
+                      "options": "{{50.array}}",
+                      "question": "{{19.data.poll.question}}",
+                      "settings": {
+                        "duration": "{{switch(19.data.poll.duration; \"1 day\"; \"LAST_ONE_DAY\"; \"3 days\"; \"LAST_THREE_DAYS\"; \"1 week\"; \"LAST_SEVEN_DAYS\"; \"2 weeks\"; \"LAST_FOURTEEN_DAYS\"; \"LAST_SEVEN_DAYS\")}}",
+                        "voteSelectionType": "SINGLE_VOTE"
+                      }
+                    }
+                  },
+                  "commentary": "{{19.data.content}}",
+                  "visibility": "PUBLIC",
+                  "distribution": {
+                    "targetEntities": [],
+                    "feedDistribution": "MAIN_FEED",
+                    "thirdPartyDistributionChannels": []
+                  },
+                  "lifecycleState": "PUBLISHED",
+                  "isReshareDisabledByAuthor": false
+                },
+                "method": "POST",
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0"
+                  },
+                  {
+                    "key": "Linkedin-Version",
+                    "value": "202605"
+                  }
+                ],
+                "sendUnencodedQueryString": false
+              },
+              "module": "linkedin:MakeAPICall",
+              "version": 2,
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "qs": {
+                      "mode": "chose"
+                    },
+                    "method": {
+                      "mode": "chose",
+                      "label": "POST"
+                    },
+                    "headers": {
+                      "mode": "chose",
+                      "items": [
+                        null,
+                        null,
+                        null
+                      ]
+                    },
+                    "sendUnencodedQueryString": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "__IMTCONN__": {
+                      "data": {
+                        "scoped": "true",
+                        "connection": "linkedin2"
+                      },
+                      "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+                    }
+                  }
+                },
+                "advanced": true,
+                "designer": {
+                  "x": 1403,
+                  "y": 120
+                }
+              },
+              "parameters": {
+                "__IMTCONN__": 10513797
+              },
+              "onerror": [
+                {
+                  "id": 64,
+                  "mapper": {
+                    "key": "{{19.key}}",
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                    }
+                  },
+                  "module": "datastore:UpdateRecord",
+                  "version": 1,
+                  "metadata": {
+                    "restore": {
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
+                        }
+                      }
+                    },
+                    "designer": {
+                      "x": 1683,
+                      "y": -20
+                    }
+                  },
+                  "parameters": {
+                    "datastore": 193288
+                  }
+                },
+                {
+                  "id": 65,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1963,
+                      "y": -20
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 51,
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "published",
+                  "note": "",
+                  "media": [],
+                  "publishedUrn": "{{ifempty(get(18.headers; \"x-restli-id\"); 18.body.id)}}"
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1683,
+                  "y": 120
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 52,
+              "filter": {
+                "name": "Not supported by LinkedIn's API",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "multi",
+                      "o": "text:equal"
+                    }
+                  ],
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "document",
+                      "o": "text:equal"
+                    }
+                  ],
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "carousel",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "key": "{{19.key}}",
+                "data": {
+                  "status": "unsupported",
+                  "note": "Held, not published. Multi-image and document posts need a multi-step LinkedIn upload that is not built yet; LinkedIn has no organic carousel API at all. The text, the media and the schedule are all still here."
+                }
+              },
+              "module": "datastore:UpdateRecord",
+              "version": 1,
+              "metadata": {
+                "restore": {
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 563,
+                  "y": 400
+                }
+              },
+              "parameters": {
+                "datastore": 193288
+              }
+            }
+          ]
+        }
+      ],
+      "version": 1,
+      "metadata": {
+        "designer": {
+          "x": -51,
+          "y": -387
+        }
+      }
+    }
+  ],
+  "name": "Unison Scheduled Publisher",
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "designer": {
+      "orphans": []
+    },
+    "scenario": {
+      "dlq": false,
+      "slots": null,
+      "dataloss": false,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "roundtrips": 1,
+      "sequential": false,
+      "confidential": false,
+      "freshVariables": false,
+      "autoCommitTriggerLast": true
+    }
+  },
+  "scheduling": {
+    "type": "indefinitely",
+    "interval": 3600
+  }
+}

@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useEffect } from "react";
 import { LinkBadge } from "./linkbadge.jsx";
 import { FORMAT_BY_ID, VISUAL_FORMATS, normalizeFormats, toggleFormat } from "../lib/formats.js";
 import { REJECT_REASONS } from "../lib/seed.js";
+import { scheduledWindow } from "../lib/publish.js";
 import { pad, tierLabel, host, LI_LIMIT, LI_FOLD } from "../lib/util.js";
 import { locateClaim, segments } from "../lib/text.jsx";
 import { useNarrow } from "../hooks.js";
@@ -248,7 +249,7 @@ export function Workspace(p) {
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             <span className="eyebrow">Working on</span>
             {fmt.list.map((f) => <span key={f} className="chipflat">{FORMAT_BY_ID[f].label}</span>)}
-            {done && <span className="state sch">{stage === "PUBLISHED" ? "PUBLISHED" : stage === "PUBLISHING" ? (publishState === "SENT" ? "SENT" : "PUBLISHING") : stage}</span>}
+            {done && <span className={"state " + (publishState === "HELD" ? "fail" : "sch")}>{stage === "PUBLISHED" ? "PUBLISHED" : stage === "PUBLISHING" ? (publishState === "HELD" ? "NOT PUBLISHED" : publishState === "SENT" ? "SENT" : "PUBLISHING") : stage}</span>}
           </div>
           <div className="disp" style={{ fontSize: 30, marginTop: 8, maxWidth: 680 }}>{idea}</div>
         </div>
@@ -522,14 +523,32 @@ export function Workspace(p) {
                   </div>
                   <div className="row">
                     {stage === "SCHEDULED" && <button className="btn acc" onClick={() => publishNow()}>Publish now</button>}
-                    {stage === "SCHEDULED" && realRoute && linkedin.viaWorkflow && <button className="btn" onClick={() => publishNow({ scheduled: true })} title="Sends the post to Make now with the date and time, so the scenario publishes it then.">Hand to Make for {schedule.date}</button>}
-                    {stage === "PUBLISHING" && publishState !== "SENT" && (
+                    {stage === "SCHEDULED" && realRoute && linkedin.viaWorkflow && <button className="btn" onClick={() => publishNow({ scheduled: true })} title={scheduledWindow(schedule.date, schedule.time).sentence}>Hand to Make for {schedule.date}</button>}
+                    {stage === "PUBLISHING" && !["SENT", "HELD"].includes(publishState) && (
                       <button className="btn acc" disabled><span className="pulse" style={{ marginRight: 8 }} />{publishState === "PREPARING" ? "Preparing…" : "Sending to Make…"}</button>
                     )}
                     {stage === "PUBLISHING" && publishState === "SENT" && <span className="badge">Sent to Make</span>}
+                    {stage === "PUBLISHING" && publishState === "HELD" && <span className="badge bad">Not published</span>}
                   </div>
                 </div>
-                {stage === "SCHEDULED" && <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>Nothing runs while Unison is closed. Come back and press Publish now when it's due — it's flagged on Home — or hand it to Make to publish on time.</div>}
+                {stage === "SCHEDULED" && (
+                  <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+                    Nothing runs while Unison is closed. Come back and press Publish now when it's due — it's flagged on Home — or hand it to Make, which publishes without Unison open. {scheduledWindow(schedule.date, schedule.time).sentence}
+                  </div>
+                )}
+
+                {publishState === "HELD" && (
+                  <div className="card tight" style={{ marginTop: 16, borderColor: "rgba(243,180,76,.45)" }}>
+                    <b>Not published — and it won't be.</b>
+                    <div className="u-muted" style={{ marginTop: 5, fontSize: 13.5 }}>
+                      LinkedIn's API has no call that creates this post type, so Make kept the post, its text and its media instead of pretending. Nothing reached LinkedIn. To put it out today, publish it from LinkedIn by hand, or switch this post to a format LinkedIn's API does support — a single image, a video, a poll or plain text.
+                    </div>
+                    {publishLimits.length > 0 && publishLimits.map((l, i) => <div key={i} className="badge warn" style={{ marginTop: 10 }}>{l}</div>)}
+                    <div className="row" style={{ marginTop: 12 }}>
+                      <button className="btn sm" onClick={() => { setFailMode(false); unlock(); }}>Change the format</button>
+                    </div>
+                  </div>
+                )}
 
                 {publishState === "SENT" && (
                   <div className="card tight" style={{ marginTop: 16 }}>

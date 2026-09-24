@@ -54,6 +54,12 @@ export const MAKE_CONFIG = {
   company: { name: null, urn: null },
   /* Every post type is handed to Make; the scenario routes on postType. */
   supportedPostTypes: ["text", "image", "multi", "video", "document", "poll", "article", "carousel"],
+  /* How often "Unison Scheduled Publisher" looks for posts that have come
+     due. Make's free plan allows 1,000 operations a month and every check
+     spends one, so a check an hour is what fits with room left to publish.
+     A paid plan allows 15-minute checks; change this and the scenario's own
+     interval together, or Unison will promise something Make does not do. */
+  schedulerIntervalMs: 60 * 60 * 1000,
   debug: debugOn(),   // console tracing; set localStorage["unison:debug"]="1" to turn on
 };
 
@@ -80,6 +86,19 @@ export function scheduledMediaFit(payload) {
   return { ok: true, bytes };
 }
 
+/* When a post handed to Make will actually appear, said honestly: the
+   scheduler checks on a timer, so the post goes out at the first check at or
+   after its time, never before it. */
+export function scheduledWindow(date, time, intervalMs = MAKE_CONFIG.schedulerIntervalMs) {
+  const mins = Math.round(intervalMs / 60000);
+  const label = mins % 60 === 0 ? `${mins / 60} hour${mins === 60 ? "" : "s"}` : `${mins} minutes`;
+  return {
+    minutes: mins,
+    label,
+    sentence: `Make checks for due posts every ${label}, so this goes out at ${time || "the chosen time"} on ${date || "the chosen day"} or within the next ${label} — never earlier.`,
+  };
+}
+
 export const MAKE_TRANSPORTS = {
   text: (json) => ({ headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json }),
   form: (json) => ({ headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: "payload=" + encodeURIComponent(json) }),
@@ -89,18 +108,39 @@ export const MAKE_TRANSPORT_ORDER = ["text", "form"];
 
 export const mkLog = (...a) => { if (MAKE_CONFIG.debug) console.log("[unison:publish]", ...a); };
 
-/* Did something tell us LinkedIn actually published? Only an unambiguous
-   reply counts. Make's default "Accepted" means delivered and nothing more. */
+/* What did Make actually say? The six answers the scenarios can give are
+   genuinely different things, and collapsing them into "sent" or "published"
+   is how a post that LinkedIn refused ends up showing a tick.
+
+     published   — LinkedIn has it, and the reply carries the urn to prove it
+     queued      — Make stored it; LinkedIn has nothing yet
+     unsupported — Make kept it; LinkedIn's API cannot post this type
+     rejected    — Make would not take it at all
+     failed      — Make tried and LinkedIn (or the data store) refused
+     accepted    — a bare 2xx: Make has the request, and that is all we know
+
+   "ok"/"success"/"Accepted" is the webhook's own default reply. It says the
+   request arrived. It says nothing about LinkedIn, so it lands on accepted. */
+const REPLY_STATES = ["published", "queued", "unsupported", "rejected", "failed"];
+
 export function readMakeReply(body) {
-  if (!body || typeof body !== "object") return { published: false, urn: null, url: null, message: null };
+  const none = { state: "accepted", published: false, urn: null, url: null, message: null, stage: null };
+  if (!body || typeof body !== "object") return none;
   const inner = body.make && typeof body.make === "object" ? body.make : body;
   const cand = [inner.urn, inner.postUrn, inner.linkedinUrn, inner.linkedinPostId, inner.shareUrn, inner.ugcPostUrn].map((x) => (x == null ? "" : String(x))).find((x) => /^urn:li:/.test(x)) || null;
   const url = [inner.url, inner.postUrl, inner.linkedinUrl].find((x) => typeof x === "string" && /^https?:\/\//.test(x)) || null;
   const st = String(inner.status || inner.result || "").toLowerCase();
-  /* "Accepted"/"ok"/"success" from a webhook only means Make has it. */
   const published = st === "published" || !!cand || (!!url && /linkedin\.com/.test(url));
-  return { published, urn: cand, url, message: inner.message || inner.error || null };
+  const state = published ? "published" : REPLY_STATES.includes(st) ? st : "accepted";
+  return { state, published, urn: cand, url, message: inner.message || inner.error || null, stage: inner.stage || null };
 }
+
+/* A video has to be uploaded to LinkedIn before the scenario can answer, and
+   that is measured in tens of seconds, not the couple a text post takes. */
+export const publishTimeout = (payload) =>
+  payload?.postType === "video" || (payload?.media || []).some((m) => m?.kind === "video")
+    ? 120000
+    : MAKE_CONFIG.timeoutMs;
 
 export const makeLinkedInService = {
   configured: () => /^https:\/\/hook\.[a-z0-9.-]+\.make\.com\//.test(MAKE_CONFIG.url),
@@ -111,7 +151,7 @@ export const makeLinkedInService = {
      the whole payload and reports back what Make said. */
   async viaRelay(payload) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), MAKE_CONFIG.timeoutMs);
+    const timer = setTimeout(() => ctrl.abort(), publishTimeout(payload));
     const startedAt = Date.now();
     mkLog("sending via relay", { endpoint: MAKE_CONFIG.relay, postId: payload.postId, postType: payload.postType, idempotencyKey: payload.idempotencyKey, media: payload.media?.length || 0, poll: !!payload.poll });
     let res;
@@ -140,7 +180,14 @@ export const makeLinkedInService = {
       throw Object.assign(new Error("No publishing service at this address."), { kind: "relay-missing", status: res.status });
     }
     if (!res.ok) {
-      throw Object.assign(new Error(parsed?.error || `Publishing service returned ${res.status}.`), { kind: "relay-error", status: res.status, body: parsed ?? raw });
+      /* The relay hands back whatever the scenario said about the refusal.
+         When that names LinkedIn or the data store, say so rather than
+         blaming the relay, which only carried the message. */
+      const named = parsed?.state === "failed" || parsed?.state === "rejected";
+      throw Object.assign(
+        new Error(parsed?.error || `Publishing service returned ${res.status}.`),
+        { kind: named ? parsed.state : "relay-error", status: res.status, stage: parsed?.stage || null, body: parsed ?? raw }
+      );
     }
     if (parsed?.duplicate) mkLog("relay reported this post was already delivered — not sent again");
     return { ok: true, delivered: true, confirmed: true, status: res.status, transport: "relay", duplicate: !!parsed?.duplicate, raw: parsed ?? raw, ...readMakeReply(parsed), at: new Date().toISOString() };
@@ -157,7 +204,7 @@ export const makeLinkedInService = {
     if (json.length > MAKE_CONFIG.maxPayloadBytes) throw Object.assign(new Error("Payload too large."), { kind: "too-large", bytes: json.length });
     const { headers, body } = MAKE_TRANSPORTS.text(json);
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), MAKE_CONFIG.timeoutMs);
+    const timer = setTimeout(() => ctrl.abort(), publishTimeout(payload));
     const startedAt = Date.now();
     mkLog("sending direct", { transport: "text", postId: payload.postId, postType: payload.postType, bytes: json.length });
     let res;
@@ -189,11 +236,18 @@ export const makeLinkedInService = {
          off. The post is fine; the address is not. Saying so is the whole
          difference between a five-second fix and an afternoon of guessing. */
       const dead = res.status === 400 || res.status === 404 || res.status === 410;
-      const text = String(parsed?.message || parsed?.error || raw || "").toLowerCase();
-      const looksDead = dead || /not exist|no longer|gone|deactivat|disabled|deleted/.test(text);
+      const reply = readMakeReply(parsed);
+      const text = String(reply.message || parsed?.error || raw || "").toLowerCase();
+      /* The scenario answers a refused post with 502 and the reason. Only a
+         4xx with no such answer means the address itself is wrong. */
+      const looksDead = (dead && reply.state === "accepted") || /not exist|no longer|gone|deactivat|disabled|deleted/.test(text);
+      const named = reply.state === "failed" || reply.state === "rejected";
       throw Object.assign(
-        new Error(looksDead ? "That webhook no longer exists in Make." : `Make returned ${res.status}.`),
-        { kind: looksDead ? "hook-dead" : "http", status: res.status, transport: "text", body: parsed ?? raw }
+        new Error(looksDead ? "That webhook no longer exists in Make."
+          : named && reply.message ? reply.message
+          : `Make returned ${res.status}.`),
+        { kind: looksDead ? "hook-dead" : named ? reply.state : "http",
+          status: res.status, transport: "text", stage: reply.stage, body: parsed ?? raw }
       );
     }
     return { ok: true, delivered: true, confirmed: true, status: res.status, transport: "text", raw: parsed ?? raw, ...readMakeReply(parsed), at: new Date().toISOString() };

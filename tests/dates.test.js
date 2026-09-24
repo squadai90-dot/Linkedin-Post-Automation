@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { scheduledWindow, MAKE_CONFIG } from "../src/lib/publish.js";
 import {
   toISODate, todayISO, addDays, startOfWeek, monthGrid, weekDays, sameMonth,
   greeting, nextSlot, zonedToUtc, isDue, relativeTime, countryForTimezone, fmtMonth,
@@ -118,5 +119,23 @@ describe("todayISO", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 9, 10));
     expect(todayISO()).toBe("2026-09-09");
+  });
+});
+
+describe("scheduledWindow", () => {
+  it("promises the interval Make actually runs at, and never earlier", () => {
+    const w = scheduledWindow("2026-10-01", "09:30", 60 * 60 * 1000);
+    expect(w.label).toBe("1 hour");
+    expect(w.sentence).toContain("09:30");
+    expect(w.sentence).toContain("never earlier");
+  });
+
+  it("says minutes when the interval is not whole hours", () => {
+    expect(scheduledWindow("2026-10-01", "09:30", 15 * 60 * 1000).label).toBe("15 minutes");
+    expect(scheduledWindow("2026-10-01", "09:30", 2 * 60 * 60 * 1000).label).toBe("2 hours");
+  });
+
+  it("defaults to the scheduler's configured interval", () => {
+    expect(scheduledWindow("2026-10-01", "09:30").minutes).toBe(MAKE_CONFIG.schedulerIntervalMs / 60000);
   });
 });

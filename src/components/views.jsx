@@ -8,8 +8,8 @@ import { todayISO, monthGrid, weekDays, addDays, fmtMonth, fmtLong, fmtDay, same
    SECONDARY VIEWS
    ============================================================ */
 
-export const stateClass = (s) => (s === "PUBLISHED" ? "pub" : s === "HUMAN_REVIEW" ? "rev" : s === "SCHEDULED" || s === "SENT" ? "sch" : s === "FAILED" ? "fail" : "");
-export const stateLabel = (s) => (s === "SENT" ? "SENT TO MAKE" : s === "HUMAN_REVIEW" ? "IN REVIEW" : s);
+export const stateClass = (s) => (s === "PUBLISHED" ? "pub" : s === "HUMAN_REVIEW" ? "rev" : s === "SCHEDULED" || s === "SENT" ? "sch" : s === "FAILED" || s === "HELD" ? "fail" : "");
+export const stateLabel = (s) => (s === "SENT" ? "SENT TO MAKE" : s === "HELD" ? "NOT PUBLISHED" : s === "HUMAN_REVIEW" ? "IN REVIEW" : s);
 export const postDue = (p) => p.state === "SCHEDULED" && isDue(p.date, p.time || "09:00", p.tz || "UTC");
 
 /* Visuals for a post record: the snapshot (current) or the legacy fields. */
@@ -272,7 +272,9 @@ export function PostDetail({ post, linkedin, company, cancel, confirm: confirmLi
       {post.url && <a className="srclink" href={post.url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 14 }}>View on LinkedIn <span className="ext">↗</span></a>}
       {post.viaMake && (
         <div className="u-muted" style={{ fontSize: 13, marginTop: 12 }}>
-          {post.state === "SENT" ? (post.unverified ? "Sent to Make, but delivery couldn't be confirmed from the browser. Check the scenario history." : post.scheduledHandoff ? `Handed to Make to publish on ${post.date}${post.time ? " at " + post.time : ""}. Not yet confirmed as published.` : "Sent to Make — LinkedIn publishing is being processed. Not yet confirmed as published.") : `Published via Make${post.confirmedBy === "manual" ? " (confirmed by you)" : ""}.`}
+          {post.state === "HELD" ? (post.makeNote || "Not published. LinkedIn's API cannot create this post type — the post and its media are kept in Make.")
+            : post.state === "SENT" ? (post.unverified ? "Sent to Make, but delivery couldn't be confirmed from the browser. Check the scenario history." : post.makeState === "queued" || post.scheduledHandoff ? `Queued in Make to publish on ${post.date}${post.time ? " at " + post.time : ""}. Nothing is on LinkedIn yet.` : "Sent to Make — LinkedIn hasn't confirmed the post yet.")
+            : `Published via Make${post.confirmedBy === "manual" ? " (confirmed by you)" : ""}.`}
           {` Sent as ${post.postType}${post.mediaSent ? ` with ${post.mediaSent} media file(s)` : ""}.`}
           {(post.limits || []).map((l, i) => <div key={i} className="badge warn" style={{ marginTop: 8 }}>{l}</div>)}
         </div>

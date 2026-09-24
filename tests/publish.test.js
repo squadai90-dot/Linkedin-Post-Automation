@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readMakeReply, MAKE_CONFIG, makeLinkedInService, scheduledMediaFit, webhookHealth, SCHEDULED_MEDIA_BUDGET, DATA_STORE_BYTES } from "../src/lib/publish.js";
+import { readMakeReply, MAKE_CONFIG, makeLinkedInService, scheduledMediaFit, webhookHealth, publishTimeout, SCHEDULED_MEDIA_BUDGET, DATA_STORE_BYTES } from "../src/lib/publish.js";
 import { normalizeFormats, toggleFormat, stagesFor, visualOf, labelFor, composeFormat, normalizeFormat, compactAssets, EMPTY_ASSETS, MAX_PERSISTED_UPLOAD } from "../src/lib/formats.js";
 
 describe("readMakeReply", () => {
@@ -203,5 +203,46 @@ describe("webhookHealth", () => {
     const r = await withFetch(async () => { throw new Error("blocked"); }, "https://hook.eu1.make.com/abc123");
     expect(r.ok).toBe(null);
     expect(r.state).toBe("unreadable");
+  });
+});
+
+describe("readMakeReply states", () => {
+  it("names each of the six answers the scenario can give", () => {
+    expect(readMakeReply({ status: "published", urn: "urn:li:share:7" }).state).toBe("published");
+    expect(readMakeReply({ status: "queued", postId: "p-w-1" }).state).toBe("queued");
+    expect(readMakeReply({ status: "unsupported", postId: "p-w-1" }).state).toBe("unsupported");
+    expect(readMakeReply({ status: "rejected", postId: "p-w-1" }).state).toBe("rejected");
+    expect(readMakeReply({ status: "failed", stage: "linkedin" }).state).toBe("failed");
+    expect(readMakeReply({ status: "ok" }).state).toBe("accepted");
+    expect(readMakeReply("Accepted").state).toBe("accepted");
+  });
+
+  it("does not call a queued post published, whatever ids ride along", () => {
+    const r = readMakeReply({ status: "queued", postId: "p-w-abc", dueAt: "1790078880" });
+    expect(r.published).toBe(false);
+    expect(r.urn).toBe(null);
+  });
+
+  it("carries the reason and the stage of a failure", () => {
+    const r = readMakeReply({ status: "failed", stage: "datastore", message: "Data store is full." });
+    expect(r.message).toBe("Data store is full.");
+    expect(r.stage).toBe("datastore");
+    expect(r.published).toBe(false);
+  });
+
+  it("trusts a real urn even when the status word is missing", () => {
+    expect(readMakeReply({ urn: "urn:li:share:7508197870823485442" }).state).toBe("published");
+  });
+});
+
+describe("publishTimeout", () => {
+  it("gives a video long enough to upload", () => {
+    expect(publishTimeout({ postType: "video", media: [{ kind: "video" }] })).toBeGreaterThan(MAKE_CONFIG.timeoutMs);
+    expect(publishTimeout({ postType: "image", media: [{ kind: "image" }] })).toBe(MAKE_CONFIG.timeoutMs);
+    expect(publishTimeout({ postType: "text", media: [] })).toBe(MAKE_CONFIG.timeoutMs);
+  });
+
+  it("spots a video carried by a post that is not typed as one", () => {
+    expect(publishTimeout({ postType: "image", media: [{ kind: "video" }] })).toBeGreaterThan(MAKE_CONFIG.timeoutMs);
   });
 });
