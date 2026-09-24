@@ -140,41 +140,47 @@
               "onerror": [
                 {
                   "id": 71,
-                  "mapper": {
-                    "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"{{replace(40.error.message; \\\"\\\\\\\"\\\"; \\\"'\\\")}}\"}",
-                    "status": 502,
-                    "headers": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                      }
-                    ]
-                  },
-                  "module": "gateway:WebhookRespond",
+                  "module": "datastore:AddRecord",
                   "version": 1,
                   "metadata": {
                     "restore": {
                       "expect": {
-                        "headers": {
-                          "mode": "chose",
-                          "items": [
-                            null,
-                            null
-                          ]
+                        "overwrite": {
+                          "mode": "chose"
+                        }
+                      },
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
                         }
                       }
                     },
-                    "advanced": true,
                     "designer": {
                       "x": 1180,
                       "y": -720
                     }
                   },
-                  "parameters": {}
+                  "parameters": {
+                    "datastore": 193288
+                  },
+                  "mapper": {
+                    "key": "{{2.postId}}",
+                    "overwrite": true,
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this immediate post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{40.error.message}}",
+                      "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                      "postId": "{{2.postId}}",
+                      "source": "{{2.source}}",
+                      "idempotencyKey": "{{2.idempotencyKey}}",
+                      "postType": "{{2.postType}}",
+                      "content": "{{2.content}}",
+                      "company": "{{2.company}}",
+                      "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                      "publishMode": "{{2.publishMode}}",
+                      "timezone": "{{2.timezone}}"
+                    }
+                  }
                 },
                 {
                   "id": 72,
@@ -304,41 +310,47 @@
               "onerror": [
                 {
                   "id": 74,
-                  "mapper": {
-                    "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"{{replace(41.error.message; \\\"\\\\\\\"\\\"; \\\"'\\\")}}\"}",
-                    "status": 502,
-                    "headers": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                      }
-                    ]
-                  },
-                  "module": "gateway:WebhookRespond",
+                  "module": "datastore:AddRecord",
                   "version": 1,
                   "metadata": {
                     "restore": {
                       "expect": {
-                        "headers": {
-                          "mode": "chose",
-                          "items": [
-                            null,
-                            null
-                          ]
+                        "overwrite": {
+                          "mode": "chose"
+                        }
+                      },
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
                         }
                       }
                     },
-                    "advanced": true,
                     "designer": {
                       "x": 1180,
                       "y": -500
                     }
                   },
-                  "parameters": {}
+                  "parameters": {
+                    "datastore": 193288
+                  },
+                  "mapper": {
+                    "key": "{{2.postId}}",
+                    "overwrite": true,
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this immediate post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{41.error.message}}",
+                      "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                      "postId": "{{2.postId}}",
+                      "source": "{{2.source}}",
+                      "idempotencyKey": "{{2.idempotencyKey}}",
+                      "postType": "{{2.postType}}",
+                      "content": "{{2.content}}",
+                      "company": "{{2.company}}",
+                      "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                      "publishMode": "{{2.publishMode}}",
+                      "timezone": "{{2.timezone}}"
+                    }
+                  }
                 },
                 {
                   "id": 75,
@@ -467,41 +479,47 @@
               "onerror": [
                 {
                   "id": 77,
-                  "mapper": {
-                    "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"{{replace(42.error.message; \\\"\\\\\\\"\\\"; \\\"'\\\")}}\"}",
-                    "status": 502,
-                    "headers": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                      }
-                    ]
-                  },
-                  "module": "gateway:WebhookRespond",
+                  "module": "datastore:AddRecord",
                   "version": 1,
                   "metadata": {
                     "restore": {
                       "expect": {
-                        "headers": {
-                          "mode": "chose",
-                          "items": [
-                            null,
-                            null
-                          ]
+                        "overwrite": {
+                          "mode": "chose"
+                        }
+                      },
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
                         }
                       }
                     },
-                    "advanced": true,
                     "designer": {
                       "x": 1180,
                       "y": -280
                     }
                   },
-                  "parameters": {}
+                  "parameters": {
+                    "datastore": 193288
+                  },
+                  "mapper": {
+                    "key": "{{2.postId}}",
+                    "overwrite": true,
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this immediate post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{42.error.message}}",
+                      "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                      "postId": "{{2.postId}}",
+                      "source": "{{2.source}}",
+                      "idempotencyKey": "{{2.idempotencyKey}}",
+                      "postType": "{{2.postType}}",
+                      "content": "{{2.content}}",
+                      "company": "{{2.company}}",
+                      "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                      "publishMode": "{{2.publishMode}}",
+                      "timezone": "{{2.timezone}}"
+                    }
+                  }
                 },
                 {
                   "id": 78,
@@ -747,41 +765,47 @@
               "onerror": [
                 {
                   "id": 80,
-                  "mapper": {
-                    "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"{{replace(45.error.message; \\\"\\\\\\\"\\\"; \\\"'\\\")}}\"}",
-                    "status": 502,
-                    "headers": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                      }
-                    ]
-                  },
-                  "module": "gateway:WebhookRespond",
+                  "module": "datastore:AddRecord",
                   "version": 1,
                   "metadata": {
                     "restore": {
                       "expect": {
-                        "headers": {
-                          "mode": "chose",
-                          "items": [
-                            null,
-                            null
-                          ]
+                        "overwrite": {
+                          "mode": "chose"
+                        }
+                      },
+                      "parameters": {
+                        "datastore": {
+                          "label": "Unison Scheduled Posts"
                         }
                       }
                     },
-                    "advanced": true,
                     "designer": {
                       "x": 2020,
                       "y": -60
                     }
                   },
-                  "parameters": {}
+                  "parameters": {
+                    "datastore": 193288
+                  },
+                  "mapper": {
+                    "key": "{{2.postId}}",
+                    "overwrite": true,
+                    "data": {
+                      "status": "failed",
+                      "note": "LinkedIn refused this immediate post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{45.error.message}}",
+                      "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                      "postId": "{{2.postId}}",
+                      "source": "{{2.source}}",
+                      "idempotencyKey": "{{2.idempotencyKey}}",
+                      "postType": "{{2.postType}}",
+                      "content": "{{2.content}}",
+                      "company": "{{2.company}}",
+                      "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                      "publishMode": "{{2.publishMode}}",
+                      "timezone": "{{2.timezone}}"
+                    }
+                  }
                 },
                 {
                   "id": 81,
@@ -947,51 +971,13 @@
               },
               "onerror": [
                 {
-                  "id": 84,
-                  "mapper": {
-                    "body": "{\"status\":\"failed\",\"stage\":\"datastore\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"message\":\"Make could not store this post. Its data store is 1 MB in total, so it is probably full of media from earlier posts. {{replace(46.error.message; \\\"\\\\\\\"\\\"; \\\"'\\\")}}\"}",
-                    "status": 502,
-                    "headers": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                      }
-                    ]
-                  },
-                  "module": "gateway:WebhookRespond",
-                  "version": 1,
-                  "metadata": {
-                    "restore": {
-                      "expect": {
-                        "headers": {
-                          "mode": "chose",
-                          "items": [
-                            null,
-                            null
-                          ]
-                        }
-                      }
-                    },
-                    "advanced": true,
-                    "designer": {
-                      "x": 1180,
-                      "y": 220
-                    }
-                  },
-                  "parameters": {}
-                },
-                {
                   "id": 85,
                   "module": "builtin:Ignore",
                   "version": 1,
                   "mapper": {},
                   "metadata": {
                     "designer": {
-                      "x": 1460,
+                      "x": 1180,
                       "y": 220
                     }
                   }
@@ -1136,51 +1122,13 @@
               },
               "onerror": [
                 {
-                  "id": 184,
-                  "mapper": {
-                    "body": "{\"status\":\"failed\",\"stage\":\"datastore\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"scheduled\",\"message\":\"Make could not queue this post. Its data store holds 1 MB in total, so it is probably full of media from earlier posts. {{replace(5.error.message; \\\"\\\\\\\"\\\"; \\\"'\\\")}}\"}",
-                    "status": 502,
-                    "headers": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                      }
-                    ]
-                  },
-                  "module": "gateway:WebhookRespond",
-                  "version": 1,
-                  "metadata": {
-                    "restore": {
-                      "expect": {
-                        "headers": {
-                          "mode": "chose",
-                          "items": [
-                            null,
-                            null
-                          ]
-                        }
-                      }
-                    },
-                    "advanced": true,
-                    "designer": {
-                      "x": 1180,
-                      "y": 460
-                    }
-                  },
-                  "parameters": {}
-                },
-                {
                   "id": 185,
                   "module": "builtin:Ignore",
                   "version": 1,
                   "mapper": {},
                   "metadata": {
                     "designer": {
-                      "x": 1460,
+                      "x": 1180,
                       "y": 460
                     }
                   }

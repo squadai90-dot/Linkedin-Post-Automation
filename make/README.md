@@ -37,10 +37,30 @@ actually happened rather than Make's default "Accepted".
 | Scheduled | `scheduled` | Stores it with `dueAt`, `status:"queued"` | `200 {status:"queued", dueAt}` |
 | Nothing matched | any other mode or type | nothing | `422 {status:"rejected"}` |
 
-Each LinkedIn call and each data-store write carries an **error handler**:
-respond `502 {status:"failed", stage, message}`, then `Skip`. Swallowing the
-error matters — Make switches a scenario off after three consecutive errors,
-so without this one refused post would stop publishing for everyone.
+Each LinkedIn call carries an **error handler**: write a `failed` record to
+the data store with LinkedIn's own message, then `Skip`. Swallowing the error
+matters — Make switches a scenario off after three consecutive errors, so
+without this one refused post would stop publishing for everyone. The two
+data-store writes get a bare `Skip`: reporting a failed write by writing to
+the same store is circular, and a full store is exactly when the second write
+would fail too.
+
+> **A Webhook response module cannot sit in an error route.** Make accepts the
+> blueprint — `scenarios_update` even returns `isinvalid: false` — and then
+> refuses to initialise the scenario when a payload arrives:
+> *Scenario validation failed - 6 problem(s) found*, one per handler. It then
+> switches itself off, the webhook queues every post, and nothing reaches
+> LinkedIn while Unison is told only that Make has the request. It cost a
+> production outage on 2026-09-24. Record a refusal in the data store instead.
+>
+> The corollary: **`isinvalid: false` on a push does not mean the blueprint is
+> valid.** Make validates properly at initialisation. After any change to this
+> scenario, force a run and check the execution is `status: 1` — a broken
+> blueprint gives `status: 3`, 0 operations, `BlueprintValidationError`.
+
+Make hands a failure to its error route under the **failed module's own id**:
+`{{40.error.message}}`, not `{{error.message}}`. The global form silently
+resolves to nothing, which is why early failure notes were blank.
 
 Every response sets `Access-Control-Allow-Origin: *`, which is what lets
 Unison read the reply when it posts to the webhook straight from the browser.
