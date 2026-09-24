@@ -433,19 +433,15 @@
             },
             {
               "id": 31,
-              "mapper": {
-                "key": "{{19.key}}",
-                "data": {
-                  "status": "published",
-                  "note": "",
-                  "media": "{{slice(19.data.media; 0; 0)}}",
-                  "publishedUrn": "{{10.id}}"
-                }
-              },
-              "module": "datastore:UpdateRecord",
+              "module": "datastore:AddRecord",
               "version": 1,
               "metadata": {
                 "restore": {
+                  "expect": {
+                    "overwrite": {
+                      "mode": "chose"
+                    }
+                  },
                   "parameters": {
                     "datastore": {
                       "label": "Unison Scheduled Posts"
@@ -459,6 +455,32 @@
               },
               "parameters": {
                 "datastore": 193288
+              },
+              "mapper": {
+                "key": "{{19.key}}",
+                "overwrite": true,
+                "data": {
+                  "status": "published",
+                  "publishedUrn": "{{10.id}}",
+                  "note": "",
+                  "source": "{{19.data.source}}",
+                  "postId": "{{19.data.postId}}",
+                  "idempotencyKey": "{{19.data.idempotencyKey}}",
+                  "postType": "{{19.data.postType}}",
+                  "content": "{{19.data.content}}",
+                  "company": "{{19.data.company}}",
+                  "companyUrn": "{{19.data.companyUrn}}",
+                  "publishMode": "{{19.data.publishMode}}",
+                  "scheduledDate": "{{19.data.scheduledDate}}",
+                  "scheduledTime": "{{19.data.scheduledTime}}",
+                  "timezone": "{{19.data.timezone}}",
+                  "dueAt": "{{19.data.dueAt}}",
+                  "attemptAt": "{{19.data.attemptAt}}",
+                  "submittedBy": {
+                    "name": "{{19.data.submittedBy.name}}",
+                    "email": "{{19.data.submittedBy.email}}"
+                  }
+                }
               }
             }
           ]
@@ -607,19 +629,15 @@
             },
             {
               "id": 32,
-              "mapper": {
-                "key": "{{19.key}}",
-                "data": {
-                  "status": "published",
-                  "note": "",
-                  "media": "{{slice(19.data.media; 0; 0)}}",
-                  "publishedUrn": "{{12.id}}"
-                }
-              },
-              "module": "datastore:UpdateRecord",
+              "module": "datastore:AddRecord",
               "version": 1,
               "metadata": {
                 "restore": {
+                  "expect": {
+                    "overwrite": {
+                      "mode": "chose"
+                    }
+                  },
                   "parameters": {
                     "datastore": {
                       "label": "Unison Scheduled Posts"
@@ -633,6 +651,32 @@
               },
               "parameters": {
                 "datastore": 193288
+              },
+              "mapper": {
+                "key": "{{19.key}}",
+                "overwrite": true,
+                "data": {
+                  "status": "published",
+                  "publishedUrn": "{{12.id}}",
+                  "note": "",
+                  "source": "{{19.data.source}}",
+                  "postId": "{{19.data.postId}}",
+                  "idempotencyKey": "{{19.data.idempotencyKey}}",
+                  "postType": "{{19.data.postType}}",
+                  "content": "{{19.data.content}}",
+                  "company": "{{19.data.company}}",
+                  "companyUrn": "{{19.data.companyUrn}}",
+                  "publishMode": "{{19.data.publishMode}}",
+                  "scheduledDate": "{{19.data.scheduledDate}}",
+                  "scheduledTime": "{{19.data.scheduledTime}}",
+                  "timezone": "{{19.data.timezone}}",
+                  "dueAt": "{{19.data.dueAt}}",
+                  "attemptAt": "{{19.data.attemptAt}}",
+                  "submittedBy": {
+                    "name": "{{19.data.submittedBy.name}}",
+                    "email": "{{19.data.submittedBy.email}}"
+                  }
+                }
               }
             }
           ]
