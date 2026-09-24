@@ -25,13 +25,13 @@ scheduler. Those results are real LinkedIn posts.
 
 | # | Post type | Result | Evidence |
 |---|---|---|---|
-| 1 | Text | **PASS** | `urn:li:share:7508756712405929985` · record `t-sched-text-01` → `published` |
+| 1 | Text | **PASS** | `urn:li:share:7508794230853582848` · re-tested on the final blueprint (earlier pass: `…7508756712405929985`) |
 | 2 | Article | **PASS** | `urn:li:share:7508756911819956227` · record `t-sched-article-01` → `published`, article body still on the record |
 | 3 | Image | **PASS** | `urn:li:share:7508766855591997440` · record `t-sched-image-01`, real base64 PNG uploaded by the scenario (earlier passes: `…7508760940100833280`, `…7508766041884221440`) |
-| 4 | Poll | **PASS** | `urn:li:ugcPost:7508760528153071616` · record `t-sched-poll-01`, urn read from LinkedIn's `x-restli-id` header |
-| 5 | Video | **NOT TESTED** | No video file could be produced in this container (no ffmpeg, no encoder). The route is the same shape as the image route and was verified at module level on 2026-09-22, but **no scheduled video post has been seen on LinkedIn** |
-| 6 | Multi-image | **PASS as held** | Routed to the unsupported branch; nothing published, nothing discarded |
-| 7 | Document | **PASS as held** | Record `p-w-muaxnarmjxq2` sits at `unsupported` with its reason |
+| 4 | Poll | **PASS** | `urn:li:ugcPost:7508794234217517058` · re-tested on the final blueprint; urn read from LinkedIn's `x-restli-id` header (earlier pass: `…7508760528153071616`) |
+| 5 | Video | **FAIL, on my test file** | The route ran end to end and LinkedIn gave a real verdict on real bytes: `PROCESSING_FAILED — Uploaded file is corrupted`. The file *was* corrupt: 80 characters were lost transcribing 42,140 characters of base64 into the test record, confirmed by hashing the stored value against the original. So the base64 → binary → upload → LinkedIn path works; what is unproven is a **good** video reaching the feed. Needs one real upload from Unison |
+| 6 | Multi-image | **BLOCKED** | Tested, not assumed: `initializeUpload` succeeds, the binary PUT returns `405 Not Allowed`. Make's LinkedIn module only calls `api.linkedin.com`; the upload URL is on another host. See `make/README.md` |
+| 7 | Document | **BLOCKED** | Same two-step upload as multi-image, same 405. Held at `unsupported` with its reason |
 | 8 | Carousel | **PASS as held** | Record `t-sched-carousel-01` → `unsupported` with the reason on the record |
 
 "Held" is the correct outcome, not a failure: LinkedIn's API cannot create

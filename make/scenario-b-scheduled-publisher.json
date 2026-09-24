@@ -1020,7 +1020,7 @@
                 "key": "{{19.key}}",
                 "data": {
                   "status": "unsupported",
-                  "note": "Held, not published. Multi-image and document posts need a multi-step LinkedIn upload that is not built yet; LinkedIn has no organic carousel API at all. The text, the media and the schedule are all still here."
+                  "note": "Held, not published. Multi-image and document posts need LinkedIn's two-step upload: initializeUpload works from Make, but the binary PUT goes to a different host and Make's LinkedIn module can only call api.linkedin.com, so it answers 405. LinkedIn has no organic carousel API at all. The text, the media and the schedule are all still here."
                 }
               },
               "module": "datastore:UpdateRecord",

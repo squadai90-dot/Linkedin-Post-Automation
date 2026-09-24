@@ -127,6 +127,48 @@ seconds and `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to
 `15 * 60 * 1000` together — changing one without the other makes Unison
 promise something Make does not do.
 
+## Why multi-image and document are not built
+
+Both need LinkedIn's **two-step upload**: register the file, then PUT the bytes
+to the URL that registration hands back. Step one works from Make. Step two
+cannot be done at all with the current setup, and it was tested rather than
+assumed:
+
+```
+POST /rest/images?action=initializeUpload   → succeeded, returned uploadUrl + image urn
+PUT  {{uploadUrl}}                          → 405 Not Allowed (nginx HTML, not a LinkedIn API error)
+```
+
+`linkedin:MakeAPICall` takes *a path relative to `api.linkedin.com`*. Given an
+absolute upload URL it still prefixes its own host, so the PUT lands on the
+API gateway, which does not serve that path — hence a raw nginx 405 rather
+than a LinkedIn error. The upload URL lives on a different host.
+
+The obvious alternative, `http:ActionSendData`, can reach any host but cannot
+authenticate: LinkedIn's upload URL needs `Authorization: Bearer <token>`, and
+Make keeps the connection's token inside the LinkedIn app where no module can
+map it.
+
+So the blocker is not LinkedIn's API — the API supports both post types. It is
+that **Make's LinkedIn connection cannot make the one call those post types
+need**. Two things would unblock it, both requiring a decision rather than
+code:
+
+1. **An HTTP OAuth 2.0 connection in Make** holding a LinkedIn token of its
+   own, used for the PUT while the LinkedIn app keeps doing the rest. Needs
+   the LinkedIn app's client ID and secret.
+2. **Unison sends its own token.** The payload already carries
+   `linkedinAccessToken`, gated behind Settings → LinkedIn → *Send my LinkedIn
+   token with posts*, which needs the OAuth bridge (`api/linkedin.js`)
+   deployed. Make would then use `http:ActionSendData` with that token.
+
+Until one of those exists, multi-image and document posts are stored with
+`status: "unsupported"` and their reason, and Unison says so on screen. Nothing
+is discarded and nothing is published in the wrong format.
+
+Carousel is different and simpler: LinkedIn has **no organic carousel API** at
+all. No amount of plumbing changes that.
+
 ## Restoring a scenario from these files
 
 The JSON here is the blueprint only. Make's API takes `scheduling` as a
