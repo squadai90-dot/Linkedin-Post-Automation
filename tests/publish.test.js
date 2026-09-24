@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readMakeReply, MAKE_CONFIG, makeLinkedInService } from "../src/lib/publish.js";
+import { readMakeReply, MAKE_CONFIG, makeLinkedInService, scheduledMediaFit, webhookHealth, SCHEDULED_MEDIA_BUDGET, DATA_STORE_BYTES } from "../src/lib/publish.js";
 import { normalizeFormats, toggleFormat, stagesFor, visualOf, labelFor, composeFormat, normalizeFormat, compactAssets, EMPTY_ASSETS, MAX_PERSISTED_UPLOAD } from "../src/lib/formats.js";
 
 describe("readMakeReply", () => {
@@ -138,5 +138,70 @@ describe("compactAssets", () => {
     expect(out.video.url).toBe(null);
     expect(out.video.blob).toBe(null);
     expect(out.video.storyboard).toHaveLength(1);
+  });
+});
+
+describe("scheduledMediaFit", () => {
+  const img = (bytes) => ({ kind: "image", data: "a".repeat(bytes) });
+
+  it("lets a text-only scheduled post straight through", () => {
+    expect(scheduledMediaFit({ media: [] })).toEqual({ ok: true, bytes: 0 });
+    expect(scheduledMediaFit({}).ok).toBe(true);
+  });
+
+  it("allows media that fits inside the data store budget", () => {
+    const r = scheduledMediaFit({ media: [img(SCHEDULED_MEDIA_BUDGET - 10)] });
+    expect(r.ok).toBe(true);
+  });
+
+  it("refuses media that would crowd out the whole data store", () => {
+    const r = scheduledMediaFit({ media: [img(SCHEDULED_MEDIA_BUDGET + 1)] });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/MB/);
+  });
+
+  it("counts every file, not just the largest", () => {
+    const half = Math.floor(SCHEDULED_MEDIA_BUDGET * 0.6);
+    expect(scheduledMediaFit({ media: [img(half)] }).ok).toBe(true);
+    expect(scheduledMediaFit({ media: [img(half), img(half)] }).ok).toBe(false);
+  });
+
+  it("keeps the budget under the store Make actually gives us", () => {
+    expect(SCHEDULED_MEDIA_BUDGET).toBeLessThan(DATA_STORE_BYTES);
+  });
+});
+
+describe("webhookHealth", () => {
+  const withFetch = async (impl, url) => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = impl;
+    try { return await webhookHealth(url); } finally { globalThis.fetch = prev; }
+  };
+  const reply = (status, body = "") => async () => ({ ok: status >= 200 && status < 300, status, text: async () => body });
+
+  it("rejects an address that is not a Make webhook before asking the network", async () => {
+    const r = await webhookHealth("https://example.com/hook");
+    expect(r.ok).toBe(false);
+    expect(r.state).toBe("not-a-make-url");
+  });
+
+  it("reports a live webhook", async () => {
+    const r = await withFetch(reply(200, "Accepted"), "https://hook.eu1.make.com/abc123");
+    expect(r.ok).toBe(true);
+    expect(r.state).toBe("live");
+  });
+
+  it("names a deleted scenario rather than blaming the post", async () => {
+    for (const code of [400, 404, 410]) {
+      const r = await withFetch(reply(code, "not exist"), "https://hook.eu1.make.com/abc123");
+      expect(r.state).toBe("gone");
+      expect(r.detail).toMatch(/Settings|scenario/i);
+    }
+  });
+
+  it("does not call an unreadable reply a fault", async () => {
+    const r = await withFetch(async () => { throw new Error("blocked"); }, "https://hook.eu1.make.com/abc123");
+    expect(r.ok).toBe(null);
+    expect(r.state).toBe("unreadable");
   });
 });

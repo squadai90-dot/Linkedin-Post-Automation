@@ -557,7 +557,10 @@ export function Workspace(p) {
                 )}
                 {publishState === "FAILED" && (
                   <div className="card tight" style={{ marginTop: 16, borderColor: "rgba(255,122,102,.45)" }}>
-                    <b>{publishKind === "sandbox" ? "Not sent from here." : publishVia === "make" ? "Unable to publish to LinkedIn." : "Publishing failed."}</b>
+                    <b>{publishKind === "sandbox" ? "Not sent from here."
+                      : publishKind === "hook-dead" ? "Nothing was sent \u2014 the webhook address is out of date."
+                      : publishKind === "store-full" ? "Nothing was sent \u2014 this post is too heavy to schedule."
+                      : publishVia === "make" ? "Unable to publish to LinkedIn." : "Publishing failed."}</b>
                     <div className="u-muted" style={{ marginTop: 5 }}>{publishError || "LinkedIn rejected the request."} Your draft and media are safe.</div>
                     {publishLimits.length > 0 && publishLimits.map((l, i) => <div key={i} className="badge warn" style={{ marginTop: 10 }}>{l}</div>)}
                     {publishKind === "sandbox" && (
@@ -569,7 +572,13 @@ export function Workspace(p) {
                       </div>
                     )}
                     <div className="row" style={{ marginTop: 12 }}>
-                      <button className="btn sm" onClick={() => { setFailMode(false); publishNow(); }}>Retry</button>
+                      {/* Retrying a dead webhook just fails again. The fix is in
+                          Settings, so that is the button we put in front. */}
+                      {publishKind === "hook-dead"
+                        ? <button className="btn sm primary" onClick={() => setModal("settings", "linkedin")}>Open webhook settings</button>
+                        : publishKind === "store-full"
+                          ? <button className="btn sm primary" onClick={() => { setFailMode(false); publishNow(); }}>Publish now instead</button>
+                          : <button className="btn sm" onClick={() => { setFailMode(false); publishNow(); }}>Retry</button>}
                       {publishKind === "sandbox" && (
                         <button className="btn sm" onClick={() => { const pl = getLastPayload(); if (pl) { navigator.clipboard?.writeText(JSON.stringify(pl, null, 2)); notify?.("Payload copied.", { tone: "ok" }); } }}>Copy payload for testing</button>
                       )}

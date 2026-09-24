@@ -1464,12 +1464,17 @@ Give up to 4 of each. Only include what the document actually says.`,
     } catch (e) {
       if (!live()) return;
       let kind = e?.kind || null;
+      /* The default is deliberately vague because an unrecognised failure is
+         vague. Every kind below is named because it has one cause and one
+         fix, and saying which saves the user from guessing. */
       let label = "Make did not accept the post";
       if (kind === "relay-error") label = "The publishing service rejected the post";
       if (kind === "sandbox") { label = "This page can't make outside requests"; setPublishFramed(!!e.framed); }
       else if (kind === "timeout") label = "Make didn't respond in time";
       else if (kind === "too-large") label = "Post too large to send";
       else if (kind === "no-video") label = "No video file to send";
+      else if (kind === "hook-dead") label = "The saved webhook address no longer exists";
+      else if (kind === "store-full") label = "Too much media to hold until the scheduled time";
       else if (kind === "relay-missing") { kind = "sandbox"; label = "No publishing service is deployed here"; }
       step(label, "failed");
       setPublishState("FAILED"); setStage("FAILED");
@@ -1480,6 +1485,8 @@ Give up to 4 of each. Only include what the document actually says.`,
         : kind === "too-large" ? "The post and its media are too large to send in one request. Reduce the media and try again."
         : kind === "no-video" ? "This is a video post but there is no video file yet. Export the video in the Media step (or upload one), then publish."
         : kind === "timeout" ? "Make didn't answer in time. The post may already have reached it — check the scenario before sending again."
+        : kind === "hook-dead" ? `Make says the webhook saved in Settings no longer exists, so nothing was sent. This happens when the scenario behind it was deleted or rebuilt. Open the scenario in Make, copy the address shown on its webhook module, and paste it into Settings \u2192 Publishing \u2192 Make webhook URL. Retrying without changing it will fail the same way.`
+        : kind === "store-full" ? (e?.message || "The media on this post is too large for Make to hold until the scheduled time.")
         : kind === "cors" ? "Make received the request but didn't allow this page to read the reply, so Unison can't confirm what happened. Sending without confirmation will get the post through."
         : kind === "sandbox" ? "This preview can't reach the publishing service, so nothing was sent — LinkedIn and Make are fine, the preview just can't make outside requests. Publish from the deployed version and this post will go straight through."
         : "Unable to publish to LinkedIn. Please try again.");

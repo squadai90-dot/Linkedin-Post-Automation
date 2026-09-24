@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { AI_CONFIG, MODEL_REGISTRY, AI_STATUS, PROVIDERS, MODELS, modelsFor, rateFor, aiRouter, hostedProvider, activeProvider, friendlyError, blockedRemedy, modelForTier, TIER_DEFAULTS } from "../lib/ai.js";
-import { PUBLISH_RELAY_PATH, MAKE_CONFIG } from "../lib/publish.js";
+import { PUBLISH_RELAY_PATH, MAKE_CONFIG, webhookHealth } from "../lib/publish.js";
 import { imageProvider, videoProvider } from "../lib/media.js";
 import { TIMEZONES, localTimezone } from "../lib/dates.js";
 import { FREE_APIS, DEFAULT_EXTRAS } from "../lib/freeApis.js";
@@ -49,6 +49,15 @@ export function Settings(props) {
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  /* A webhook that points at a deleted scenario looks identical to a working
+     one in a text box. Asking Make is the only way to tell them apart. */
+  const [hookCheck, setHookCheck] = useState(null);
+  const [hookBusy, setHookBusy] = useState(false);
+  const checkHook = useCallback(async (url) => {
+    setHookBusy(true); setHookCheck(null);
+    try { setHookCheck(await webhookHealth(url)); }
+    finally { setHookBusy(false); }
+  }, []);
   const provider = aiSettings?.provider || AI_CONFIG.provider;
   const meta = PROVIDERS[provider] || activeProvider();
   const savedKey = aiSettings?.keys?.[provider] || "";
@@ -398,11 +407,17 @@ export function Settings(props) {
             <Row title="Publishing service (relay)" sub={relay?.relay ? `Deployed at ${PUBLISH_RELAY_PATH}${relay.webhookConfigured === false ? " · webhook not set on the server" : ""}` : relay?.checked ? "Not deployed — the browser posts to the webhook directly." : "Checking…"}>
               <span className={"dot " + (relay?.relay ? "g" : relay?.checked ? "y" : "y")} style={{ flex: "none" }} />
             </Row>
-            <Field label="Make webhook URL" hint={pubSettings?.isDefault ? "Using the team default webhook." : "Custom webhook in use."}>
+            <Field label="Make webhook URL" hint={pubSettings?.isDefault ? "Using the team default webhook." : "Custom webhook in use. A webhook saved here overrides the team default \u2014 if the scenario behind it was deleted, every post will fail until this is updated or reset."}>
               <div className="row">
-                <input className="ta mono" style={{ flex: 1, minWidth: 220 }} spellCheck={false} value={pubSettings?.webhookUrl || ""} onChange={(e) => updatePublish({ webhookUrl: e.target.value })} />
-                {!pubSettings?.isDefault && <button className="btn sm" onClick={() => updatePublish({ webhookUrl: "" })}>Reset</button>}
+                <input className="ta mono" style={{ flex: 1, minWidth: 220 }} spellCheck={false} value={pubSettings?.webhookUrl || ""} onChange={(e) => { setHookCheck(null); updatePublish({ webhookUrl: e.target.value }); }} />
+                <button className="btn sm" disabled={hookBusy} onClick={() => checkHook(pubSettings?.webhookUrl || MAKE_CONFIG.url)}>{hookBusy ? "Checking\u2026" : "Test webhook"}</button>
+                {!pubSettings?.isDefault && <button className="btn sm" onClick={() => { setHookCheck(null); updatePublish({ webhookUrl: "" }); }}>Reset</button>}
               </div>
+              {hookCheck && (
+                <div className={"badge " + (hookCheck.ok ? "ok" : hookCheck.ok === null ? "warn" : "bad")} style={{ marginTop: 8, display: "block", whiteSpace: "normal", lineHeight: 1.45 }}>
+                  {hookCheck.detail}
+                </div>
+              )}
             </Field>
             <div className="grid2">
               <Field label="Company Page name" hint="Sent with every post so the scenario can route it."><input className="ta" placeholder="Page name" value={makeCompany.name} onChange={(e) => setMakeCompany({ ...makeCompany, name: e.target.value })} /></Field>

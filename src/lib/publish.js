@@ -61,6 +61,25 @@ export const MAKE_CONFIG = {
    is not a simple CORS request, so the browser preflights it and Make's
    webhook does not answer preflights. These keep the same JSON inside a
    safelisted content type. The relay has no such constraint. */
+/* A scheduled post is parked in Make's data store until it is due, and that
+   store is capped for the whole team, not per record. Anything queued has to
+   fit inside it alongside everything else already waiting. Immediate posts
+   stream straight through and are not subject to this. */
+export const DATA_STORE_BYTES = 1024 * 1024;
+export const SCHEDULED_MEDIA_BUDGET = Math.floor(DATA_STORE_BYTES * 0.6);
+
+export function scheduledMediaFit(payload) {
+  const bytes = (payload?.media || []).reduce((n, m) => n + String(m?.data || "").length, 0);
+  if (!bytes) return { ok: true, bytes: 0 };
+  if (bytes > SCHEDULED_MEDIA_BUDGET) {
+    return {
+      ok: false, bytes,
+      reason: `This post carries ${(bytes / 1048576).toFixed(1)} MB of media. Make's data store holds ${(DATA_STORE_BYTES / 1048576).toFixed(0)} MB in total for the whole team, so a scheduled post cannot take more than about ${(SCHEDULED_MEDIA_BUDGET / 1048576).toFixed(1)} MB without crowding out everything else waiting. Publish it now instead, or use a smaller file.`,
+    };
+  }
+  return { ok: true, bytes };
+}
+
 export const MAKE_TRANSPORTS = {
   text: (json) => ({ headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json }),
   form: (json) => ({ headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: "payload=" + encodeURIComponent(json) }),
@@ -165,7 +184,18 @@ export const makeLinkedInService = {
     let parsed = null;
     try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
     mkLog("response", { status: res.status, ok: res.ok, ms: Date.now() - startedAt, body: parsed ?? raw.slice(0, 300) });
-    if (!res.ok) throw Object.assign(new Error(`Make returned ${res.status}.`), { kind: "http", status: res.status, transport: "text", body: parsed ?? raw });
+    if (!res.ok) {
+      /* Make returns 4xx for a webhook whose scenario was deleted or turned
+         off. The post is fine; the address is not. Saying so is the whole
+         difference between a five-second fix and an afternoon of guessing. */
+      const dead = res.status === 400 || res.status === 404 || res.status === 410;
+      const text = String(parsed?.message || parsed?.error || raw || "").toLowerCase();
+      const looksDead = dead || /not exist|no longer|gone|deactivat|disabled|deleted/.test(text);
+      throw Object.assign(
+        new Error(looksDead ? "That webhook no longer exists in Make." : `Make returned ${res.status}.`),
+        { kind: looksDead ? "hook-dead" : "http", status: res.status, transport: "text", body: parsed ?? raw }
+      );
+    }
     return { ok: true, delivered: true, confirmed: true, status: res.status, transport: "text", raw: parsed ?? raw, ...readMakeReply(parsed), at: new Date().toISOString() };
   },
 
@@ -295,9 +325,43 @@ return makeLinkedInService.configured() ? "make" : "none";
  failure never silently re-sends through Make, because the post may already
  be live. */
 export async function publishPost(payload) {
-if (await directLinkedInService.available(payload)) {
-  return { ...(await directLinkedInService.publish(payload)), route: "linkedin" };
+  /* A scheduled post has to survive in the data store until it is due. Check
+     it fits before sending, because the failure otherwise happens inside Make
+     where nobody sees it. */
+  if (payload?.publishMode === "scheduled") {
+    const fit = scheduledMediaFit(payload);
+    if (!fit.ok) throw Object.assign(new Error(fit.reason), { kind: "store-full", bytes: fit.bytes });
+  }
+  if (await directLinkedInService.available(payload)) {
+    return { ...(await directLinkedInService.publish(payload)), route: "linkedin" };
+  }
+  return { ...(await makeLinkedInService.publish(payload)), route: "make" };
 }
-return { ...(await makeLinkedInService.publish(payload)), route: "make" };
+
+/* Is the configured webhook real and attached to a live scenario? Make answers
+   a bare GET on a webhook URL, so this costs nothing and sends no post. */
+export async function webhookHealth(url = MAKE_CONFIG.url) {
+  if (!/^https:\/\/hook\.[a-z0-9.-]+\.make\.com\//.test(String(url || ""))) {
+    return { ok: false, state: "not-a-make-url", detail: "That is not a Make webhook address." };
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(url, { method: "GET", mode: "cors", signal: ctrl.signal });
+    const raw = await res.text().catch(() => "");
+    if (res.ok) return { ok: true, state: "live", detail: "Make answered. The webhook exists and its scenario is reachable." };
+    const dead = res.status === 400 || res.status === 404 || res.status === 410;
+    return {
+      ok: false,
+      state: dead ? "gone" : "error",
+      status: res.status,
+      detail: dead
+        ? "Make says this webhook no longer exists — its scenario was probably deleted. Open the scenario in Make, copy the webhook address shown on its first module, and paste it here."
+        : `Make answered ${res.status}: ${raw.slice(0, 120)}`,
+    };
+  } catch {
+    /* A browser that cannot read the reply is not proof the hook is dead. */
+    return { ok: null, state: "unreadable", detail: "The reply could not be read from this page, so the webhook could not be checked from here. That on its own is not a fault." };
+  } finally { clearTimeout(timer); }
 }
 
