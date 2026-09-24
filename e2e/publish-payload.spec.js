@@ -14,6 +14,18 @@ import { test, expect } from "@playwright/test";
 
 const HOOK = "**://hook.*.make.com/**";
 
+/* Which container the browser running this suite can actually record.
+   Chrome and Edge give H.264 in MP4, which is what LinkedIn documents.
+   Chromium built without proprietary codecs gives WebM. The app is expected
+   to send whichever it really produced and to say so — never to label a WebM
+   as an MP4, which is how a post reaches LinkedIn and is rejected as
+   corrupt after a minute of transcoding. */
+const recordedType = (page) =>
+  page.evaluate(() =>
+    ["video/mp4;codecs=avc1.42E01E", "video/mp4;codecs=avc1.4D401E", "video/mp4;codecs=h264",
+     "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+      .find((m) => MediaRecorder.isTypeSupported(m))?.split(";")[0] || "video/webm");
+
 const quiet = async (page) => {
   await page.route("**://api.anthropic.com/**", (r) => r.abort());
   await page.route("**://api.groq.com/**", (r) => r.abort());
@@ -75,7 +87,7 @@ test.describe("what Publish sends", () => {
     }
   });
 
-  test("a generated video is encoded and sent as a real MP4, with no manual export", async ({ page }) => {
+  test("a generated video is encoded and sent as a real file, with no manual export", async ({ page }) => {
     await quiet(page);
     const sent = await captureWebhook(page);
     await draftWith(page, "Why approval steps decide AI rollouts", "Video");
@@ -94,13 +106,18 @@ test.describe("what Publish sends", () => {
     expect(p.postType).toBe("video");
     const video = (p.media || []).find((m) => m.kind === "video");
     expect(video, "the payload must carry the video, not just describe one").toBeTruthy();
-    expect(video.mimeType).toBe("video/mp4");
-    expect(video.filename).toMatch(/\.mp4$/);
+
+    // Whatever it says it is, it must actually be that.
+    const expected = await recordedType(page);
+    expect(video.mimeType).toBe(expected);
+    expect(video.filename).toBe(expected === "video/mp4" ? "unison-video.mp4" : "unison-video.webm");
     // Real bytes: base64, and far more than an empty container would be.
     expect(typeof video.data).toBe("string");
     expect(video.data.length).toBeGreaterThan(2000);
     expect(video.data).toMatch(/^[A-Za-z0-9+/]+=*$/);
     expect(video.sizeBytes).toBeGreaterThan(1000);
+    // A browser that cannot record H.264 must not leave that a surprise.
+    if (expected !== "video/mp4") await expect(page.getByText(/rather than MP4/).first()).toBeVisible();
 
     // And the user is told it published, because Make said so — not because
     // the request was accepted.
@@ -127,7 +144,7 @@ test.describe("what Publish sends", () => {
     expect(p.scheduledDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(p.timezone).toBeTruthy();
     const video = (p.media || []).find((m) => m.kind === "video");
-    expect(video?.mimeType).toBe("video/mp4");
+    expect(video?.mimeType).toBe(await recordedType(page));
     expect(video.data.length).toBeGreaterThan(2000);
     // It has to fit Make's data store, or the scheduled publisher never sees
     // it. This is the whole reason a queued post is encoded smaller.

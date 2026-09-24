@@ -134,7 +134,7 @@
                 "datastore": 193288
               },
               "filter": {
-                "name": "Text or Article",
+                "name": "Text",
                 "conditions": [
                   [
                     {
@@ -145,18 +145,6 @@
                     {
                       "a": "{{19.data.postType}}",
                       "b": "text",
-                      "o": "text:equal"
-                    }
-                  ],
-                  [
-                    {
-                      "a": "{{19.data.status}}",
-                      "b": "queued",
-                      "o": "text:equal"
-                    },
-                    {
-                      "a": "{{19.data.postType}}",
-                      "b": "article",
                       "o": "text:equal"
                     }
                   ]
@@ -976,7 +964,7 @@
             {
               "id": 52,
               "filter": {
-                "name": "Not supported by LinkedIn's API",
+                "name": "A post type Unison no longer sends",
                 "conditions": [
                   [
                     {
@@ -1013,6 +1001,18 @@
                       "b": "carousel",
                       "o": "text:equal"
                     }
+                  ],
+                  [
+                    {
+                      "a": "{{19.data.status}}",
+                      "b": "queued",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{19.data.postType}}",
+                      "b": "article",
+                      "o": "text:equal"
+                    }
                   ]
                 ]
               },
@@ -1020,7 +1020,7 @@
                 "key": "{{19.key}}",
                 "data": {
                   "status": "unsupported",
-                  "note": "Held, not published. Multi-image and document posts need LinkedIn's two-step upload: initializeUpload works from Make, but the binary PUT goes to a different host and Make's LinkedIn module can only call api.linkedin.com, so it answers 405. LinkedIn has no organic carousel API at all. The text, the media and the schedule are all still here."
+                  "note": "Held, not published. This post type was removed from Unison because it could not be published end to end: LinkedIn has no organic carousel API, and multi-image and document posts need a binary PUT to a host Make's LinkedIn module cannot call — initializeUpload succeeds and the upload answers 405. This record was queued by a copy of Unison that predates that change. The text, the media and the schedule are all still here."
                 }
               },
               "module": "datastore:UpdateRecord",

@@ -3,7 +3,7 @@ import { STORE_KEY, persistentStore, sanitizeSession } from "./lib/store.js";
 import { P, S } from "./lib/pointer.js";
 import { friendlyError, askJSON, JSON_RULE, fb, corroborateSources, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
 import { EMPTY_CONNECTION, withDerived, linkedinService, readCallbackParams } from "./lib/linkedin.js";
-import { MAKE_CONFIG, makeLinkedInService, publishPost, publishRoute } from "./lib/publish.js";
+import { MAKE_CONFIG, makeLinkedInService, publishPost, publishRoute, SCHEDULED_MEDIA_BUDGET } from "./lib/publish.js";
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
 import { SEED_POSTS, NAV, DEFAULT_VOICE, SEED_TEAM, DEFAULT_PROFILE } from "./lib/seed.js";
 import { now } from "./lib/util.js";
@@ -1172,13 +1172,24 @@ Give up to 4 of each. Only include what the document actually says.`,
       media.push({ kind: "image", filename, mimeType: parts.mimeType, data: parts.data, altText: altText || "", width: w, height: h, ...extra });
     };
     const photo = async (img, filename, altText, extra = {}) => {
-      /* AI photo: fetched into base64 when the host allows it, else sent by URL */
+      /* An AI photo lives on someone else's server, so it has to be read into
+         the request as bytes. When the browser is not allowed to read it, the
+         post used to go out carrying the web address instead — which nothing
+         downstream can fetch, so LinkedIn got a post with no picture. Falling
+         back to the branded render is not a downgrade anyone loses work over:
+         it is the image the post was built around before the photo was
+         chosen, and it is always there. */
       try {
         const parts = dataUrlParts(await fetchImageAsDataUrl(img.url));
         media.push({ kind: "image", filename, mimeType: parts.mimeType, data: parts.data, altText: altText || "", width: img.width || 1200, height: img.height || 630, ...extra });
       } catch {
-        media.push({ kind: "image", filename, mimeType: "image/jpeg", url: img.url, altText: altText || "", width: img.width || 1200, height: img.height || 630, ...extra });
-        limits.push("The AI image is sent as a link for the scenario to download — it couldn't be read into the request from this browser.");
+        const fallback = img.svg || assets.imageDesign?.svg;
+        if (fallback) {
+          await png(fallback, filename.replace(/\.[a-z]+$/, ".png"), altText, extra);
+          limits.push("The AI photo could not be read from this browser, so the branded version of the image was sent instead.");
+        } else {
+          limits.push("The AI photo could not be read from this browser and there is no branded version to send in its place. Generate the image again without Pollinations, or upload a file.");
+        }
       }
     };
     if (assets.upload) {
@@ -1203,10 +1214,14 @@ Give up to 4 of each. Only include what the document actually says.`,
          Make's data store, and a 720p file does not fit there. Doing it here
          rather than re-encoding afterwards means the capture runs once. */
       const profile = scheduled ? "compact" : "full";
+      /* The queue budget is measured in base64, which is four characters for
+         every three bytes, and a little room is left over so a post never
+         lands exactly on the line. */
+      const maxBytes = scheduled ? Math.floor(SCHEDULED_MEDIA_BUDGET * 0.75 * 0.8) : 0;
       let v = assets.video;
       const needsEncode = v?.storyboard?.length && (!v.blob || (v.profile || "full") !== profile);
       if (needsEncode) {
-        const file = await engine.encodeVideo(v, { profile, onProgress: (p) => mset("encode", { status: "generating", progress: p }) });
+        const file = await engine.encodeVideo(v, { profile, maxBytes, onProgress: (p) => mset("encode", { status: "generating", progress: p }) });
         mset("encode", { status: "idle" });
         if (v.url) URL.revokeObjectURL(v.url);
         v = { ...v, blob: file.blob, url: file.url, mime: file.mime, profile: file.profile, bytes: file.blob.size };

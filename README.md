@@ -155,13 +155,12 @@ something. Three routes, tried in this order:
 `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`. That function is the half a
 browser cannot do: it exchanges the OAuth code for a token, lists the Pages the
 account administers, and posts through LinkedIn's own API. Sign in under
-Settings → LinkedIn and text and article posts go direct, with LinkedIn's own
-post id in the reply. Nothing to configure in the app — it finds the endpoint
-itself.
+Settings → LinkedIn and text posts go direct, with LinkedIn's own post id in
+the reply. Nothing to configure in the app — it finds the endpoint itself.
 
-Image, video, document, poll and carousel posts still go through Make. Those
-need LinkedIn's upload handshake before the post can reference the asset, which
-is several round trips and exactly what a Make scenario already does well.
+Image, video and poll posts still go through Make. Those need LinkedIn's
+upload handshake before the post can reference the asset, which is several
+round trips and exactly what a Make scenario already does well.
 Unison picks the route per post and the progress log names which one it used.
 
 **Make (recommended, works with no LinkedIn sign-in).** A Make.com scenario owns
@@ -173,7 +172,7 @@ webhook URL under Settings → LinkedIn. The payload:
   "source": "unison-content-os",
   "postId": "p-w-abc123",         // stable per post
   "idempotencyKey": "p-w-abc123", // same value; drop repeats on this
-  "postType": "text|image|multi|video|document|poll|article|carousel",
+  "postType": "text|image|video|poll",
   "content": "the full post text including hashtags",
   "company": "Acme Labs",
   "companyUrn": "urn:li:organization:123",
@@ -184,10 +183,7 @@ webhook URL under Settings → LinkedIn. The payload:
   "submittedBy": { "name": "Priya Shah", "email": null },
   "media": [{ "kind": "image", "filename": "…", "mimeType": "image/png",
               "data": "<base64>", "altText": "…", "width": 1200, "height": 630 }],
-  "poll": { "question": "…", "options": ["…"], "duration": "1 week" },
-  "article": { "title": "…", "standfirst": "…",
-               "sections": [{ "heading": "…", "body": "…" }],
-               "conclusion": "…", "cta": "…" }   // article posts only
+  "poll": { "question": "…", "options": ["…"], "duration": "1 week" }
 }
 ```
 
@@ -259,24 +255,35 @@ hand (its numeric ID is in the Page admin URL).
 
 #### What LinkedIn's API will and will not publish
 
-Unison offers eight post types. LinkedIn's public API does not support eight,
-and the difference is stated here rather than discovered on the day of a
-campaign. Nothing is silently downgraded: a post LinkedIn cannot take is kept
-in Make with its text and its media, and Unison says so on screen.
+Unison offers four post types, and each one publishes to LinkedIn for real.
+There used to be eight. The other four could be chosen and would then fail at
+the last step, which is worse than not offering them, so they are gone rather
+than disabled.
 
 | Type | LinkedIn API | What happens |
 |---|---|---|
 | Text | `CreateTextShare` | Published |
-| Article | `CreateTextShare` | **The written post is published.** LinkedIn's API cannot create an Article — there is no endpoint for long-form. The article body is stored with the post so someone can paste it into LinkedIn's article editor |
 | Image | `CreateCompanyImagePost` | Published, one image |
 | Video | `createOrganizationVideoPost` | Published |
 | Poll | `POST /rest/posts` with `content.poll` | Published |
-| Multi-image | exists, not built | **Stored, not published.** LinkedIn's `content.multiImage` needs each image registered through `/rest/images?action=initializeUpload` and uploaded before the post can reference it — one round trip per image. Make's LinkedIn app has no module for it, so it would be built by hand out of API-call and HTTP modules, and each image costs operations the free plan does not have |
-| Document | exists, needs a PDF | **Stored, not published.** `/rest/documents?action=initializeUpload` takes a PDF. Unison renders document pages as images, so a PDF has to be assembled first. The account has a PDF.co connection that could do it; it is not wired in |
-| Carousel | does not exist | **Stored, not published.** LinkedIn has no organic carousel API. Carousels exist only as ads, through the Ads API. The slides are kept as images to post or export |
 
-"Stored, not published" is a real state in the UI — the post shows **NOT
-PUBLISHED** with the reason, not a tick and not a spinner that never resolves.
+### The four that were removed, and why
+
+| Type | Reason |
+|---|---|
+| Carousel | LinkedIn has **no organic carousel API**. Carousels exist only as ads, through the Ads API. No amount of plumbing changes that |
+| Multi-image | The API supports it, but each image must be registered with `/rest/images?action=initializeUpload` and then **PUT to a different host**. Make's LinkedIn module only calls `api.linkedin.com`, and the module that can reach any host cannot get at the connection's token. Tested, not assumed: registration succeeded, the PUT came back `405 Not Allowed` |
+| Document | The same two-step upload, the same blocker |
+| Article | Not wanted as a separate Unison post type any more |
+
+`make/README.md` has the full trace of the multi-image attempt and the two
+changes that would unblock it. Until one of them exists, a post that would
+fail is not offered.
+
+A copy of Unison saved before this change can still send one of the four. Make
+does not drop it: the post is stored whole with `status: "unsupported"`, and
+the reply says to update Unison. Nothing is lost and nothing is published in
+the wrong format.
 
 ---
 
@@ -292,8 +299,8 @@ Nothing in the app claims more than it can prove. This table is the whole truth.
 | Grammar | LanguageTool, free and keyless | Your draft text is sent to `languagetool.org`. Turn it off in Settings → Advanced |
 | Holidays | Nager.Date, free and keyless | Country inferred from the chosen timezone |
 | Images | Real, downloadable PNG/SVG from brand templates; optionally AI photos via Pollinations | No commercial image model is wired in |
-| Video | A real, playable WebM encoded in the browser from the storyboard | Not the output of a video model, and the UI says so |
-| Publishing | Real for text, article, image, video and poll posts | Multi-image, document and carousel posts are **stored, not published** — see the post-type table below. With nothing connected at all it is a **dry run**, labelled everywhere |
+| Video | A real, playable file encoded in the browser from the storyboard — MP4 where the browser can record H.264, WebM otherwise, and the post says which | Not the output of a video model, and the UI says so |
+| Publishing | Real for all four post types Unison offers | With nothing connected at all it is a **dry run**, labelled everywhere |
 | Source links | Marked **Retrieved** when the model's own search returned that URL | Marked **Unconfirmed link** when the model wrote it but the search did not return it, and **Not a real link** for a placeholder domain. With no search record, nothing is claimed either way |
 | Shared work | Real when `api/workspace.js` is deployed with a store behind it | Otherwise everything is local to one browser and Settings says so |
 | Performance | The numbers you enter from LinkedIn analytics, explained by the model | Not pulled automatically — the Make route has no read-back |
@@ -407,9 +414,10 @@ was not, is in [`TESTING.md`](TESTING.md).
 - [ ] **Publish now** on a text post → **Published**, with LinkedIn's own post
       id on screen. Open the Company Page and show it.
 - [ ] **Publish now** on an image post → **Published**, with the image.
-- [ ] Switch the same post to **Carousel** and publish → **NOT PUBLISHED**,
-      with the reason. This is the point to make out loud: the tool refuses to
-      claim something LinkedIn's API cannot do, and the post is kept, not lost.
+- [ ] Add **Video** to a post and **Publish now** without touching Export →
+      the encode runs on screen and the post goes out with the file attached.
+      Worth saying out loud: the four post types on offer are the four that
+      publish, so there is nothing here that looks supported and then fails.
 - [ ] **Schedule** a post a few minutes ahead → **Queued in Make. Nothing is
       on LinkedIn yet.** Show that it says queued, not published.
 - [ ] Come back within the hour and show it live on the page.
@@ -479,18 +487,18 @@ pretends to have shared something it did not.
   reminder, flagged on Home when it comes due.
 - **Make's free plan is the binding constraint.** 1,000 operations a month,
   two active scenarios, a 1 MB data store, and a 15-minute minimum interval
-  it cannot afford to use. That is why the scheduler checks hourly, why a
-  scheduled post's media is capped at about 600 KB, and why multi-image and
-  document posts are not built: each image is another round trip and another
-  operation. A paid plan (10,000 operations) removes all three. Watch the
-  budget under Make → Organization; `python3 make/dump-records.py` shows how
-  full the store is.
+  it cannot afford to use. That is why the scheduler checks hourly and why a
+  scheduled post's media is capped at about 600 KB — a scheduled video is
+  re-encoded small enough to fit, and the post says so. A paid plan (10,000
+  operations) removes both. Watch the budget under Make → Organization;
+  `python3 make/dump-records.py` shows how full the store is.
 - **Storage is per browser, per device.** Two people do not share a queue. Use
   Export/Import to move work, or put the shared state in Make.
-- **LinkedIn document posts need a PDF** and **there is no organic carousel
-  API.** Unison sends the pages as images and says what the scenario has to do
-  with them.
-- **Articles cannot be created through the API.** The article travels with the
-  post so a scenario can store or route it; LinkedIn publishes the written post.
+- **Four post types, all of them real.** Carousel, multi-image, document and
+  article were removed rather than left selectable — see *The four that were
+  removed, and why*. A post from an older copy of Unison carrying one of them
+  is stored by Make, not dropped.
 - **Browser video encoding runs in real time** and caps at about 6 MB for a
-  single request.
+  single request. MP4 needs a browser that can record H.264 — Chrome and Edge
+  can; where one cannot, the file is WebM and the post says so rather than
+  labelling it an MP4 LinkedIn would reject.

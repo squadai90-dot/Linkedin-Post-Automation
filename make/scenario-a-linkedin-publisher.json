@@ -60,7 +60,7 @@
             {
               "id": 40,
               "filter": {
-                "name": "Now · Text or Article",
+                "name": "Now · Text",
                 "conditions": [
                   [
                     {
@@ -71,18 +71,6 @@
                     {
                       "a": "{{2.postType}}",
                       "b": "text",
-                      "o": "text:equal"
-                    }
-                  ],
-                  [
-                    {
-                      "a": "{{2.publishMode}}",
-                      "b": "now",
-                      "o": "text:equal"
-                    },
-                    {
-                      "a": "{{2.postType}}",
-                      "b": "article",
                       "o": "text:equal"
                     }
                   ]
@@ -233,6 +221,69 @@
                 }
               },
               "parameters": {}
+            },
+            {
+              "id": 90,
+              "module": "datastore:AddRecord",
+              "version": 1,
+              "parameters": {
+                "datastore": 193288
+              },
+              "mapper": {
+                "key": "{{2.postId}}",
+                "overwrite": true,
+                "data": {
+                  "status": "published",
+                  "publishedUrn": "{{40.id}}",
+                  "note": "",
+                  "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "postId": "{{2.postId}}",
+                  "source": "{{2.source}}",
+                  "idempotencyKey": "{{2.idempotencyKey}}",
+                  "postType": "{{2.postType}}",
+                  "content": "{{2.content}}",
+                  "company": "{{2.company}}",
+                  "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                  "publishMode": "{{2.publishMode}}",
+                  "timezone": "{{2.timezone}}",
+                  "submittedBy": {
+                    "name": "{{2.submittedBy.name}}",
+                    "email": "{{2.submittedBy.email}}"
+                  }
+                }
+              },
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "overwrite": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1460,
+                  "y": -600
+                }
+              },
+              "onerror": [
+                {
+                  "id": 190,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1740,
+                      "y": -600
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
@@ -403,6 +454,69 @@
                 }
               },
               "parameters": {}
+            },
+            {
+              "id": 91,
+              "module": "datastore:AddRecord",
+              "version": 1,
+              "parameters": {
+                "datastore": 193288
+              },
+              "mapper": {
+                "key": "{{2.postId}}",
+                "overwrite": true,
+                "data": {
+                  "status": "published",
+                  "publishedUrn": "{{41.id}}",
+                  "note": "",
+                  "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "postId": "{{2.postId}}",
+                  "source": "{{2.source}}",
+                  "idempotencyKey": "{{2.idempotencyKey}}",
+                  "postType": "{{2.postType}}",
+                  "content": "{{2.content}}",
+                  "company": "{{2.company}}",
+                  "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                  "publishMode": "{{2.publishMode}}",
+                  "timezone": "{{2.timezone}}",
+                  "submittedBy": {
+                    "name": "{{2.submittedBy.name}}",
+                    "email": "{{2.submittedBy.email}}"
+                  }
+                }
+              },
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "overwrite": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1460,
+                  "y": -380
+                }
+              },
+              "onerror": [
+                {
+                  "id": 191,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1740,
+                      "y": -380
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
@@ -572,6 +686,69 @@
                 }
               },
               "parameters": {}
+            },
+            {
+              "id": 92,
+              "module": "datastore:AddRecord",
+              "version": 1,
+              "parameters": {
+                "datastore": 193288
+              },
+              "mapper": {
+                "key": "{{2.postId}}",
+                "overwrite": true,
+                "data": {
+                  "status": "published",
+                  "publishedUrn": "{{42.id}}",
+                  "note": "",
+                  "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "postId": "{{2.postId}}",
+                  "source": "{{2.source}}",
+                  "idempotencyKey": "{{2.idempotencyKey}}",
+                  "postType": "{{2.postType}}",
+                  "content": "{{2.content}}",
+                  "company": "{{2.company}}",
+                  "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                  "publishMode": "{{2.publishMode}}",
+                  "timezone": "{{2.timezone}}",
+                  "submittedBy": {
+                    "name": "{{2.submittedBy.name}}",
+                    "email": "{{2.submittedBy.email}}"
+                  }
+                }
+              },
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "overwrite": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 1460,
+                  "y": -160
+                }
+              },
+              "onerror": [
+                {
+                  "id": 192,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1740,
+                      "y": -160
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
@@ -858,6 +1035,69 @@
                 }
               },
               "parameters": {}
+            },
+            {
+              "id": 93,
+              "module": "datastore:AddRecord",
+              "version": 1,
+              "parameters": {
+                "datastore": 193288
+              },
+              "mapper": {
+                "key": "{{2.postId}}",
+                "overwrite": true,
+                "data": {
+                  "status": "published",
+                  "publishedUrn": "{{ifempty(get(45.headers; \"x-restli-id\"); 45.body.id)}}",
+                  "note": "",
+                  "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
+                  "postId": "{{2.postId}}",
+                  "source": "{{2.source}}",
+                  "idempotencyKey": "{{2.idempotencyKey}}",
+                  "postType": "{{2.postType}}",
+                  "content": "{{2.content}}",
+                  "company": "{{2.company}}",
+                  "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+                  "publishMode": "{{2.publishMode}}",
+                  "timezone": "{{2.timezone}}",
+                  "submittedBy": {
+                    "name": "{{2.submittedBy.name}}",
+                    "email": "{{2.submittedBy.email}}"
+                  }
+                }
+              },
+              "metadata": {
+                "restore": {
+                  "expect": {
+                    "overwrite": {
+                      "mode": "chose"
+                    }
+                  },
+                  "parameters": {
+                    "datastore": {
+                      "label": "Unison Scheduled Posts"
+                    }
+                  }
+                },
+                "designer": {
+                  "x": 2300,
+                  "y": 60
+                }
+              },
+              "onerror": [
+                {
+                  "id": 193,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 2580,
+                      "y": 60
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
@@ -866,7 +1106,7 @@
             {
               "id": 46,
               "filter": {
-                "name": "Now · Not supported by LinkedIn's API",
+                "name": "Now · A post type Unison no longer sends",
                 "conditions": [
                   [
                     {
@@ -903,6 +1143,18 @@
                       "b": "carousel",
                       "o": "text:equal"
                     }
+                  ],
+                  [
+                    {
+                      "a": "{{2.publishMode}}",
+                      "b": "now",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{2.postType}}",
+                      "b": "article",
+                      "o": "text:equal"
+                    }
                   ]
                 ]
               },
@@ -910,7 +1162,7 @@
                 "key": "{{2.postId}}",
                 "overwrite": true,
                 "data": {
-                  "note": "Held, not published. LinkedIn's API cannot create this post type from a single call: multi-image and document posts need a multi-step upload that is not built yet, and there is no organic carousel API at all. Everything Unison sent is kept here.",
+                  "note": "Held, not published. This post type was removed from Unison because it could not be published end to end: LinkedIn has no organic carousel API, and multi-image and document posts need a binary upload to a host this LinkedIn connection cannot sign for. It arrived from a copy of Unison that predates that change. Nothing reached LinkedIn; the text and media are kept here.",
                   "dueAt": "{{parseNumber(formatDate(now; \"X\"); \".\")}}",
                   "postId": "{{2.postId}}",
                   "source": "{{2.source}}",
@@ -918,13 +1170,6 @@
                   "company": "{{2.company}}",
                   "content": "{{2.content}}",
                   "media": "{{2.media}}",
-                  "article": {
-                    "cta": "{{2.article.cta}}",
-                    "title": "{{2.article.title}}",
-                    "sections": "{{2.article.sections}}",
-                    "standfirst": "{{2.article.standfirst}}",
-                    "conclusion": "{{2.article.conclusion}}"
-                  },
                   "postType": "{{2.postType}}",
                   "timezone": "{{2.timezone}}",
                   "companyUrn": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
@@ -941,13 +1186,6 @@
                       "nested": {
                         "media": {
                           "mode": "edit"
-                        },
-                        "article": {
-                          "nested": {
-                            "sections": {
-                              "mode": "edit"
-                            }
-                          }
                         }
                       }
                     },
@@ -987,7 +1225,7 @@
             {
               "id": 82,
               "mapper": {
-                "body": "{\"status\":\"unsupported\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"LinkedIn has no single API call that creates this post type. Nothing was published; the post, its media and its text are stored in Make so nothing is lost.\"}",
+                "body": "{\"status\":\"unsupported\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"Unison no longer offers this post type, because it could not be published to LinkedIn reliably. Nothing was published. Update your copy of Unison and send the post as text, image, video or poll — the text and media are stored in Make so nothing is lost.\"}",
                 "status": 200,
                 "headers": [
                   {
@@ -1049,13 +1287,6 @@
                     "duration": "{{2.poll.duration}}",
                     "question": "{{2.poll.question}}"
                   },
-                  "article": {
-                    "cta": "{{2.article.cta}}",
-                    "title": "{{2.article.title}}",
-                    "sections": "{{2.article.sections}}",
-                    "standfirst": "{{2.article.standfirst}}",
-                    "conclusion": "{{2.article.conclusion}}"
-                  },
                   "dueAt": "{{parseNumber(formatDate(parseDate(2.scheduledDate + \" \" + 2.scheduledTime; \"YYYY-MM-DD HH:mm\"; 2.timezone); \"X\"); \".\")}}",
                   "media": "{{2.media}}",
                   "postId": "{{2.postId}}",
@@ -1092,13 +1323,6 @@
                         },
                         "media": {
                           "mode": "edit"
-                        },
-                        "article": {
-                          "nested": {
-                            "sections": {
-                              "mode": "edit"
-                            }
-                          }
                         }
                       }
                     },

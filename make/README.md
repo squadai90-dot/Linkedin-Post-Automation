@@ -29,13 +29,26 @@ actually happened rather than Make's default "Accepted".
 
 | Route | Condition | Does | Answers |
 |---|---|---|---|
-| Text or Article | `now` + text\|article | `CreateTextShare` | `200 {status:"published", urn, url}` |
+| Text | `now` + text | `CreateTextShare` | `200 {status:"published", urn, url}` |
 | Image | `now` + image | `CreateCompanyImagePost` | `200 {status:"published", urn, url}` |
 | Video | `now` + video | `createOrganizationVideoPost` | `200 {status:"published", urn, url}` |
 | Poll | `now` + poll | Iterator → Aggregator → `POST /rest/posts` | `200 {status:"published", urn}` |
-| Not supported | `now` + multi\|document\|carousel | Stores the whole post | `200 {status:"unsupported"}` |
+| Withdrawn type | `now` + multi\|document\|carousel\|article | Stores the whole post | `200 {status:"unsupported"}` |
 | Scheduled | `scheduled` | Stores it with `dueAt`, `status:"queued"` | `200 {status:"queued", dueAt}` |
 | Nothing matched | any other mode or type | nothing | `422 {status:"rejected"}` |
+
+The four publishing routes each end with a **`datastore:AddRecord`** after the
+response, writing `status: "published"` and the `publishedUrn` LinkedIn
+returned. It costs one operation per post and carries no media. Without it an
+immediate post left no trace anywhere but the browser that sent it, so there
+was no way to answer "did that actually go out, and what is its id?" later.
+The write is deliberately *after* the response: the reply Unison is waiting on
+must not depend on a data store that might be full.
+
+The withdrawn-type route is not dead code. Unison no longer offers article,
+carousel, multi-image or document, but a copy of the app saved before that
+change still can, and a post from one must not vanish. It is stored with its
+text and media, and the reply tells the sender to update Unison.
 
 Each LinkedIn call carries an **error handler**: write a `failed` record to
 the data store with LinkedIn's own message, then `Skip`. Swallowing the error
@@ -79,7 +92,9 @@ text, and `dueAt` is compared with a **number** operator in scenario B — text
 
 ## B — Unison Scheduled Publisher
 
-Search records → Router, six routes. The trigger's filter is two OR groups:
+Search records → Router, six routes: the recovery route, one per supported
+post type, and a catch-all for a record queued by an older copy of Unison
+carrying a type that no longer exists. The trigger's filter is two OR groups:
 
 ```
 status = queued     AND dueAt    <= now
@@ -127,7 +142,7 @@ seconds and `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to
 `15 * 60 * 1000` together — changing one without the other makes Unison
 promise something Make does not do.
 
-## Why multi-image and document are not built
+## Why multi-image and document were withdrawn rather than fixed
 
 Both need LinkedIn's **two-step upload**: register the file, then PUT the bytes
 to the URL that registration hands back. Step one works from Make. Step two
@@ -162,12 +177,35 @@ code:
    token with posts*, which needs the OAuth bridge (`api/linkedin.js`)
    deployed. Make would then use `http:ActionSendData` with that token.
 
-Until one of those exists, multi-image and document posts are stored with
-`status: "unsupported"` and their reason, and Unison says so on screen. Nothing
-is discarded and nothing is published in the wrong format.
+Neither existed, so rather than leave two options that could be chosen and
+would then fail at the last step, both were **removed from Unison**. Carousel
+went with them for a simpler reason: LinkedIn has **no organic carousel API**
+at all, so no amount of plumbing would have changed it. Article was removed
+because it is no longer wanted as a separate post type.
 
-Carousel is different and simpler: LinkedIn has **no organic carousel API** at
-all. No amount of plumbing changes that.
+Unison now offers exactly four: text, image, video and poll. The held route
+above stays for payloads from older copies of the app.
+
+## Verified end to end
+
+Every route below was run against the live LinkedIn Page and is recorded by
+the id LinkedIn itself returned, not by a Make execution status. See
+`TESTING.md` for the full matrix.
+
+| Route | LinkedIn id |
+|---|---|
+| Scheduled text | `urn:li:share:7508849111392178176` |
+| Scheduled image | `urn:li:share:7508814445381505025` |
+| Scheduled video | `urn:li:ugcPost:7508848961080852483` |
+| Scheduled poll | `urn:li:ugcPost:7508849114902781952` |
+
+> A video that reaches LinkedIn with even a handful of bytes missing is
+> accepted, transcoded for about a minute, and then failed with
+> `PROCESSING_FAILED — Uploaded file is corrupted`. Two earlier video tests
+> failed exactly that way, and both times the cause was the base64 being
+> copied into the data store by hand, not the pipeline. If a video ever fails
+> like this, compare a hash of the stored base64 against the file before
+> touching the scenario.
 
 ## Restoring a scenario from these files
 

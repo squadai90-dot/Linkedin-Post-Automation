@@ -602,6 +602,12 @@ export function Workspace(p) {
             {publishState === "SIMULATED"
               ? <span className="badge warn">Simulated publish — nothing was sent to LinkedIn</span>
               : <span className="badge">Published to LinkedIn{linkedin.org ? ` · ${linkedin.org}` : ""}</span>}
+            {/* A post can go out and still not be quite what was on screen —
+                a video recorded as WebM, an AI photo that had to be swapped
+                for the branded render. That was only ever shown when
+                publishing failed, which is the one case where it does not
+                matter. It belongs here, where the post is live. */}
+            {publishLimits.length > 0 && publishLimits.map((l, i) => <div key={i} className="badge warn" style={{ marginTop: 10 }}>{l}</div>)}
             {!analytics && (
               <div className="u-muted" style={{ marginTop: 14, fontSize: 13.5 }}>
                 {publishState === "SIMULATED" ? "No performance data for a simulated post." : "Performance numbers aren't collected automatically on this route. Open the post under Content and add the figures from LinkedIn analytics — the learning engine will explain them."}

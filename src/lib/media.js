@@ -55,12 +55,19 @@ export const imageProvider = {
    real video file you can play, scrub and download — it is not the output of
    a video model, and the UI says so. */
 
-/* Preference order for the recorder. MP4 first: it is what LinkedIn's Videos
-   API documents, and what every player handles without re-encoding. */
+/* Preference order for the recorder. H.264 in MP4 first: that is the pairing
+   LinkedIn's Videos API documents, and what every player handles without
+   re-encoding.
+
+   Every MP4 entry names its codec on purpose. Asking for a bare "video/mp4"
+   gets a yes from Chromium builds that then record VP9 inside the MP4
+   container — a file LinkedIn accepts, spends a minute transcoding and
+   rejects as corrupt, while the app cheerfully calls it an MP4. Better to
+   fall back to WebM and say so than to hand over an MP4 that isn't one. */
 export const VIDEO_MIMES = [
   "video/mp4;codecs=avc1.42E01E",
+  "video/mp4;codecs=avc1.4D401E",
   "video/mp4;codecs=h264",
-  "video/mp4",
   "video/webm;codecs=vp9",
   "video/webm;codecs=vp8",
   "video/webm",
@@ -84,17 +91,25 @@ export const VIDEO_PROFILES = {
   compact: { width: 854, height: 480, bitrate: 700_000 },
 };
 
+/* Recorders treat the bitrate as a ceiling and usually land well under it,
+   but "usually" is not good enough when going over means the post cannot be
+   queued at all. Given a byte budget and a duration, this is the ceiling that
+   keeps the result inside it even if the encoder uses all of it. */
+export const bitrateFor = (maxBytes, seconds) =>
+  Math.max(120_000, Math.floor((maxBytes * 8) / Math.max(1, seconds)));
+
 export const videoProvider = {
   id: "prototype-renderer",
   configured: false,
   label: "Local storyboard renderer (prototype)",
   supported: () => typeof window !== "undefined" && !!window.MediaRecorder && !!document.createElement("canvas").captureStream,
-  async generate({ storyboard, brief, onProgress, profile = "full" }) {
+  async generate({ storyboard, brief, onProgress, profile = "full", maxBytes = 0 }) {
     if (!this.supported()) throw new Error("recorder unavailable");
-    const { width: W, height: H, bitrate } = VIDEO_PROFILES[profile] || VIDEO_PROFILES.full;
+    const { width: W, height: H, bitrate: cap } = VIDEO_PROFILES[profile] || VIDEO_PROFILES.full;
     const FPS = 30, PER = SCENE_SECONDS;
     const scenes = (storyboard || []).slice(0, 5);
     if (!scenes.length) throw new Error("no scenes");
+    const bitrate = maxBytes ? Math.min(cap, bitrateFor(maxBytes, scenes.length * PER)) : cap;
 
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
@@ -235,8 +250,8 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
 
     /* Encode the storyboard to a real file. `profile` picks the size — see
        VIDEO_PROFILES for why a scheduled post needs the smaller one. */
-    async encodeVideo(asset, { onProgress, profile = "full" } = {}) {
-      return videoProvider.generate({ storyboard: asset.storyboard, brief: asset.brief, onProgress, profile });
+    async encodeVideo(asset, { onProgress, profile = "full", maxBytes = 0 } = {}) {
+      return videoProvider.generate({ storyboard: asset.storyboard, brief: asset.brief, onProgress, profile, maxBytes });
     },
 
   };
