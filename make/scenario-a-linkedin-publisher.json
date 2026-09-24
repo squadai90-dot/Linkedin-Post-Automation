@@ -633,7 +633,7 @@
                       "options": "{{44.array}}",
                       "question": "{{2.poll.question}}",
                       "settings": {
-                        "duration": "{{switch(2.poll.duration; \"1 day\"; \"LAST_ONE_DAY\"; \"3 days\"; \"LAST_THREE_DAYS\"; \"1 week\"; \"LAST_SEVEN_DAYS\"; \"2 weeks\"; \"LAST_FOURTEEN_DAYS\"; \"LAST_SEVEN_DAYS\")}}",
+                        "duration": "{{switch(2.poll.duration; \"1 day\"; \"ONE_DAY\"; \"3 days\"; \"THREE_DAYS\"; \"1 week\"; \"SEVEN_DAYS\"; \"2 weeks\"; \"FOURTEEN_DAYS\"; \"SEVEN_DAYS\")}}",
                         "voteSelectionType": "SINGLE_VOTE"
                       }
                     }

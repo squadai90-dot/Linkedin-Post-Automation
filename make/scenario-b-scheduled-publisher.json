@@ -221,7 +221,7 @@
                     "key": "{{19.key}}",
                     "data": {
                       "status": "failed",
-                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST. ERR2 h=[{{9.error.message}}] i=[{{9.message}}] j=[{{9.statusCode}}] k=[{{9.body}}]"
                     }
                   },
                   "module": "datastore:UpdateRecord",
@@ -396,7 +396,7 @@
                     "key": "{{19.key}}",
                     "data": {
                       "status": "failed",
-                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST. ERR2 h=[{{10.error.message}}] i=[{{10.message}}] j=[{{10.statusCode}}] k=[{{10.body}}]"
                     }
                   },
                   "module": "datastore:UpdateRecord",
@@ -570,7 +570,7 @@
                     "key": "{{19.key}}",
                     "data": {
                       "status": "failed",
-                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST. ERR2 h=[{{12.error.message}}] i=[{{12.message}}] j=[{{12.statusCode}}] k=[{{12.body}}]"
                     }
                   },
                   "module": "datastore:UpdateRecord",
@@ -743,7 +743,7 @@
                       "options": "{{50.array}}",
                       "question": "{{19.data.poll.question}}",
                       "settings": {
-                        "duration": "{{switch(19.data.poll.duration; \"1 day\"; \"LAST_ONE_DAY\"; \"3 days\"; \"LAST_THREE_DAYS\"; \"1 week\"; \"LAST_SEVEN_DAYS\"; \"2 weeks\"; \"LAST_FOURTEEN_DAYS\"; \"LAST_SEVEN_DAYS\")}}",
+                        "duration": "{{switch(19.data.poll.duration; \"1 day\"; \"ONE_DAY\"; \"3 days\"; \"THREE_DAYS\"; \"1 week\"; \"SEVEN_DAYS\"; \"2 weeks\"; \"FOURTEEN_DAYS\"; \"SEVEN_DAYS\")}}",
                         "voteSelectionType": "SINGLE_VOTE"
                       }
                     }
@@ -825,7 +825,7 @@
                     "key": "{{19.key}}",
                     "data": {
                       "status": "failed",
-                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST: {{error.message}}"
+                      "note": "LinkedIn refused this post at {{formatDate(now; \"YYYY-MM-DD HH:mm\"; \"Asia/Kolkata\")}} IST. ERR2 h=[{{18.error.message}}] i=[{{18.message}}] j=[{{18.statusCode}}] k=[{{18.body}}]"
                     }
                   },
                   "module": "datastore:UpdateRecord",
