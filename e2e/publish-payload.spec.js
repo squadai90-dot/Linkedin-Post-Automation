@@ -205,3 +205,92 @@ test.describe("what Publish sends", () => {
     expect(p.idempotencyKey).toBe(p.postId);
   });
 });
+
+/* Move a post's time into the past, as the afternoon would.
+   The app saves the session on a 700 ms debounce, so a single write races a
+   pending save that would put the original time straight back. Write, wait
+   past the debounce, read it back, and write again if it was overwritten. */
+const shiftIntoPast = async (page, { match = "SCHEDULED", patch = {} } = {}) => {
+  const KEY = "unison:session:v1";
+  const rewrite = ([k, st, extra]) => {
+    let s;
+    try { s = JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; }
+    const hits = (s?.posts || []).filter((p) => p.state === st);
+    if (!hits.length) return null;
+    const past = new Date(Date.now() - 120000);
+    const pad = (n) => String(n).padStart(2, "0");
+    const date = `${past.getFullYear()}-${pad(past.getMonth() + 1)}-${pad(past.getDate())}`;
+    const time = `${pad(past.getHours())}:${pad(past.getMinutes())}`;
+    s.posts = (s.posts || []).map((p) => (p.state === st
+      ? { ...p, date, time, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...extra }
+      : p));
+    localStorage.setItem(k, JSON.stringify(s));
+    return `${date} ${time}`;
+  };
+
+  let wrote = null;
+  await expect.poll(async () => {
+    wrote = await page.evaluate(rewrite, [KEY, match, patch]) || wrote;
+    if (!wrote) return false;
+    await page.waitForTimeout(900);                       // outlast the 700 ms debounce
+    return page.evaluate(([k, want]) => {
+      try {
+        const s = JSON.parse(localStorage.getItem(k) || "null");
+        return (s?.posts || []).some((p) => `${p.date} ${p.time}` === want);
+      } catch { return false; }
+    }, [KEY, wrote]);
+  }, { timeout: 30_000, intervals: [100] }).toBe(true);
+};
+
+/* Make's queue can only afford to look for due posts once an hour on this
+   plan, so a post scheduled for 10:00 goes out some time before 11:00. These
+   cover the path that does hit the minute: Unison publishing it itself while
+   it is open. */
+test.describe("publishing a scheduled post on time", () => {
+  test.skip(({ isMobile }) => isMobile);
+  test.describe.configure({ timeout: 180_000 });
+
+  test("a post whose time has come is published without anyone pressing anything", async ({ page }) => {
+    await quiet(page);
+    const sent = await captureWebhook(page);
+    await draftWith(page, "A post that should go out by itself", null);
+    await page.getByRole("button", { name: "Approve anyway" }).click();
+
+    /* Schedule it for a minute that has just passed. The app refuses a past
+       time in the picker — deliberately — so the post is scheduled normally
+       and the clock is what moves, exactly as it would in the afternoon. */
+    await page.getByRole("button", { name: "Schedule post" }).click();
+    await expect(page.getByText(/Unison publishes this at/)).toBeVisible();
+    expect(sent, "scheduling alone must not send anything").toHaveLength(0);
+
+    await shiftIntoPast(page);
+    await page.reload();
+
+    // No click anywhere after the reload: the app has to notice by itself.
+    await expect.poll(() => sent.length, { timeout: 90_000, intervals: [500] }).toBe(1);
+    const p = sent[0];
+    expect(p.postType).toBe("text");
+    // Published, not queued — this is the immediate route, so it is on
+    // LinkedIn now rather than waiting for Make's timer.
+    expect(p.publishMode).toBe("now");
+    await expect(page.getByText(/Published to LinkedIn/).first()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("a post handed to Make is left for Make, never published twice", async ({ page }) => {
+    await quiet(page);
+    const sent = await captureWebhook(page, { status: "queued", postId: "e2e" });
+    await draftWith(page, "A post handed over for later", null);
+    await page.getByRole("button", { name: "Approve anyway" }).click();
+    await page.getByRole("button", { name: "Schedule post" }).click();
+    await page.getByRole("button", { name: /^Hand to Make for / }).click();
+    await expect.poll(() => sent.length, { timeout: 60_000 }).toBe(1);
+    expect(sent[0].publishMode).toBe("scheduled");
+
+    // Now move that post's time into the past. It is Make's to publish, so
+    // the in-app publisher must leave it alone rather than duplicate it.
+    await shiftIntoPast(page, { match: "SENT", patch: { state: "SCHEDULED", scheduledHandoff: true } });
+    await page.reload();
+    await page.waitForTimeout(45_000);
+    expect(sent, "a post Make already has must not be published again from here").toHaveLength(1);
+  });
+});

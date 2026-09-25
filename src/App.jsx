@@ -7,6 +7,7 @@ import { MAKE_CONFIG, makeLinkedInService, publishPost, publishRoute, SCHEDULED_
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
 import { SEED_POSTS, NAV, DEFAULT_VOICE, SEED_TEAM, DEFAULT_PROFILE } from "./lib/seed.js";
 import { now } from "./lib/util.js";
+import { digestDocument, addDocToResearch } from "./lib/doc.js";
 import { svgToPng } from "./lib/brand.js";
 import { createMediaEngine, containerOf, extensionOf, VIDEO_PROFILES } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
@@ -434,7 +435,47 @@ export default function UnisonContentOS() {
       autoPublishRef.current = null;
       publishNow();
     }
-  });  
+  });
+
+  /* ---------- publishing a scheduled post at its minute ----------
+     Make's queue is the fallback for a closed laptop, and on this plan it can
+     only afford to look for due posts once an hour — so a post scheduled for
+     10:00 goes out somewhere before 11:00. That is fine for "publish it while
+     I am away" and useless for "publish it at 10:00".
+
+     Unison can do better for nothing: while it is open it knows the time, it
+     has the post, and it already has a route that publishes immediately. So a
+     post that comes due here goes out here, within the minute, and the hourly
+     queue is left to the posts that were handed to Make precisely because
+     nobody would be watching.
+
+     Only posts still SCHEDULED locally qualify. One handed to Make is Make's;
+     publishing it here as well would put it on the Page twice. */
+  const dueTimerRef = useRef(null);
+  /* Opening the post changes the stage, which re-runs this effect before the
+     publish has had a chance to raise its own guard. Without a note of what
+     has already been started, the same post is opened twice and the second
+     open re-arms the publish. */
+  const dueFiredRef = useRef(new Set());
+  useEffect(() => {
+    if (!restored || !publishReady) return;
+    const tick = () => {
+      /* Busy already, or a post is open mid-edit: leave it alone and look
+         again next minute rather than interrupting someone. */
+      if (publishingRef.current || busy || stage === "PUBLISHING") return;
+      const due = posts.find((p) => p.state === "SCHEDULED" && !p.scheduledHandoff
+        && isDue(p.date, p.time || "09:00", p.tz || localTimezone())
+        && !sentKeys.includes(p.id) && !dueFiredRef.current.has(p.id));
+      if (!due) return;
+      dueFiredRef.current.add(due.id);
+      logAudit(`Scheduled time reached — publishing "${due.title}"`);
+      notify(`Publishing "${due.title}" — it was scheduled for ${due.time || "now"}.`);
+      openPostInWorkspace(due, { publish: true });
+    };
+    tick();
+    dueTimerRef.current = setInterval(tick, 30000);
+    return () => clearInterval(dueTimerRef.current);
+  }, [restored, publishReady, posts, sentKeys, busy, stage]);
 
   const removeDraft = (id) => {
     setDrafts((d) => d.filter((x) => x.id !== id));
@@ -655,12 +696,18 @@ Be terse.`,
     const list = normalizeFormats(chosenFormats || formats);
     setFormats(list);
     const newId = existingId || "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const reRun = !!existingId && existingId === workRef.current;   // same work, not a new topic
     workRef.current = newId;
     setWorkId(newId);
     setView("workspace"); setNavOpen(false); setModal(null); setOpenPost(null);
     setIdea(topic); setStage("RESEARCHING"); setBusy(true);
     setResearch(null); setAngles(null); setAngle(null); setDraft(null); setVerification(null);
-    setQuality(null); setMedia(null); setAssets(EMPTY_ASSETS); setMstate({});
+    /* "Run research again" rebuilds research from nothing. A document the
+       user uploaded is theirs, not the engine's, so it is carried across and
+       folded back in below — otherwise re-running research silently throws
+       their file away. Starting a different topic drops it, as it should. */
+    const keptDoc = reRun ? assets.sourceDoc : null;
+    setQuality(null); setMedia(null); setAssets({ ...EMPTY_ASSETS, sourceDoc: keptDoc }); setMstate({});
     setAnalytics(null); setPublishState(null); setAttempts([]); setVersions([]); setAudit([]);
     setDupDismissed(false); setUndoStack([]); setRecFormat(null); autoRef.current = "";
     setPublishError(null); setPublishVia(null); setPublishLimits([]); setPublishKind(null); setPublishUnverified(false);
@@ -727,6 +774,7 @@ Give 3 sources, 2 claims, 3 insights. Be terse.`,
       if (wiki.length && !r.sources.some((x) => x.background)) r = { ...r, sources: [...r.sources, ...wikiToSources(wiki)] };
 
       setStep("search", "done"); setStep("company", "done"); setStep("compare", "done");
+      if (keptDoc) { r = addDocToResearch(r, keptDoc); logAudit(`Kept ${keptDoc.name} as a source`); }
       setResearch(r);
       setStep("insight", "done"); setStep("angles", "active");
       logAudit(`Discovery returned ${(r.sources || []).length} sources${cached ? " (cached)" : ""}`);
@@ -765,6 +813,8 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
 Topic: ${idea}
 Angle: ${selected.type} — ${selected.headline}
 Claims available: ${JSON.stringify((research?.claims || []).map((c, i) => ({ i, text: c.text })))}
+${assets.sourceDoc ? `The user uploaded "${assets.sourceDoc.name}". Use its material in preference to anything else, and keep its figures exact.
+From the document: ${JSON.stringify([...(assets.sourceDoc.stats || []), ...(assets.sourceDoc.facts || [])].slice(0, 6))}` : ""}
 Voice profile (0-100): professional ${voice.professional}, conversational ${voice.conversational}, technical ${voice.technical}, opinionated ${voice.opinionated}, humour ${voice.humour}, emoji ${voice.emoji}.
 CTA style: ${voice.cta}. Paragraphs: ${voice.paragraphs}. Hashtags: ${voice.hashtags}.
 Never use: ${voice.avoid.join(", ")}. Prefer: ${voice.prefer.join(", ")}.
@@ -1040,19 +1090,22 @@ ${clipped}
 ---
 {"summary":"under 25 words","facts":["under 18 words"],"stats":["figure with context, under 14 words"],"insights":["under 18 words"],"claims":["a claim the document supports, under 18 words"]}
 Give up to 4 of each. Only include what the document actually says.`,
-      fallback: undefined,
+      /* No key, no quota left, or the call failed: the document still has to
+         land as a source. The fallback quotes the file's own sentences
+         instead of leaving the upload with nothing to show for itself. */
+      fallback: () => digestDocument(text, file.name),
       onNotice, track: track("Document"),
     });
-    const doc = { name: file.name, size: file.size, chars: text.length, ...r, at: now() };
+    const claims = (r.claims || []).map((c) => String(c).trim()).filter(Boolean).slice(0, 6);
+    const doc = { name: file.name, size: file.size, chars: text.length, ...r, claims, at: now() };
     if (!live()) return;
     patchAssets({ sourceDoc: doc });
-    setResearch((prev) => {
-      const src = { title: file.name, publisher: "Uploaded document", date: new Date().toISOString().slice(0, 10), tier: 1, note: r.summary || "Uploaded by you.", url: "", uploaded: true };
-      if (!prev) return { sources: [src], claims: (r.claims || []).map((c) => ({ text: c, sourceIndex: 0 })), insights: r.insights || [], freshness: "Primary", risks: [] };
-      return { ...prev, sources: [src, ...(prev.sources || [])], claims: [...(r.claims || []).map((c) => ({ text: c, sourceIndex: 0 })), ...(prev.claims || [])] };
-    });
-    logAudit(`Document ingested — ${file.name}`);
-    notify(`${file.name} added as a source.`);
+    setResearch((prev) => addDocToResearch(prev, doc));
+    logAudit(`Document ingested — ${file.name} (${claims.length} claim${claims.length === 1 ? "" : "s"}${r.degraded ? ", read without AI" : ""})`);
+    notify(claims.length
+      ? `${file.name} added as a primary source. ${claims.length} claim${claims.length === 1 ? "" : "s"} from it ${claims.length === 1 ? "is" : "are"} now available to the writer.`
+      : `${file.name} added as a source, but nothing quotable could be pulled out of it.`,
+      { tone: claims.length ? "ok" : "warn", ms: 7000 });
   });
 
   const attachUpload = async (file) => {

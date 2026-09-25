@@ -126,6 +126,38 @@ load-bearing, and it is in every route.
 
 ## Scheduling behaviour
 
+### How close to the chosen minute a post actually goes out
+
+Two routes, chosen on the schedule panel:
+
+| Route | Who publishes | Delay | Make operations | Needs Unison open |
+|---|---|---|---|---|
+| **In-app** (default) | Unison, through the immediate route | **seconds** — it checks every 30 s | 1 (the publish itself) | Yes |
+| **Hand to Make** | Scenario B, from the data store queue | **0–60 minutes after the chosen time, never before** | 1 per hourly check + 3–4 to publish | No |
+
+The two are mutually exclusive by construction: *Hand to Make* sets
+`scheduledHandoff` on the post record, and the in-app publisher skips any post
+carrying it. Proven by `e2e/publish-payload.spec.js` → *publishing a scheduled
+post on time*, which is two tests: a post whose minute has passed is published
+with no click anywhere after a reload (and goes out as `publishMode: "now"`,
+i.e. the immediate route), and a post already handed to Make is left alone for
+45 seconds of live ticking without a second request leaving the browser.
+
+Why the Make route cannot be made tighter on this plan — measured, not
+assumed:
+
+| Interval attempted | Result |
+|---|---|
+| `interval: 300` (5 min) | `MakeApiError: Scenario execution interval is too short` |
+| `interval: 600` (10 min) | `MakeApiError: Scenario execution interval is too short` |
+| `interval: 900` (15 min) | Accepted — but 2,880 checks/month against a 1,000-operation allowance |
+| `interval: 3600` (1 hour) | Accepted, 720 checks/month, fits — **in use** |
+
+The plan reports the floor itself: `license.interval: 15` minutes,
+`license.operations: 1000`. Make has no event-driven trigger that could
+replace the timer; its only externally-fired trigger is a webhook, and nothing
+exists at the scheduled minute to call one.
+
 | # | Case | Result | Evidence |
 |---|---|---|---|
 | 5 | A future post must not publish early | **PASS** | A record queued 24 h out. Scheduler run found nothing; the record was still `queued` afterwards |
@@ -147,7 +179,8 @@ load-bearing, and it is in every route.
 
 ## Unison, tested as code
 
-262 unit tests (`npm test`) and 34 browser tests (`npx playwright test`) pass.
+279 unit tests (`npm test`) and 39 browser tests (`npx playwright test`, both
+projects) pass.
 
 The browser tests include `e2e/publish-payload.spec.js`, which asserts on the
 **request body Unison actually sends**, not on what the screen says — written
@@ -168,6 +201,31 @@ because "Make returned 200" was never evidence that the right bytes went out.
 | 26 | A dead webhook is classified as `hook-dead`, not a generic failure | **PASS** |
 | 27 | Scheduled media over the store budget is refused before sending | **PASS** |
 | 28 | A video gets 120 s to upload rather than 45 s | **PASS** |
+| 29 | A post whose minute has passed is published by Unison itself, with no click anywhere after a reload, through the immediate route | **PASS** |
+| 30 | A post already handed to Make is left alone by the in-app publisher — 45 s of live ticking, no second request | **PASS** |
+
+## The uploaded document, audited
+
+The question asked was whether *Upload a document* does anything, and if not,
+to remove it. It does — it was just invisible, and it did nothing at all when
+the AI layer was unavailable. Kept, and made to show its work.
+
+What it does now, end to end: the file's text is read in the browser
+(`.docx` via mammoth, `.txt/.md/.csv/.json` directly, uncompressed PDFs on a
+best-effort basis), material is extracted from it, and that material becomes
+**a tier-1 source at the top of Sources** and **claims in `research.claims`,
+which is the list handed to the writer** — plus the file name and its figures,
+named as the user's own document, in the writer's prompt.
+
+| # | Case | Result |
+|---|---|---|
+| 31 | With no AI configured at all, the upload still lands: tier-1 source, claims quoted from the document's own sentences, and the panel says "Read without AI" rather than passing them off as analysis | **PASS** |
+| 32 | With a model behind it, the document's insight appears in *What stood out* under **From your document**, beside the engine's own | **PASS** |
+| 33 | The writer's prompt names the file and carries its figures | **PASS** |
+| 34 | The document survives a reload — once, not twice | **PASS** |
+| 35 | Re-uploading, or re-running research on the same post, does not stack the same document up twice, and the other sources' claims keep pointing at the right row | **PASS** (unit) |
+
+Covered by `e2e/source-document.spec.js` and `tests/doc.test.js`.
 
 ## Not tested, and honest about it
 

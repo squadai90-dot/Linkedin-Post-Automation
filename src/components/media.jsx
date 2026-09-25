@@ -313,18 +313,34 @@ export function SourceDocPanel({ assets, mstate, ingestDocument }) {
       />
       <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
         .docx, .txt, .md and .csv are read in full. PDFs only work if their text is uncompressed.
+        What comes out of it goes into Sources as a primary document, and its claims are handed
+        to the writer — so the post is written from your file, not only from the web.
       </div>
       {assets.sourceDoc && (
         <div className="srcdoc">
           <div style={{ fontWeight: 600 }}>{assets.sourceDoc.name}</div>
           <div className="u-muted" style={{ fontSize: 13 }}>{assets.sourceDoc.summary}</div>
-          {["facts", "stats", "insights"].map((k) => (assets.sourceDoc[k] || []).length > 0 && (
+          {["claims", "stats", "facts", "insights"].map((k) => (assets.sourceDoc[k] || []).length > 0 && (
             <div key={k} style={{ marginTop: 8 }}>
-              <div className="eyebrow" style={{ marginBottom: 4 }}>{k}</div>
+              <div className="eyebrow" style={{ marginBottom: 4 }}>
+                {k === "claims" ? "Claims the writer will use" : k}
+              </div>
               {assets.sourceDoc[k].map((x, i) => <div key={i} style={{ fontSize: 13.5, padding: "2px 0" }}>— {x}</div>)}
             </div>
           ))}
-          <div className="badge" style={{ marginTop: 10 }}>Added to sources as a primary document</div>
+          {/* Say exactly what the upload did. "Added as a source" on its own
+              reads like a filing cabinet — the point is that the words in the
+              document reach the draft. */}
+          <div className="badge" style={{ marginTop: 10 }}>
+            {(assets.sourceDoc.claims || []).length
+              ? `In Sources as a primary document · ${assets.sourceDoc.claims.length} claim${assets.sourceDoc.claims.length === 1 ? "" : "s"} given to the writer`
+              : "In Sources as a primary document · nothing quotable was found in it"}
+          </div>
+          {assets.sourceDoc.degraded && (
+            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+              Read without AI — these are the document's own sentences, quoted as they stand.
+            </div>
+          )}
         </div>
       )}
     </div>

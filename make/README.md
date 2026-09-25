@@ -156,20 +156,48 @@ with `authorId: null` dated after your edit. `isActive: true` is not evidence.
 ### Why hourly, and what it costs
 
 Make's free plan allows **1,000 operations a month**, and every check of the
-queue spends one whether or not anything is due.
+queue spends one whether or not anything is due. The floor on the interval is
+not a preference either — it is enforced. `scenarios_update` with
+`interval: 300` and with `interval: 600` both come back
 
-| Interval | Checks/month | Verdict |
-|---|---|---|
-| 15 minutes (Make's free-plan minimum) | 2,880 | Exhausts the plan in ~10 days |
-| 30 minutes | 1,440 | Still over the plan |
-| **1 hour** | **720** | Fits, with ~280 left for publishing |
+```
+MakeApiError: Scenario execution interval is too short
+```
 
-So a scheduled post goes out **at its time or within the hour after it, never
-before**. Unison says exactly that on the schedule panel rather than implying
-the minute is exact. On a paid Make plan, set the scenario's interval to 900
-seconds and `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to
-`15 * 60 * 1000` together — changing one without the other makes Unison
-promise something Make does not do.
+and `900` is the smallest value the plan accepts (`license.interval: 15`
+minutes). So anything under a quarter of an hour is not available at any
+price on this plan, and a quarter of an hour is unaffordable:
+
+| Interval | Checks/month | Available? | Verdict |
+|---|---|---|---|
+| 1 minute | 43,200 | No — rejected | — |
+| 5 minutes | 8,640 | No — rejected | — |
+| 10 minutes | 4,320 | No — rejected | — |
+| 15 minutes (plan minimum) | 2,880 | Yes | 2.9× the whole month's allowance |
+| 30 minutes | 1,440 | Yes | Still over the allowance |
+| **1 hour** | **720** | **Yes** | **Fits, with ~280 left for publishing** |
+
+A window (`restrict`, e.g. weekdays 09:00–18:00 IST = 792 checks) would buy
+15-minute accuracy inside office hours, but it makes evenings and weekends
+*worse* than hourly: a post scheduled for Friday 19:00 would wait until
+Monday morning. It was rejected for that reason, not on cost.
+
+Make also has no event-driven timer. Its only trigger that fires on an
+outside event is a webhook, and nothing exists at the scheduled minute to
+call one — which is the whole problem.
+
+**So the queue is the fallback, not the mechanism.** A scheduled post goes out
+**at its time or within the hour after it, never before**. What hits the
+minute is Unison itself: while the app is open it checks every 30 seconds and
+publishes a due post through the immediate route, for zero Make operations.
+The two never overlap — "Hand to Make" sets `scheduledHandoff` on the post and
+the in-app publisher skips anything carrying it, so a post is either Unison's
+or Make's and never both. See **Scheduling** in the root `README.md`.
+
+On a paid Make plan, set the scenario's interval to 900 seconds and
+`MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to `15 * 60 * 1000`
+together — changing one without the other makes Unison promise something Make
+does not do.
 
 ## Why multi-image and document were withdrawn rather than fixed
 

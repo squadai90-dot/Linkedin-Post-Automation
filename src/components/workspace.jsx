@@ -304,6 +304,12 @@ export function Workspace(p) {
               <div className="card">
                 <div className="eyebrow" style={{ marginBottom: 10 }}>What stood out</div>
                 {(research.insights || []).map((x, i) => <div key={i} style={{ padding: "5px 0" }}>— {x}</div>)}
+                {(research.docInsights || []).length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="eyebrow" style={{ marginBottom: 7 }}>From your document</div>
+                    {research.docInsights.map((x, i) => <div key={i} style={{ padding: "5px 0" }}>— {x}</div>)}
+                  </div>
+                )}
                 {(research.risks || []).length > 0 && (
                   <div style={{ marginTop: 14 }}>
                     <div className="eyebrow" style={{ marginBottom: 7 }}>Watch out for</div>
@@ -487,7 +493,7 @@ export function Workspace(p) {
                 {holiday && <div className="badge warn" style={{ marginTop: 12 }}>{holiday.date} is a public holiday ({holiday.name}) where this timezone is — engagement is usually lower.</div>}
                 <div className="card tight" style={{ marginTop: 16 }}>
                   <span className="eyebrow">Tip</span>
-                  <div className="u-muted" style={{ fontSize: 13.5, marginTop: 5 }}>Weekday mornings in the audience's timezone tend to do best for B2B Pages. Unison holds the post until you press Publish, or hands it to Make to publish at this time.</div>
+                  <div className="u-muted" style={{ fontSize: 13.5, marginTop: 5 }}>Weekday mornings in the audience's timezone tend to do best for B2B Pages. Unison publishes the post itself, on the minute, as long as it is open at that time. Hand it to Make instead if nobody will be.</div>
                 </div>
                 {/* Scheduling is local state, so it never needs a connection.
                     Publishing without one is a labelled dry run. */}
@@ -523,7 +529,7 @@ export function Workspace(p) {
                 </div>
                 {stage === "SCHEDULED" && (
                   <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-                    Nothing runs while Unison is closed. Come back and press Publish now when it's due — it's flagged on Home — or hand it to Make, which publishes without Unison open. {scheduledWindow(schedule.date, schedule.time).sentence}
+                    Unison publishes this at {schedule.time} on its own, to the minute, provided it is open then — nothing to come back and press. If it will be closed, hand it to Make instead: Make publishes without Unison running, but only looks for due posts on a timer. {scheduledWindow(schedule.date, schedule.time).sentence}
                   </div>
                 )}
 

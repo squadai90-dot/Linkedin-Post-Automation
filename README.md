@@ -215,11 +215,32 @@ them apart before writing a post rather than after.
 
 #### When a scheduled post actually goes out
 
-The scheduled publisher checks the queue on a timer, so a post goes out **at its
-time or within the hour after it, never before**. It is an hour rather than the
-15 minutes Make's free plan allows because every check spends one of the plan's
-1,000 monthly operations: hourly costs 720 a month and leaves room to publish,
-15-minute checks cost 2,880 and exhaust the plan in ten days.
+There are two ways a scheduled post gets published, and which one you get
+depends on one choice you make on the schedule panel.
+
+**Unison publishes it, to the minute — while Unison is open.** The app knows
+the time, has the post, and already has a route that publishes immediately. So
+it checks every 30 seconds and, when a post comes due, publishes it through
+that same immediate route without anyone pressing anything. Delay is seconds,
+not minutes, and it costs **no Make operations at all**. This is the default:
+schedule a post and leave the tab open.
+
+**Make publishes it, within the hour — with Unison closed.** Press *Hand to
+Make* and the post goes into Make's data store instead. Make checks the queue
+on a timer, so it goes out **at its time or within the hour after it, never
+before**.
+
+A post is one or the other, never both: handing it to Make marks it, and the
+in-app publisher skips anything marked that way, so nothing reaches the Page
+twice.
+
+*Why an hour, and not five minutes:* every check spends one of the free plan's
+1,000 monthly operations. Hourly costs 720 a month and leaves room to publish;
+15-minute checks cost 2,880 and exhaust the plan in ten days. Shorter than 15
+minutes is not a budget question — Make **rejects** `interval: 300` and
+`interval: 600` outright on this plan (`Scenario execution interval is too
+short`), and it has no event-driven trigger to use instead. The full workings
+are in `make/README.md` under *Why hourly, and what it costs*.
 
 On a paid Make plan, set the scenario's interval to 900 seconds **and**
 `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to `15 * 60 * 1000`.
@@ -296,6 +317,7 @@ Nothing in the app claims more than it can prove. This table is the whole truth.
 | Research and drafting | Live web search when a hosted key is set; sources carry real URLs | Without a key, sources are labelled **placeholders** and the draft is labelled **sample text** |
 | Trending stories | Hacker News, free and keyless, real links | Never ranked against your Page's history — tagged "Trending", gap shown as unknown |
 | Background reading | Wikipedia, free and keyless | Marked *Background*, tier 3, never used as evidence for a claim |
+| Uploaded document | Real, and it changes the output: the file becomes a **tier-1 source** at the top of Sources, its claims join the list the writer is given, and the writer's prompt names the file and carries its figures. The panel says how many claims it contributed | It is read in the browser, so nothing is stored anywhere. No search or retrieval over it — the whole text (first 6,000 characters) is read at once. A compressed PDF cannot be read here and says so instead of returning nonsense. With no AI configured, the claims are the document's own sentences quoted verbatim, labelled *Read without AI* |
 | Grammar | LanguageTool, free and keyless | Your draft text is sent to `languagetool.org`. Turn it off in Settings → Advanced |
 | Holidays | Nager.Date, free and keyless | Country inferred from the chosen timezone |
 | Images | Real, downloadable PNG/SVG from brand templates; optionally AI photos via Pollinations | No commercial image model is wired in |
@@ -304,7 +326,7 @@ Nothing in the app claims more than it can prove. This table is the whole truth.
 | Source links | Marked **Retrieved** when the model's own search returned that URL | Marked **Unconfirmed link** when the model wrote it but the search did not return it, and **Not a real link** for a placeholder domain. With no search record, nothing is claimed either way |
 | Shared work | Real when `api/workspace.js` is deployed with a store behind it | Otherwise everything is local to one browser and Settings says so |
 | Performance | The numbers you enter from LinkedIn analytics, explained by the model | Not pulled automatically — the Make route has no read-back |
-| Scheduling | Real: handed to Make, which publishes without Unison open | **A browser cannot run while closed.** Make checks hourly, so a post goes out at its time or within the hour after — never before. A due post is also flagged on Home and in Content so you can publish it yourself |
+| Scheduling | Real, two ways: Unison publishes a due post itself within seconds while it is open; *Hand to Make* queues it so it publishes with Unison closed | **A browser cannot run while closed**, and Make's free plan cannot afford to look more often than hourly — so a handed-over post goes out at its time or within the hour after, never before. A post is only ever on one of the two paths |
 | Team list | A local list, shared when a workspace is deployed | Not a login. Roles are documentation, not enforcement |
 
 Sample rows that ship with the app are tagged `sample` and can be removed from
@@ -418,9 +440,11 @@ was not, is in [`TESTING.md`](TESTING.md).
       the encode runs on screen and the post goes out with the file attached.
       Worth saying out loud: the four post types on offer are the four that
       publish, so there is nothing here that looks supported and then fails.
-- [ ] **Schedule** a post a few minutes ahead → **Queued in Make. Nothing is
-      on LinkedIn yet.** Show that it says queued, not published.
-- [ ] Come back within the hour and show it live on the page.
+- [ ] **Schedule** a post a minute or two ahead and leave the tab open → it
+      publishes by itself, on the minute, with nothing to press.
+- [ ] **Hand to Make** instead → **Queued in Make. Nothing is on LinkedIn
+      yet.** Show that it says queued, not published, then come back within
+      the hour and show it live on the page.
 - [ ] Optional, if asked what happens when something breaks: Settings →
       Advanced → *Simulate a publishing failure*, then publish. The draft and
       its media survive, and the message says what failed.
@@ -482,9 +506,12 @@ pretends to have shared something it did not.
 
 ## Known limits
 
-- **Nothing runs while the tab is closed.** Hand a scheduled post to Make and
-  it publishes without Unison open. Keep it in Unison and it is only a
-  reminder, flagged on Home when it comes due.
+- **Exact scheduling needs the tab open.** Unison publishes a due post itself,
+  within seconds of its minute, as long as it is open at that time. Nothing in
+  a browser runs while it is closed, so a post that must go out unattended has
+  to be handed to Make — and Make's free plan can only afford to look for due
+  posts once an hour. Near-exact *unattended* scheduling is not available on
+  this plan at any interval it will accept; see `make/README.md`.
 - **Make's free plan is the binding constraint.** 1,000 operations a month,
   two active scenarios, a 1 MB data store, and a 15-minute minimum interval
   it cannot afford to use. That is why the scheduler checks hourly and why a
