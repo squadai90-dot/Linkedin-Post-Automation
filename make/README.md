@@ -124,6 +124,35 @@ Each route's filter sits on its **first** module. That is not cosmetic: a
 filter on the second module lets every record through the first one, so a
 poll would be claimed by the text route on its way past.
 
+### The timer stops when you edit the blueprint through the API
+
+This one cost a day. Updating scenario B's blueprint with `scenarios_update`
+**silently stops its schedule.** Everything keeps reporting healthy:
+
+```
+isActive : true          isinvalid : false          isPaused : false
+nextExec : a plausible time an hour out
+```
+
+and the scenario never runs again. The tell is in the execution history: an
+automatic run carries `authorId: null`, a manual one carries a user id. After
+the edit on 2026-09-24 11:06 every single execution had a user id on it — the
+last real automatic run was 09:07, and twenty-two hours of scheduled posts sat
+in the queue while the UI showed them correctly queued and due.
+
+**Re-arm it by pushing the schedule, not the blueprint:**
+
+```
+scenarios_update(scenarioId: 7524924, scheduling: {type: "indefinitely", interval: 3600})
+```
+
+That emits a `schedule` event and the timer fires from then on. Deactivating
+and reactivating in the Make UI does the same thing.
+
+**After any change to scenario B, check that an automatic run actually
+happens** — not that it says it will. List its executions and look for one
+with `authorId: null` dated after your edit. `isActive: true` is not evidence.
+
 ### Why hourly, and what it costs
 
 Make's free plan allows **1,000 operations a month**, and every check of the

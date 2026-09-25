@@ -13,33 +13,68 @@ reason · **NOT TESTED** no test was performed.
 ## Final state of every post type
 
 Tested **2026-09-25** on the live **Unison Content OS Test** page
-(`urn:li:organization:146260120`). Every id below is what LinkedIn returned.
-Every immediate row was produced from **the user's own Unison payload**, taken
-from the webhook queue or replayed from a real execution — not reconstructed,
-not hand-seeded.
+(`urn:li:organization:146260120`). Every row below was produced by pressing
+the buttons in Unison — no seeded records, no replayed payloads, no hand-built
+JSON. Each id is what LinkedIn returned.
 
-| Post Type | Immediate | Scheduled | Evidence |
-|---|---|---|---|
-| Text | **PASS** | **PASS** | Immediate `urn:li:share:7509139343828164608`. Scheduled `urn:li:share:7508849111392178176` |
-| Image | **PASS** | **PASS** | Immediate `urn:li:share:7509137974236872704`. Scheduled `urn:li:share:7508814445381505025` — queued by the real webhook, published by the scheduler |
-| Video | **PASS** | **PASS** | Immediate `urn:li:ugcPost:7509138493772697600` — the user's real 4 MB payload. Scheduled `urn:li:ugcPost:7508848961080852483` |
-| Poll | **PASS** | **PASS** | Immediate `urn:li:ugcPost:7509137969702907905`. Scheduled `urn:li:ugcPost:7509139221757190144` — the complete path: Unison → webhook → data store → scheduler → LinkedIn |
-| Multi-image | **REMOVED** | **REMOVED** | Not offered. `initializeUpload` succeeds; the binary PUT needs a host Make's LinkedIn module cannot call |
-| Document | **REMOVED** | **REMOVED** | Same blocker |
+| Post Type | Immediate | Scheduled | Immediate URN | Scheduled URN |
+|---|---|---|---|---|
+| Text | **PASS** | **PASS** | `urn:li:share:7509146380729409536` | `urn:li:share:7509156810465894401` |
+| Image | **PASS** | **PASS** | `urn:li:share:7509148286042333184` | `urn:li:share:7509156816866664448` |
+| Video | **PASS** | **PASS** | `urn:li:ugcPost:7509151527782154240` | `urn:li:ugcPost:7509156849212948480` |
+| Poll | **PASS** | **PASS** | `urn:li:ugcPost:7509151850521255936` | `urn:li:ugcPost:7509156852409126912` |
+| Multi-image | **REMOVED** | **REMOVED** | — | — |
+| Document | **REMOVED** | **REMOVED** | — | — |
 
-Article and carousel are removed too. A post of any of the four withdrawn
-types, sent by an older copy of Unison, is held in Make with its text and
-media and answered with what to do about it — verified on 2026-09-25 by an
-article payload that came back `unsupported`.
+The four scheduled posts were queued by the real UI between 07:10 and 07:32
+UTC and published together by a **genuine automatic scheduler run** at
+07:48:16 (`authorId: null` — the timer, not a person). Nothing was forced.
 
-### Scheduled text and video: what exactly was proven
+Media survived both handoffs intact and was cleared afterwards:
 
-Both were published by the scheduler from a queued record, against the live
-Page. For **poll** and **image** the record was put in the queue by the real
-webhook as well, so those two are unbroken production runs end to end. For
-text and video the record was seeded directly. That gap is narrower than it
-sounds: the queue is filled by **one** route shared by all four types
-(scenario A route 5), and that route is proven by the poll and image runs.
+| Record | In the store while queued | After publishing |
+|---|---|---|
+| `p-w-mugmi70sngg9` image | 1 × `image/png`, 399,956 chars base64 | cleared |
+| `p-w-mugmogs511yq` video | 2 × media, `video/mp4`, 427,856 chars | cleared |
+| `p-w-mugn4odql3el` poll | question + 4 options + `1 week` | cleared |
+
+## Why scheduled publishing had stopped
+
+Scenario B's **timer was dead**, and everything about it looked healthy.
+
+Updating a scheduled scenario's blueprint through the Make API silently stops
+its schedule. `isActive` stays `true`, `isinvalid` stays `false`, `isPaused`
+stays `false`, and `nextExec` keeps showing a plausible time an hour out. It
+simply never fires.
+
+The tell is in the execution history. An automatic run carries
+`authorId: null`; a manual one carries a user id. After the blueprint edit on
+**2026-09-24 11:06** every execution had a user id on it. The last genuine
+automatic run was **09:07 that morning** — twenty-two hours earlier. Four real
+scheduled posts sat correctly queued, correctly dated and correctly due, and
+nothing came to collect them.
+
+Re-armed by pushing the *schedule* rather than the blueprint:
+
+```
+scenarios_update(scenarioId: 7524924, scheduling: {type: "indefinitely", interval: 3600})
+```
+
+The next automatic run fired three seconds later and published all four.
+
+**`isActive: true` is not evidence that a scheduled scenario runs.** After any
+change to scenario B, list its executions and look for one with
+`authorId: null` dated after the edit.
+
+## Immediate Poll was not broken
+
+It was reported as failing; it was not. The poll pressed in the UI at
+**07:28:33** ran to completion — 8 operations, `status: 1` — and published as
+`urn:li:ugcPost:7509151850521255936`. The Posts API body is built by
+`json:CreateJSON` against a data structure, with the options collected by the
+Iterator/Aggregator pair, the organization as author, `commentary`,
+`content.poll.question`, `content.poll.options` and
+`content.poll.settings.duration`. Nothing was changed for this pass.
 
 ## The outage this pass found
 
@@ -89,29 +124,6 @@ through the Make workflow rather than by signing in. Make falls back to
 `urn:li:organization:146260120`, so posts land correctly — but the fallback is
 load-bearing, and it is in every route.
 
-## Scheduled publishing, in detail
-
-| # | Post type | Result | Evidence |
-|---|---|---|---|
-| 1 | Text | **PASS** | `urn:li:share:7508849111392178176` · record `t-sched-text-02`, re-tested on the final blueprint after the route filter changed |
-| 2 | Image | **PASS** | `urn:li:share:7508814445381505025` · record `p-w-muf9vpo9ud3p`, a real post scheduled from Unison and published by the scheduler. Route unchanged since |
-| 3 | Video | **PASS** | `urn:li:ugcPost:7508848961080852483` · record `t-sched-video-03`, a real H.264/MP4 file. Media cleared from the record afterwards (`media=0/0B`) |
-| 4 | Poll | **PASS** | `urn:li:ugcPost:7508849114902781952` · record `t-sched-poll-02`, built from `content.poll` on the Posts API and read back from LinkedIn's `x-restli-id` header |
-
-### The two video failures before it, and what they were
-
-Two earlier scheduled-video tests came back
-`PROCESSING_FAILED — Uploaded file is corrupted`. Both times the file really
-was corrupt, and both times **the corruption was mine**: the base64 had to be
-typed into a Make API call by hand, and a run of near-identical characters lost
-16 characters once and 80 characters the time before. Both were caught by
-hashing the stored value against the source file, not by guessing.
-
-The lesson is worth keeping: LinkedIn accepts a damaged video, spends about a
-minute transcoding it and only then fails it. If a video ever fails this way,
-compare a hash of the stored base64 against the file **before** touching the
-scenario. The pipeline was never the problem.
-
 ## Scheduling behaviour
 
 | # | Case | Result | Evidence |
@@ -159,40 +171,42 @@ because "Make returned 200" was never evidence that the right bytes went out.
 
 ## Not tested, and honest about it
 
-- **Pressing the buttons in your browser.** This session's network policy
-  refuses `hook.eu1.make.com`, so nothing here can post to the webhook
-  directly. Every immediate result above was instead produced from your own
-  payloads — two taken out of the webhook queue where they had been stuck,
-  three replayed from your real executions — which exercises the identical
-  path from the webhook onwards. What it does not exercise is the browser's
-  own request to Make. That part is now covered by the failure handling
-  rather than by a test: if the request does not reach a working scenario,
-  Unison says so instead of reporting the post as in flight.
 - **Behaviour at LinkedIn's rate limit** — cannot be provoked without
-  deliberately flooding the page, which you asked me not to do. The handling
-  is in place: a 429 lands on the error route, is recorded with LinkedIn's
-  message, and does not stop other posts.
-- **An expired LinkedIn connection** — the current one runs to 2027-09-22.
-  An expired token surfaces as a 401 through the same error route.
+  deliberately flooding the page. The handling is in place: a 429 lands on the
+  error route, is recorded with LinkedIn's message, and does not stop other
+  posts.
+- **An expired LinkedIn connection** — the current one runs to 2027-09-22. An
+  expired token surfaces as a 401 through the same error route.
 - **A browser that records H.264** — this container's Chromium cannot, so the
-  MP4 branch of the recorder is exercised by the codec-preference list and by
-  the real MP4 used in the video tests, not by recording one here. Chrome and
-  Edge on a normal machine take that branch.
+  MP4 branch of the recorder is covered by the codec-preference list rather
+  than by recording one here. The user's own machine takes that branch: the
+  video posts above were `video/mp4`.
 
 ## State of the data store
 
-Cleared on 2026-09-25. Six records remain, every one `published` with its
-LinkedIn id and **no media at all** — nothing queued, so nothing can publish
-unexpectedly. The 398 KB record that had been holding 38% of the 1 MB store
-since 22 September is gone, so the scheduling queue has its full capacity
-back. `python3 make/dump-records.py` prints it one line per record.
+Fourteen records, every one `published` with its LinkedIn id, and **no media
+on any of them** — the scheduled image and video cleared their base64 as they
+published. Nothing is `queued`, so nothing can go out unexpectedly.
+
+It peaked at **85% of the 1 MB store** while the scheduled image (400 KB) and
+video (487 KB) were both waiting. That is the real ceiling on this plan: two
+media posts queued at once very nearly fills it, and a third would be refused.
+Unison already refuses a single scheduled post over ~600 KB before sending,
+but it cannot see what is already in the store. If you queue media posts in
+batches, publish them before adding more. `python3 make/dump-records.py`
+prints the store one line per record, with a total.
 
 ## Operations budget
 
-Make's free plan allows 1,000 operations a month. **460 used, 540 left**,
+Make's free plan allows 1,000 operations a month. **573 used, 427 left**,
 resetting **2026-10-03**. The scheduler spends 24 a day checking the queue, so
-about 216 of those 540 go on queue checks over the next nine days and the rest
-is yours for publishing.
+about 190 of those 427 go on queue checks over the remaining eight days and
+the rest is yours for publishing.
+
+The scheduler was briefly set to 15 minutes to observe a genuine automatic run
+during this pass, then put back to hourly. Fifteen minutes is 2,880 operations
+a month — it would exhaust the plan in about four days and stop publishing
+altogether. Hourly, at 720 a month, is the only interval this plan affords.
 
 Steady state after the reset is 720 a month for the queue checks, leaving
 roughly 280 — about 70 scheduled posts. Each immediate post now costs one
