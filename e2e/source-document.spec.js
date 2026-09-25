@@ -136,7 +136,15 @@ test.describe("uploading a document you already have", () => {
     await upload(page);
     await expect(page.locator(".src", { hasText: "review.txt" })).toBeVisible({ timeout: 40_000 });
 
-    await page.waitForTimeout(1500);   // let the debounced save run
+    /* The session save is debounced, so wait for the document to actually be
+       in the store rather than for a fixed number of milliseconds — under
+       load a fixed wait reloads before the save and loses it. */
+    await expect.poll(() => page.evaluate(() => {
+      try {
+        const s = JSON.parse(localStorage.getItem("unison:session:v1") || "null");
+        return s?.assets?.sourceDoc?.name || "";
+      } catch { return ""; }
+    }), { timeout: 30_000, intervals: [200] }).toBe("review.txt");
     await page.reload();
 
     await expect(page.locator(".src", { hasText: "review.txt" })).toBeVisible({ timeout: 40_000 });

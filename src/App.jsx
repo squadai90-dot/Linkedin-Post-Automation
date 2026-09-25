@@ -17,7 +17,7 @@ import { setBrandText } from "./lib/brand.js";
 import { nextSlot, localTimezone } from "./lib/dates.js";
 import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js";
 import { downloadBlob } from "./lib/brand.js";
-import { todayISO, isDue } from "./lib/dates.js";
+import { todayISO, isDue, zonedToUtc } from "./lib/dates.js";
 import { loadPublishSettings, savePublishSettings } from "./lib/publish.js";
 import { workspaceHealth, pull as pullShared, push as pushShared, mergeShared, syncSummary, SYNC, resetWorkspaceProbe } from "./lib/sync.js";
 import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources, fetchImageAsDataUrl } from "./lib/freeApis.js";
@@ -1141,6 +1141,15 @@ Give up to 4 of each. Only include what the document actually says.`,
   function reject(reason) { logAudit(`Reviewer rejected — ${reason}`); runWriter(angle, reason); }
 
   /* Everything a post needs to be re-opened later, without the working state. */
+  /* The minute the user picked, as an instant, kept apart from every other
+     time on the record. `date`/`time` are the row's headline and change when
+     the post publishes; these three do not, so Content can always show what
+     was asked for next to what happened. */
+  const scheduleStamp = () => ({
+    scheduledDate: schedule.date, scheduledTime: schedule.time, scheduledTz: schedule.tz,
+    scheduledFor: (() => { try { return zonedToUtc(schedule.date, schedule.time || "09:00", schedule.tz).toISOString(); } catch { return null; } })(),
+  });
+
   const postRecord = (extra) => ({
     title: draft?.hook?.slice(0, 60) || idea, topic: idea, workId, formats,
     content: draft ? { hook: draft.hook, body: draft.body, cta: draft.cta, hashtags: draft.hashtags || [] } : null,
@@ -1149,6 +1158,19 @@ Give up to 4 of each. Only include what the document actually says.`,
     snapshot: snapshotWork(),           // enough to reopen the post in the workspace
     submittedBy: profile.userName || null,
     time: schedule.time, tz: schedule.tz, ...extra,
+  });
+
+  /* Publishing replaces the scheduled row rather than adding one beside it,
+     so the times that row already earned — the minute it was scheduled for,
+     the moment Make took it — have to travel with it. Without this the
+     history could only ever show the last thing that happened, which is
+     exactly the comparison the Content module exists to make. */
+  const CARRIED_TIMES = ["scheduledAt", "scheduledFor", "scheduledDate", "scheduledTime", "scheduledTz", "sentAt"];
+  const replacePost = (record) => setPosts((p) => {
+    const prev = p.find((x) => x.id === record.id);
+    const carried = {};
+    if (prev) for (const k of CARRIED_TIMES) if (record[k] == null && prev[k] != null) carried[k] = prev[k];
+    return [{ ...record, ...carried }, ...p.filter((x) => x.id !== record.id && !(workId && x.workId === workId))];
   });
 
   /* One record per piece of work: scheduling, then publishing, replaces the
@@ -1169,7 +1191,7 @@ Give up to 4 of each. Only include what the document actually says.`,
     setStage("SCHEDULED");
     /* One record per piece of work: rescheduling replaces, never duplicates. */
     const id = recordId();
-    setPosts((p) => [postRecord({ id, state: "SCHEDULED", date: schedule.date, scheduledAt: new Date().toISOString() }), ...p.filter((x) => x.id !== id && !(workId && x.workId === workId))]);
+    replacePost(postRecord({ id, state: "SCHEDULED", date: schedule.date, scheduledAt: new Date().toISOString(), ...scheduleStamp() }));
     logAudit(`Scheduled for ${schedule.date} ${schedule.time} ${schedule.tz}`);
     notify(`Scheduled for ${schedule.date} at ${schedule.time}.`);
   }
@@ -1331,7 +1353,7 @@ Give up to 4 of each. Only include what the document actually says.`,
     setStage("PUBLISHING"); setPublishState("SENDING"); setPublishVia("simulated");
     setAttempts([{ label: "Simulated — nothing was sent", status: "ok", idem: postId }, { label: "Published (simulated)", status: "ok", idem: postId }]);
     setPublishState("SIMULATED"); setStage("PUBLISHED");
-    setPosts((p) => [postRecord({ id: postId, state: "PUBLISHED", date: todayISO(), simulated: true, publishedAt: new Date().toISOString() }), ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+    replacePost(postRecord({ id: postId, state: "PUBLISHED", date: todayISO(), simulated: true, publishedAt: new Date().toISOString() }));
     logAudit("Simulated publish — nothing was sent to LinkedIn");
     notify("Simulated publish — nothing was sent. Connect Make or LinkedIn under Settings to publish for real.", { tone: "warn", ms: 8000 });
   }
@@ -1364,8 +1386,7 @@ Give up to 4 of each. Only include what the document actually says.`,
           payload.altText = assets.images[0].brief?.subject || "";
         }
         const r = await linkedinService.publish(payload);
-        setPosts((p) => [postRecord({ id: postId, reference: r.post.urn, url: r.post.url, state: "PUBLISHED", date: todayISO(), real: true, publishedAt: new Date().toISOString() }),
-          ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        replacePost(postRecord({ id: postId, reference: r.post.urn, url: r.post.url, state: "PUBLISHED", date: todayISO(), real: true, publishedAt: new Date().toISOString() }));
         logAudit(`Published to LinkedIn — ${r.post.urn}`);
         if (!live()) return;
         step("LinkedIn confirmed the post", "ok");
@@ -1416,12 +1437,12 @@ Give up to 4 of each. Only include what the document actually says.`,
       step(route === "linkedin" ? "Posting to LinkedIn" : scheduled ? "Handing to Make with the schedule" : "Sending to Make", "ok");
       /* Snapshot the record before the round trip: if the user opens another
          draft meanwhile, the result is still filed against the right post. */
-      const baseRecord = postRecord({ id: postId, viaMake: route !== "linkedin", postType, mediaSent: payload.media.length, limits, scheduledHandoff: scheduled });
+      const baseRecord = postRecord({ id: postId, viaMake: route !== "linkedin", postType, mediaSent: payload.media.length, limits, scheduledHandoff: scheduled, ...(scheduled ? scheduleStamp() : {}) });
       const r = await publishPost(payload);
       const viaLinkedIn = r.route === "linkedin";
       setSentKeys((k) => (k.includes(postId) ? k : [...k, postId]));
       if (!live()) {
-        setPosts((p) => [{ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        replacePost({ ...baseRecord, state: r.published ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), sentAt: r.at, publishedAt: r.published ? r.at : null, unverified: !!r.unverified, reference: r.urn || null, url: r.url || null });
         return;
       }
       /* The scenario answers with what it actually did, and the six answers
@@ -1439,13 +1460,14 @@ Give up to 4 of each. Only include what the document actually says.`,
       if (r.unverified) setPublishUnverified(true);
       const sentRecord = postRecord({
         id: postId, state: "SENT", date: scheduled ? schedule.date : todayISO(), viaMake: !viaLinkedIn, scheduledHandoff: scheduled,
+        ...(scheduled ? scheduleStamp() : {}),
         postType, mediaSent: payload.media.length, limits, sentAt: r.at, reference: r.urn || null, url: r.url || null,
         unverified: !!r.unverified, makeState: state, makeNote: r.message || null,
       });
       if (r.published) {
         step("Published", "ok");
         setPublishState("PUBLISHED"); setStage("PUBLISHED");
-        setPosts((p) => [{ ...sentRecord, state: "PUBLISHED", publishedAt: r.at }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        replacePost({ ...sentRecord, state: "PUBLISHED", publishedAt: r.at });
         logAudit(`Published to LinkedIn${viaLinkedIn ? " directly" : " via Make"}${r.urn ? ` — ${r.urn}` : ""}`);
         notify("Published to LinkedIn.");
       } else if (state === "failed" || state === "rejected") {
@@ -1466,7 +1488,7 @@ Give up to 4 of each. Only include what the document actually says.`,
         step("Not published — LinkedIn's API has no route for this type", "failed");
         setPublishState("HELD");
         setPublishLimits((l) => [...l, r.message || "Make kept the post and its media. LinkedIn's API cannot create this post type."]);
-        setPosts((p) => [{ ...sentRecord, state: "HELD" }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        replacePost({ ...sentRecord, state: "HELD" });
         logAudit(`Held in Make — ${postType} is not publishable through LinkedIn's API`);
         notify("Not published. LinkedIn's API can't create this post type — everything is saved in Make.", { tone: "warn", ms: 9000 });
       } else {
@@ -1474,7 +1496,7 @@ Give up to 4 of each. Only include what the document actually says.`,
           ? `Make will publish on ${schedule.date} at ${schedule.time}`
           : "Waiting for LinkedIn to confirm", "pending");
         setPublishState("SENT");
-        setPosts((p) => [sentRecord, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
+        replacePost(sentRecord);
         logAudit(`Sent to Make — ${postType} post, Make said "${state}"${payload.media.length ? `, ${payload.media.length} media file(s)` : ""}${r.unverified ? " (reply unreadable)" : ""}`);
         notify(r.unverified ? "Sent to Make. The reply couldn't be read from this browser, so check the scenario before sending again."
           : state === "queued" ? "Queued in Make. Nothing is on LinkedIn yet — it goes out at the scheduled time."

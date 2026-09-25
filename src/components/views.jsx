@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { labelFor } from "../lib/formats.js";
 import { segments } from "../lib/text.jsx";
 import { svgDataUrl } from "./media.jsx";
-import { todayISO, monthGrid, weekDays, addDays, fmtMonth, fmtLong, fmtDay, sameMonth, DAY_SHORT, isDue, relativeTime } from "../lib/dates.js";
+import { todayISO, monthGrid, weekDays, addDays, fmtMonth, fmtLong, fmtDay, sameMonth, DAY_SHORT, isDue, relativeTime, fmtStamp, fmtGap } from "../lib/dates.js";
+import { postTimeline, primaryStamp } from "../lib/posts.js";
 
 /* ============================================================
    SECONDARY VIEWS
@@ -23,6 +24,35 @@ export function postVisuals(post) {
 }
 
 const asImgSrc = (s) => (typeof s === "string" && /^(https?:|data:)/.test(s) ? s : svgDataUrl(s));
+
+/* When the post was scheduled for, when Make took it, and when it actually
+   went out — the three are different times and the whole point is being able
+   to read them against each other. A post with only one of them shows only
+   that one; an immediate post is never given a "Scheduled" line it does not
+   have. */
+export function PostTimes({ post }) {
+  const { rows, gapSeconds } = postTimeline(post);
+  if (!rows.length) return null;
+  return (
+    <div className="ptimes">
+      {rows.map((r) => (
+        <div key={r.key} className="ptime">
+          <span className="eyebrow">{r.label}</span>
+          <span className={"ptime-v" + (r.at ? "" : " u-muted")}>
+            {r.at ? fmtStamp(r.at, r.tz) : r.pending}
+          </span>
+        </div>
+      ))}
+      {gapSeconds != null && (
+        <div className="u-muted ptime-gap">
+          {fmtGap(gapSeconds) === "on time"
+            ? "Published on the scheduled minute."
+            : `Published ${fmtGap(gapSeconds)} than scheduled.`}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ContentList({ posts, open, publish, onCreate }) {
   const [filter, setFilter] = useState("All");
@@ -64,7 +94,7 @@ export function ContentList({ posts, open, publish, onCreate }) {
         ) : (
           <div className="tbl-wrap">
             <table className="tbl">
-              <thead><tr><th>Post</th><th>State</th><th>Date</th><th></th></tr></thead>
+              <thead><tr><th>Post</th><th>State</th><th>When</th><th></th></tr></thead>
               <tbody>
                 {shown.map((p) => (
                   <tr key={p.id}>
@@ -73,7 +103,18 @@ export function ContentList({ posts, open, publish, onCreate }) {
                       <div className="u-muted" style={{ fontSize: 11.5, fontWeight: 400 }}>{p.formats ? labelFor(p.formats) : ""}{p.sample ? " · sample" : ""}{p.simulated ? " · simulated" : ""}{p.submittedBy ? ` · ${p.submittedBy}` : ""}</div>
                     </td>
                     <td><span className={"state " + stateClass(p.state)}>{postDue(p) ? "DUE NOW" : stateLabel(p.state)}</span></td>
-                    <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }}>{p.date}{p.time && p.state === "SCHEDULED" ? ` ${p.time}` : ""}</td>
+                    <td style={{ fontSize: 13 }}>
+                      {(() => {
+                        const stamp = primaryStamp(p);
+                        if (!stamp) return <span className="mono">{p.date}</span>;
+                        return (
+                          <>
+                            <div className="eyebrow">{stamp.key === "published" ? "Published" : stamp.key === "sent" ? "Sent to Make" : "Scheduled"}</div>
+                            <div className="mono" style={{ whiteSpace: "nowrap" }}>{fmtStamp(stamp.at, stamp.tz)}</div>
+                          </>
+                        );
+                      })()}
+                    </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       {postDue(p) && <button className="btn sm acc" style={{ marginRight: 6 }} onClick={() => publish(p)}>Publish now</button>}
                       <button className="btn sm" onClick={() => open(p)}>Open</button>
@@ -190,14 +231,18 @@ export function PostDetail({ post, linkedin, company, cancel, confirm: confirmLi
   const v = postVisuals(post);
   const due = postDue(post);
   const when = post.state === "SCHEDULED" ? `${fmtLong(post.date)}${post.time ? ` at ${post.time}` : ""}${post.tz ? ` ${post.tz}` : ""}` : post.date;
+  const times = postTimeline(post);
 
   return (
     <div>
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
         <span className={"state " + stateClass(post.state)}>{due ? "DUE NOW" : stateLabel(post.state)}</span>
-        <span className="u-muted mono" style={{ fontSize: 12 }}>{post.reference ? `${post.reference}` : post.id} · {when}</span>
+        {/* The times block below says when, to the minute. Repeating a
+            vaguer version of it here would only add a second answer. */}
+        <span className="u-muted mono" style={{ fontSize: 12 }}>{post.reference ? `${post.reference}` : post.id}{times.rows.length ? "" : ` · ${when}`}</span>
       </div>
       {(post.topic || post.formats) && <div className="u-muted" style={{ fontSize: 13, marginTop: 12 }}>{post.topic ? `Topic: ${post.topic}` : ""}{post.formats ? ` · ${labelFor(post.formats)}` : ""}{post.submittedBy ? ` · by ${post.submittedBy}` : ""}</div>}
+      {times.rows.length > 0 && <PostTimes post={post} />}
       {post.sample && <div className="badge warn" style={{ marginTop: 12 }}>Sample post that came with the demo — remove it when you're done exploring.</div>}
 
       {c ? (
@@ -260,7 +305,7 @@ export function PostDetail({ post, linkedin, company, cancel, confirm: confirmLi
       {post.viaMake && (
         <div className="u-muted" style={{ fontSize: 13, marginTop: 12 }}>
           {post.state === "HELD" ? (post.makeNote || "Not published. LinkedIn's API cannot create this post type — the post and its media are kept in Make.")
-            : post.state === "SENT" ? (post.unverified ? "Sent to Make, but delivery couldn't be confirmed from the browser. Check the scenario history." : post.makeState === "queued" || post.scheduledHandoff ? `Queued in Make to publish on ${post.date}${post.time ? " at " + post.time : ""}. Nothing is on LinkedIn yet.` : "Sent to Make — LinkedIn hasn't confirmed the post yet.")
+            : post.state === "SENT" ? (post.unverified ? "Sent to Make, but delivery couldn't be confirmed from the browser. Check the scenario history." : post.makeState === "queued" || post.scheduledHandoff ? "Queued in Make for the time above. Make looks for due posts on a timer, so it goes out then or within the hour after. Nothing is on LinkedIn yet." : "Sent to Make — LinkedIn hasn't confirmed the post yet.")
             : `Published via Make${post.confirmedBy === "manual" ? " (confirmed by you)" : ""}.`}
           {` Sent as ${post.postType}${post.mediaSent ? ` with ${post.mediaSent} media file(s)` : ""}.`}
           {(post.limits || []).map((l, i) => <div key={i} className="badge warn" style={{ marginTop: 8 }}>{l}</div>)}

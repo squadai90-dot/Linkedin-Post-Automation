@@ -179,7 +179,7 @@ exists at the scheduled minute to call one.
 
 ## Unison, tested as code
 
-279 unit tests (`npm test`) and 39 browser tests (`npx playwright test`, both
+294 unit tests (`npm test`) and 42 browser tests (`npx playwright test`, both
 projects) pass.
 
 The browser tests include `e2e/publish-payload.spec.js`, which asserts on the
@@ -203,6 +203,31 @@ because "Make returned 200" was never evidence that the right bytes went out.
 | 28 | A video gets 120 s to upload rather than 45 s | **PASS** |
 | 29 | A post whose minute has passed is published by Unison itself, with no click anywhere after a reload, through the immediate route | **PASS** |
 | 30 | A post already handed to Make is left alone by the in-app publisher — 45 s of live ticking, no second request | **PASS** |
+
+## The times Content shows
+
+Three stored moments, never one field relabelled. `publishedAt` is only ever
+set from a confirmation — LinkedIn's own reply, Make answering `published`, or
+the user's own "I've checked, it's live". It is never the scheduled time,
+never the moment the webhook accepted the request, and never `now()` at the
+click.
+
+| # | Case | Result |
+|---|---|---|
+| 36 | An immediate post shows a **Published** time and no scheduled line at all | **PASS** |
+| 37 | A post handed to Make shows **Scheduled** and **Sent to Make**, and **Published — Not yet confirmed** | **PASS** |
+| 38 | A scheduled post Unison publishes itself shows both times, they differ, and the gap is stated | **PASS** |
+| 39 | Publishing replaces the scheduled row without losing the minute it was scheduled for | **PASS** |
+| 40 | Make taking and publishing a post in one round trip is one event, not two identical stamps | **PASS** (unit) |
+| 41 | A row saved by an older build still reads, from its date, time and zone | **PASS** (unit) |
+| 42 | A post with no recorded time shows no time rather than a guess | **PASS** (unit) |
+| 43 | Times render in the post's own zone, with the abbreviation that zone is known by (IST, EDT, BST) | **PASS** (unit) |
+
+Covered by `e2e/content-times.spec.js` and `tests/posts.test.js`.
+
+Note: the sample posts that ship with the demo carry a date but no publication
+time, because none of them was ever published. They show the date alone rather
+than being given a fabricated minute.
 
 ## The uploaded document, audited
 

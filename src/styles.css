@@ -464,6 +464,18 @@ select.ta{cursor:pointer;} select.ta option{background:var(--bg); color:var(--in
 .brief .eyebrow{margin-right:8px;}
 .srcdoc{margin-top:14px; border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--solid-2);}
 
+/* Scheduled / sent / published, read against each other. Two columns so the
+   times line up vertically and a minute's difference is visible at a glance;
+   one column on a phone, where they cannot. */
+.ptimes{margin-top:14px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--solid-2);}
+.ptime{display:grid; grid-template-columns:104px 1fr; align-items:baseline; gap:10px; padding:3px 0;}
+.ptime-v{font-family:'IBM Plex Mono',monospace; font-size:12.5px; white-space:nowrap;}
+.ptime-gap{font-size:12px; margin-top:6px; padding-top:6px; border-top:1px solid var(--line);}
+@media (max-width:560px){
+  .ptime{grid-template-columns:1fr; gap:0; padding:5px 0;}
+  .ptime-v{white-space:normal;}
+}
+
 /* ---------- preview extras ---------- */
 .li-poll{margin:4px 18px 14px; border:1px solid #E2E7EF; border-radius:10px; padding:14px;}
 .li-opt{border:1px solid #0A66C2; color:#0A66C2; border-radius:999px; padding:8px 14px; margin-bottom:8px; font-size:13.5px; font-weight:600; text-align:center;}

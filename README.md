@@ -246,6 +246,24 @@ On a paid Make plan, set the scenario's interval to 900 seconds **and**
 `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to `15 * 60 * 1000`.
 Change one without the other and Unison promises something Make does not do.
 
+#### What Content records about each post
+
+Content shows three different moments, and they are three different stored
+values — never one field printed twice:
+
+| Line | Where it comes from | Shown when |
+|---|---|---|
+| **Scheduled** | the date, time and zone the user picked, stored as `scheduledDate` / `scheduledTime` / `scheduledTz` and as an instant in `scheduledFor` | only if the post was actually scheduled |
+| **Sent to Make** | `sentAt` — when Make acknowledged the post | only while Make is holding it, or when it was handed over with a schedule |
+| **Published** | `publishedAt` — when the publication was **confirmed** (LinkedIn's own reply, Make's `published` answer, or your own "I've checked, it's live") | only once that confirmation exists; otherwise it reads *Not yet confirmed* |
+
+Times are shown in the post's own timezone, labelled with it (`25 Sep 2026 ·
+10:30 AM IST`), and a scheduled post that has published also shows how far
+apart the two were. `scheduledFor` is never overwritten by `publishedAt` — a
+post that published a minute late still shows the minute that was asked for.
+
+An immediate post has no scheduled time and is not given one.
+
 Media on a scheduled post is capped at about 600 KB, because a queued post waits
 in Make's data store and the whole store is 1 MB for the team. Unison refuses a
 heavier scheduled post up front and says to publish it now instead — an
