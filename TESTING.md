@@ -2,7 +2,7 @@
 
 Everything below is either an actual end-to-end test or is marked as not
 tested. Nothing is inferred from a module being valid, a scenario being
-active, or a webhook answering `200`. Run on **2026-09-24** against the live
+active, or a webhook answering `200`. Last run **2026-09-25** against the live
 Make scenarios and the **Unison Content OS Test** page
 (`urn:li:organization:146260120`).
 
@@ -12,40 +12,82 @@ reason · **NOT TESTED** no test was performed.
 
 ## Final state of every post type
 
+Tested **2026-09-25** on the live **Unison Content OS Test** page
+(`urn:li:organization:146260120`). Every id below is what LinkedIn returned.
+Every immediate row was produced from **the user's own Unison payload**, taken
+from the webhook queue or replayed from a real execution — not reconstructed,
+not hand-seeded.
+
 | Post Type | Immediate | Scheduled | Evidence |
 |---|---|---|---|
-| Text | **PASS** | **PASS** | Scheduled: `urn:li:share:7508849111392178176`. Immediate: `urn:li:share:7508197870823485442`, `urn:li:share:7508197874028138496` |
-| Image | **PASS** | **PASS** | Scheduled: `urn:li:share:7508814445381505025`. Immediate: `urn:li:share:7508197880621551616` |
-| Video | **BLOCKED here** | **PASS** | Scheduled: `urn:li:ugcPost:7508848961080852483` — a real H.264 MP4 carried through the data store, uploaded by the scenario, accepted by LinkedIn. Immediate uses the same module and mapping but starts at the webhook, which this session cannot reach |
-| Poll | **PASS** | **PASS** | Scheduled: `urn:li:ugcPost:7508849114902781952`. Immediate: `urn:li:ugcPost:7508814448984354818` |
-| Multi-image | **REMOVED** | **REMOVED** | Attempted properly and blocked at the binary upload — see below. Removed from Unison rather than left selectable |
-| Document | **REMOVED** | **REMOVED** | Same blocker. Removed from Unison |
+| Text | **PASS** | **PASS** | Immediate `urn:li:share:7509139343828164608`. Scheduled `urn:li:share:7508849111392178176` |
+| Image | **PASS** | **PASS** | Immediate `urn:li:share:7509137974236872704`. Scheduled `urn:li:share:7508814445381505025` — queued by the real webhook, published by the scheduler |
+| Video | **PASS** | **PASS** | Immediate `urn:li:ugcPost:7509138493772697600` — the user's real 4 MB payload. Scheduled `urn:li:ugcPost:7508848961080852483` |
+| Poll | **PASS** | **PASS** | Immediate `urn:li:ugcPost:7509137969702907905`. Scheduled `urn:li:ugcPost:7509139221757190144` — the complete path: Unison → webhook → data store → scheduler → LinkedIn |
+| Multi-image | **REMOVED** | **REMOVED** | Not offered. `initializeUpload` succeeds; the binary PUT needs a host Make's LinkedIn module cannot call |
+| Document | **REMOVED** | **REMOVED** | Same blocker |
 
-Article and carousel were also removed: carousel because LinkedIn has no
-organic carousel API at all, article because it is no longer wanted as a
-separate Unison post type.
+Article and carousel are removed too. A post of any of the four withdrawn
+types, sent by an older copy of Unison, is held in Make with its text and
+media and answered with what to do about it — verified on 2026-09-25 by an
+article payload that came back `unsupported`.
 
-Every immediate id above came from a post published from Unison through the
-webhook by you; the scheduled ones were published by the scheduler while this
-session watched. Immediate **video** is the single row without its own id,
-for the reason in the next section.
+### Scheduled text and video: what exactly was proven
 
-## What could not be tested from here, and why
+Both were published by the scheduler from a queued record, against the live
+Page. For **poll** and **image** the record was put in the queue by the real
+webhook as well, so those two are unbroken production runs end to end. For
+text and video the record was seeded directly. That gap is narrower than it
+sounds: the queue is filled by **one** route shared by all four types
+(scenario A route 5), and that route is proven by the poll and image runs.
 
-This session's network policy refuses `hook.eu1.make.com` — the proxy answers
-`403` to the CONNECT, so no request of mine reaches the webhook. Everything
-that *starts* at the webhook is therefore untestable here. Make's run API does
-not help: `scenarios_run` with a payload does not feed a webhook trigger,
-which was checked rather than assumed (a probe payload produced no record).
+## The outage this pass found
 
-The scheduled half does not go through the webhook once a post is queued, so
-it was tested in full by writing records into the data store and running the
-scheduler. Those are real LinkedIn posts.
+Every post between **2026-09-24 12:27** and **2026-09-25 06:33** silently
+failed. Unison said "Sent to Make — waiting for LinkedIn to confirm"; nothing
+reached LinkedIn.
 
-**To close the immediate-video row** takes about two minutes: in Unison write
-a post, add **Video**, press **Publish now**, and read the LinkedIn id off the
-Performance panel. Scenario A now also writes that id into the data store, so
-`python3 make/dump-records.py` will show it afterwards.
+The scenario had been edited by hand in Make at 12:27, which put
+`gateway:WebhookRespond` modules back inside the `onerror` routes. Make
+accepts that on save and then refuses to initialise the scenario when a
+payload arrives — six modules, six problems — and switches it off. Eight
+payloads piled up in the webhook queue.
+
+Two things came out of it:
+
+- **Make.** The validated blueprint was restored and the scenario
+  reactivated. Two of the queued payloads were kept and deliberately let
+  through as the production test above; the rest were cleared so old attempts
+  could not publish at random.
+- **Unison.** A bare "Accepted" from Make now fails the post instead of
+  reporting it as in flight. The immediate routes answer every post with an
+  explicit result, so a bare acceptance means the scenario never got to its
+  response — nothing was published. A reply that says `failed` or `rejected`
+  outright now fails too; it used to fall through to the same waiting state.
+
+> **If you edit either scenario in Make, never put a Webhook response inside
+> an error handler.** It saves without complaint and breaks the scenario at
+> the next real payload. Record the failure in the data store instead, which
+> is what the restored blueprint does.
+
+## publishMode, audited against real payloads
+
+Taken from the webhook queue and from the data store, not from the source:
+
+| | Immediate | Scheduled |
+|---|---|---|
+| `publishMode` | `"now"` | `"scheduled"` |
+| `scheduledDate` / `scheduledTime` | absent / null | the chosen date and time |
+| Enters the queue? | no | yes, `status: "queued"` with `dueAt` |
+
+Immediate posts are **not** leaking into the scheduled queue. The date and
+time shown next to **Publish now** belong to **Schedule post**; the panel now
+says so, which is what made it look otherwise.
+
+One real finding: Unison sends `companyUrn: null` when the Page was connected
+through the Make workflow rather than by signing in. Make falls back to
+`urn:li:organization:146260120`, so posts land correctly — but the fallback is
+load-bearing, and it is in every route.
 
 ## Scheduled publishing, in detail
 
@@ -117,8 +159,15 @@ because "Make returned 200" was never evidence that the right bytes went out.
 
 ## Not tested, and honest about it
 
-- **Immediate video** — blocked by this session's network policy, as above.
-  Two minutes in a browser closes it.
+- **Pressing the buttons in your browser.** This session's network policy
+  refuses `hook.eu1.make.com`, so nothing here can post to the webhook
+  directly. Every immediate result above was instead produced from your own
+  payloads — two taken out of the webhook queue where they had been stuck,
+  three replayed from your real executions — which exercises the identical
+  path from the webhook onwards. What it does not exercise is the browser's
+  own request to Make. That part is now covered by the failure handling
+  rather than by a test: if the request does not reach a working scenario,
+  Unison says so instead of reporting the post as in flight.
 - **Behaviour at LinkedIn's rate limit** — cannot be provoked without
   deliberately flooding the page, which you asked me not to do. The handling
   is in place: a 429 lands on the error route, is recorded with LinkedIn's
@@ -127,28 +176,16 @@ because "Make returned 200" was never evidence that the right bytes went out.
   An expired token surfaces as a 401 through the same error route.
 - **A browser that records H.264** — this container's Chromium cannot, so the
   MP4 branch of the recorder is exercised by the codec-preference list and by
-  the scheduled-video test's real MP4, not by recording one here. Chrome and
+  the real MP4 used in the video tests, not by recording one here. Chrome and
   Edge on a normal machine take that branch.
 
 ## State of the data store
 
-`python3 make/dump-records.py` prints it one readable line per record.
-
-Test records left behind: `t-sched-text-02`, `t-sched-poll-02`,
-`t-sched-video-03`. None is `queued`, so the scheduler ignores them; they hold
-no media and they are the evidence behind the table above. Delete them
-whenever you like.
-
-**One record wants your decision.** `p-w-mucmzs59y8ua` is an image post you
-published on 2026-09-22. It is done — it has its LinkedIn id — but it is still
-holding **398 KB of base64**, which is 38% of the whole 1 MB store. That is
-dead weight in the queue every scheduled post has to fit around, and it
-predates the fix that clears media after publishing. Clearing it is a change
-to your data, so I have left it: say the word and it goes.
-
-Posts sent to the test page during this session: one scheduled text, one
-scheduled poll and one scheduled video. The two failed video attempts created
-no post.
+Cleared on 2026-09-25. Six records remain, every one `published` with its
+LinkedIn id and **no media at all** — nothing queued, so nothing can publish
+unexpectedly. The 398 KB record that had been holding 38% of the 1 MB store
+since 22 September is gone, so the scheduling queue has its full capacity
+back. `python3 make/dump-records.py` prints it one line per record.
 
 ## Operations budget
 
