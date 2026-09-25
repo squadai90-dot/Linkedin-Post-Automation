@@ -2,6 +2,9 @@ import { askJSON, askText, JSON_RULE } from "./ai.js";
 
 import { tplPoster, drawScene, renderBrandImage, BRAND_TEXT } from "./brand.js";
 import { pollinationsUrl } from "./freeApis.js";
+import { renderTemplate, TEMPLATE_BY_ID } from "./templates.js";
+import { classify, COUNTRIES, occasionById } from "./intel.js";
+import { visualStrategy } from "./visual.js";
 
 /* The model can return an object, a string or nothing where a list is
    expected. `|| []` does not catch that; this does. */
@@ -25,13 +28,16 @@ export const imageProvider = {
   id: "prototype-renderer",
   configured: false,
   label: "Brand renderer (SVG templates) · optional AI photo via Pollinations",
-  async generate({ brief, prompt, variant = 0, photo = false, signal }) {
+  async generate({ brief, prompt, strategy = null, variant = 0, photo = false, signal }) {
     if (photo) {
       /* Free, keyless image generation. The URL is the asset; the browser
          renders it directly and publishing fetches it into base64 when the
          host allows, else sends the link. */
       const seed = (variant * 7919 + 17) % 100000;
       const url = pollinationsUrl(`${prompt || brief?.headline || brief?.subject || "professional B2B brand imagery"}. Clean, modern, editorial, no text, no logos.`, { width: 1200, height: 630, seed });
+      /* A diffusion model cannot spell, so it is never asked to carry the
+         message — it supplies a photograph and the template sets the words
+         over it. */
       /* No ceiling here would leave the task "generating" for good. */
       await new Promise((resolve, reject) => {
         const im = new Image();
@@ -45,8 +51,22 @@ export const imageProvider = {
       });
       return { kind: "url", url, width: 1200, height: 630, source: "pollinations", generated: true };
     }
-    const svg = renderBrandImage(brief, variant);
-    return { kind: "svg", svg, source: this.id, generated: false };
+    /* The strategy says which template this post needs. `variant` only steps
+       through alternatives the user asked for, and no longer decides the
+       layout on its own — that was how a tax deadline, a hiring ad and a
+       Diwali greeting all came out as the same dark slab. */
+    if (strategy?.template && TEMPLATE_BY_ID[strategy.template]) {
+      return {
+        kind: "svg",
+        svg: renderTemplate(strategy.template, strategy.fields),
+        template: strategy.template,
+        format: strategy.format,
+        reason: strategy.reason,
+        source: this.id,
+        generated: false,
+      };
+    }
+    return { kind: "svg", svg: renderBrandImage(brief, variant), source: this.id, generated: false };
   },
 };
 
@@ -171,20 +191,54 @@ export const videoProvider = {
 /* ---------- the engine ---------- */
 
 export function createMediaEngine({ track, log, onNotice }) {
-  const brief = async (kind, ctx, signal) => {
+  /* A storyboard drawn from the post itself: its hook, the sentence that
+     states the problem, the one that carries the figure or the turn, and its
+     own call to action. Used when no model is available, so the video still
+     tells the post's story rather than a generic one about automation. */
+  const storyboardFrom = (ctx, cls) => {
+    const sentences = String(ctx.body || "").split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter((x) => x.length > 12);
+    const withFigure = sentences.find((x) => (cls?.stats || []).some((f) => x.includes(f)));
+    const line = (x, n = 56) => String(x || "").replace(/\s+/g, " ").slice(0, n);
+    const scenes = [{ label: "HOOK", line: line(ctx.hook), note: "" }];
+    if (sentences[0]) scenes.push({ label: "PROBLEM", line: line(sentences[0]), note: "" });
+    if (withFigure && withFigure !== sentences[0]) scenes.push({ label: "PROOF", line: line(withFigure), note: "" });
+    else if (sentences[1]) scenes.push({ label: "INSIGHT", line: line(sentences[1]), note: "" });
+    if (sentences[2] && scenes.length < 4) scenes.push({ label: "INSIGHT", line: line(sentences[2]), note: "" });
+    scenes.push({ label: "CTA", line: line(ctx.cta || "What would you change first?"), note: "" });
+    return scenes.slice(0, 5);
+  };
+
+  /* What the brief must respect for this post's jurisdiction. Empty for a
+     post that names no country, rather than defaulting to one. */
+  const countryRule = (cls) => {
+    const c = cls?.country ? COUNTRIES[cls.country] : null;
+    if (!c) return "";
+    return `This is a ${c.adjective} post. Use ${c.adjective} terminology and ${c.regulator} language only — never another country's regulator, forms or deadlines.`;
+  };
+
+  const brief = async (kind, ctx, signal, cls = null) => {
+    const occ = cls?.occasion ? occasionById(cls.occasion) : null;
+    const rule = countryRule(cls);
+    const shared = `${rule}
+${occ ? `This post marks ${occ.label}. The visual must read as ${occ.label} — ${occ.symbols.join(", ")} — and not as a generic office scene.` : ""}
+Do not invent a figure, a rate, a deadline or a source. Use only what the post already says.`;
     // the reasoning capability writes the creative brief…
     const r = await askJSON({
       capability: "reasoning",
-      system: `You write creative briefs for B2B brand media. ${JSON_RULE}`,
+      system: `You write creative briefs for B2B brand media in professional services. ${JSON_RULE}`,
       user: kind === "video"
         ? `Write a video brief for this LinkedIn post.
 Post: ${ctx.hook}
 ${ctx.body || ""}
+${shared}
+The scenes must retell THIS post in order — the problem it names, the explanation it gives, the evidence it cites, the action it asks for. Every line must be traceable to a sentence in the post above.
 {"title":"under 8 words","concept":"one line","audience":"one line","style":"one line","motion":"one line","aspect":"16:9","scenes":[{"label":"HOOK|PROBLEM|INSIGHT|PROOF|CTA","line":"under 9 words","note":"under 14 words"}],"avoid":"one line"}
 Give 4 scenes.`
         : `Write an image brief for this LinkedIn post.
 Post: ${ctx.hook}
 ${ctx.body || ""}
+${shared}
+The headline must be readable on a phone at a glance, so keep it to one idea.
 {"subject":"one line","headline":"under 9 words","message":"one line","audience":"one line","composition":"one line","kicker":"under 3 words","support":"under 10 words","aspect":"1.91:1","avoid":"one line"}`,
       fallback: () => (kind === "video"
         ? { title: ctx.hook?.slice(0, 60) || "Video", concept: "A short explainer built from the post.", audience: "Marketing leaders", style: "Dark, typographic, restrained", motion: "Slow drift between titles", aspect: "16:9", scenes: [{ label: "HOOK", line: ctx.hook || "", note: "" }, { label: "PROBLEM", line: "What actually slows teams down", note: "" }, { label: "INSIGHT", line: "The part nobody automates", note: "" }, { label: "CTA", line: "What would you fix first?", note: "" }], avoid: "stock footage clichés" }
@@ -195,13 +249,16 @@ ${ctx.body || ""}
   };
 
   /* …then the prompt model turns the brief into a generation prompt. */
-  const enhance = async (kind, b, signal) => {
+  const enhance = async (kind, b, signal, cls = null, strategy = null) => {
+    const occ = cls?.occasion ? occasionById(cls.occasion) : null;
     try {
       const txt = await askText({
         capability: kind === "video" ? "videoPrompt" : "imagePrompt",
-        system: "You turn a creative brief into a single detailed generation prompt. Output the prompt only — no preamble, no lists, no quotes. Professional B2B brand imagery only.",
+        system: "You turn a creative brief into a single detailed generation prompt. Output the prompt only — no preamble, no lists, no quotes. Professional B2B brand imagery only. Never ask for words, numbers, logos or signage in the image: the generator cannot spell them and the words are set separately.",
         user: `Brief: ${JSON.stringify(b)}
-Write one prompt of 40-70 words describing subject, composition, lighting, palette and mood for a ${kind === "video" ? "short brand video" : "brand image"}. Avoid: ${b.avoid || "clichés"}.`,
+${strategy ? `The graphic is a ${strategy.label.toLowerCase()}, so this photograph is the background behind it.` : ""}
+${occ ? `It marks ${occ.label}. Show ${occ.symbols.join(", ")} in ${occ.palette.join(", ")}, photographed with restraint — this sits on a company page.` : ""}
+Write one prompt of 40-70 words describing subject, composition, lighting, palette and mood for a ${kind === "video" ? "short brand video" : "brand image"}. Avoid: ${b.avoid || "clichés"}, and any text or lettering.`,
         track, onNotice,
         signal,
       });
@@ -215,32 +272,42 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
     providers: { image: imageProvider, video: videoProvider },
 
     async image(ctx, { variant = 0, signal, photo = false } = {}) {
-      const b = await brief("image", ctx, signal);
+      /* Decide from the FINISHED post, not from the topic that started it.
+         By this point we know what kind of post it is, which country it
+         applies to and whether it carries a figure — which is exactly what
+         decides whether the right picture is a statistic, a process, a set
+         of roles or a festival graphic. */
+      const cls = classify(ctx);
+      const b = await brief("image", ctx, signal, cls);
+      const strategy = visualStrategy(cls, ctx, { brief: b, brand: { name: BRAND_TEXT.name, site: BRAND_TEXT.site } });
       /* The generation prompt is only worth a model call when a generator will use it. */
-      const prompt = photo ? await enhance("image", b, signal) : null;
-      const asset = await imageProvider.generate({ brief: b, prompt, variant, photo, signal });
-      log?.(photo ? "Image generated — Pollinations" : `Image rendered — ${imageProvider.id}`);
-      return { ...asset, brief: b, prompt, id: "img-" + Math.random().toString(36).slice(2, 8) };
+      const prompt = photo ? await enhance("image", b, signal, cls, strategy) : null;
+      const asset = await imageProvider.generate({ brief: b, prompt, strategy, variant, photo, signal });
+      log?.(photo
+        ? "Image generated — Pollinations"
+        : `Image rendered — ${strategy.label.toLowerCase()} (${strategy.reason})`);
+      return { ...asset, brief: b, prompt, strategy, classification: cls, id: "img-" + Math.random().toString(36).slice(2, 8) };
     },
 
     /* Building the storyboard is instant. Encoding a file is not, so that only
        happens when the user actually asks to export one. */
     async video(ctx, { signal } = {}) {
-      const b = await brief("video", ctx, signal);
+      const cls = classify(ctx);
+      const b = await brief("video", ctx, signal, cls);
       const prompt = null;   // no video generator is connected, so no prompt is written for one
       let storyboard = arr(b.scenes).filter((x) => x && x.line).slice(0, 5);
-      if (!storyboard.length) storyboard = [
-        { label: "HOOK", line: String(ctx.hook || "").slice(0, 60), note: "" },
-        { label: "PROBLEM", line: "What actually slows teams down", note: "" },
-        { label: "INSIGHT", line: "The part nobody automates", note: "" },
-        { label: "CTA", line: "What would you fix first?", note: "" },
-      ];
-      log?.(`Storyboard built — ${storyboard.length} scenes`);
+      /* The fallback used to be four fixed lines about teams and automation,
+         which had nothing to do with the post. Built from the post's own
+         words instead, it still tells the post's story when the model is
+         unavailable. */
+      if (!storyboard.length) storyboard = storyboardFrom(ctx, cls);
+      log?.(`Storyboard built — ${storyboard.length} scenes from the post`);
       return {
         kind: "storyboard",
         storyboard,
         brief: b,
         prompt,
+        classification: cls,
         poster: tplPoster(b.title || ctx.hook),
         seconds: Math.round(storyboard.length * SCENE_SECONDS),
         source: videoProvider.id,

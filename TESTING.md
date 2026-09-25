@@ -179,7 +179,7 @@ exists at the scheduled minute to call one.
 
 ## Unison, tested as code
 
-294 unit tests (`npm test`) and 42 browser tests (`npx playwright test`, both
+366 unit tests (`npm test`) and 42 browser tests (`npx playwright test`, both
 projects) pass.
 
 The browser tests include `e2e/publish-payload.spec.js`, which asserts on the
@@ -228,6 +228,53 @@ Covered by `e2e/content-times.spec.js` and `tests/posts.test.js`.
 Note: the sample posts that ship with the demo carry a date but no publication
 time, because none of them was ever published. They show the date alone rather
 than being given a fabricated minute.
+
+## Content intelligence and visual choice
+
+Ten posts run through the real pipeline — classify, decide, render, gate. Two
+are deliberately flawed, to prove the gate is real rather than decorative.
+
+| # | Post | Read as | Country | Visual chosen | Gate |
+|---|---|---|---|---|---|
+| 1 | Monthly close explainer | How something works | — | Process steps | PASS |
+| 2 | Making Tax Digital, 6 April 2026 | Tax or regulatory update | UK | Statistic card, £50,000, Source: gov.uk | PASS |
+| 3 | 1099 / W-9 vendor data | Tax or regulatory update | US | Fact card, Source: irs.gov | PASS |
+| 4 | Self Assessment, October vs January | Tax or regulatory update | UK | Fact card, Source: gov.uk | PASS |
+| 5 | Australian year end, 30 June | Season readiness | AU | Process steps, "Australian · ATO" | PASS |
+| 6 | Diwali greeting | Festival or occasion | — | Occasion graphic — diyas, rangoli, its own palette | PASS |
+| 7 | Turnaround case study | Result or case study | US | Statistic card, **9 days** (the result, not the 14 it improved on) | PASS + warns the figure has no source on it |
+| 8 | Hiring, three offices | Hiring | US | Open roles, CTA under them | PASS |
+| **9** | **CONTROL** — invented 38% + filler | — | — | — | **BLOCKED ×2**: unsourced figure; "in today's fast-paced", "game-changer", "cutting-edge solutions" |
+| **10** | **CONTROL** — HMRC and IRS in one post | — | US+UK | — | **BLOCKED**: mixed jurisdiction |
+
+Before this pass, all ten produced the same four rotating layouts, chosen by
+`variant % 4` with no reference to the post at all.
+
+### Bugs this testing found, and fixed
+
+Each was caught by running the cases and looking at the output, not by
+reasoning about the code:
+
+| Symptom | Cause |
+|---|---|
+| A monthly-close post classified as a US tax update | `"irs"` matched inside **"first"**. `"cra"` matched inside "scramble", `"bas"` inside "based", `"ato"` inside "automation". Terms now match on word boundaries |
+| An Australian year-end checklist classified as regulatory | The cue `"act"` matched **"actually"**. Cues under five characters now need a whole-word match |
+| A UK tax post classified as a **New Year greeting** | `"2026"` was an alias for New Year. Bare years removed |
+| A properly sourced £50,000 reported as invented | The figure was captured as `"£50,000."` — with the sentence's full stop — so it never matched the research |
+| A four-step checklist rendered as a comparison | One step contained "rather than". Sequence is now tested first, and a comparison must be structurally two-sided |
+| Three festival graphics all rendered in Diwali's colours | Every template defines `id="occ"`; two on one page collide. Each render now gets its own id namespace |
+| The Eid crescent did not draw | Two arcs cancelling. Now a masked disc |
+| Headlines cut mid-clause ("…and the first cohort is") | Character-count truncation. Now cuts at a sentence or clause boundary and never ends on a dangling word |
+| Steps showed "1." twice — the writer's and the template's | The writer's numbering is now stripped |
+| A hiring graphic captioned "US · IRS" | The regulator is now named only where it is genuinely the authority |
+| A case study captioned `Source: irs.gov` | The source is only filled where that authority really is the source. Otherwise empty — and the gate then asks for a real one |
+| A statistic card showing **14 days** when the post was about falling **to 9** | "from X to Y" now resolves to Y |
+| The gate passed a figure with no source visible | It checked the field, not whether the template draws it |
+
+### Covered by tests
+
+`tests/intel.test.js` (37) and `tests/quality.test.js` (17). Every bug above
+has a test named after the symptom, so it cannot come back quietly.
 
 ## The uploaded document, audited
 

@@ -151,6 +151,26 @@ async function saveUrlAsset(url, name) {
 
 /* ---------- image ---------- */
 
+/* Why this graphic and not another one. Shown because a visual the user
+   cannot account for is one they cannot trust — and because the decision is
+   now a real one worth reading. Findings from the quality gate sit with it,
+   since they are about this same asset. */
+export function VisualRationale({ asset }) {
+  const s = asset?.strategy;
+  const findings = asset?.check?.findings || [];
+  if (!s && !findings.length) return null;
+  return (
+    <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+      {s && <div><b style={{ color: "var(--ink)" }}>{s.label}</b> — {s.reason}</div>}
+      {findings.map((f, i) => (
+        <div key={i} className={"badge " + (f.severity === "blocking" ? "bad" : "warn")} style={{ marginTop: 8 }}>
+          {f.message} {f.fix}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify }) {
   const [variant, setVariant] = useState(0);
   /* Open once the picture exists: the design is the interesting part, and
@@ -173,7 +193,7 @@ export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUploa
           {(img || assets.upload) && <button className="btn sm" onClick={() => patchAssets({ images: [], upload: null })}>Remove</button>}
         </>}
       />
-      {img && <><SvgFrame src={srcOf(img)} />{img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div> : prototypeNote}</>}
+      {img && <><SvgFrame src={srcOf(img)} /><VisualRationale asset={img} />{img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div> : prototypeNote}</>}
 
       {/* Rolling the dice again is a poor way to fix one wrong word, so the
           composition and the words in it are both editable here. */}
@@ -234,6 +254,7 @@ export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets
           <div className="badge warn" style={{ marginTop: 10 }}>
             Rendered locally from the storyboard — {v.seconds}s. No video model produced this.
           </div>
+          <VisualRationale asset={v} />
 
           <div className="row" style={{ marginTop: 12 }}>
             {!v.url && (

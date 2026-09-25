@@ -246,6 +246,70 @@ On a paid Make plan, set the scenario's interval to 900 seconds **and**
 `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to `15 * 60 * 1000`.
 Change one without the other and Unison promises something Make does not do.
 
+#### How a visual is chosen
+
+The graphic is decided from the **finished post**, not from the topic that
+started it. By then the app knows what kind of post it is, which country it
+applies to, whether it carries a figure and whether it is marking an occasion
+— which is exactly what decides the right picture.
+
+| The post is… | It gets | Because |
+|---|---|---|
+| Marking a festival | An occasion graphic, drawn in that festival's own symbols and palette | A Diwali post has to read as Diwali, not as a stock office scene |
+| A rule, threshold or date | A fact card with the authority named **on** the graphic | A screenshot travels without the post text |
+| A result with a figure | A statistic card, the figure set large | One number is what gets read at a glance |
+| An ordered process | Numbered steps | The order is the point |
+| Two things held against each other | Side by side | The contrast is the message |
+| Several points, no order | Key points | |
+| Hiring | Roles and places, scannable | People scan a job ad, they do not read it |
+| Team or culture | A photograph | A post about people should show people |
+| An event | An event card — what, when, how to join | |
+| Anything else | A statement | The sentence is the whole idea |
+
+The app says which it chose and why, under the image. It is built to published
+B2B infographic guidance rather than taste: one idea per graphic, type large
+enough to read on a phone without zooming, one high-contrast pairing, real
+whitespace, and the source on the graphic whenever it carries a figure.
+
+The templates are **drawn, not generated**. A diffusion model cannot be relied
+on to spell a greeting or place a decimal point, and a company page cannot
+afford a graphic that is subtly wrong. AI photography stays available as a
+*background* behind the type, never as the thing carrying the message.
+
+#### Country awareness
+
+Unison Globus serves US, UK, Australian and Canadian firms, and those four do
+not share a vocabulary, a tax year or a regulator. The app reads which one a
+post is about from its own terminology, then:
+
+- points research at that regulator's own sources (`gov.uk`, `irs.gov`,
+  `ato.gov.au`, `canada.ca`) and forbids citing the others;
+- tells the writer to use that country's terms, and its spelling convention;
+- **blocks** a post that mixes two jurisdictions' rules;
+- asks a country-specific post to say which country it is about.
+
+No tax rate, threshold or figure is hard-coded anywhere. Those change, and a
+constant in a source file is how a product starts lying confidently. What the
+app knows is structural — who the regulator is, when the year ends, which
+domain is authoritative — and every fact in a post has to come from research.
+
+#### The quality gate
+
+Runs before anything is shown, on the post, the graphic and the storyboard,
+with no model and no network — so it still works when the free tier is gone,
+which is when generated output is thinnest. It blocks:
+
+- a **figure research did not supply** (the one mistake a firm cannot take back);
+- **two countries' rules** in one post;
+- stacked **filler** ("in today's fast-paced…", "game-changer");
+- a format the post **cannot fill** — a statistic card with no statistic;
+- a **festival post that got a business graphic**;
+- **video scenes the post never says**.
+
+Where another attempt could fix it, the app regenerates before you ever see
+the first one. Where it could not — an unsourced figure needs a source, not a
+retry — it says so and stops.
+
 #### What Content records about each post
 
 Content shows three different moments, and they are three different stored

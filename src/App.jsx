@@ -8,6 +8,8 @@ import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPT
 import { SEED_POSTS, NAV, DEFAULT_VOICE, SEED_TEAM, DEFAULT_PROFILE } from "./lib/seed.js";
 import { now } from "./lib/util.js";
 import { digestDocument, addDocToResearch } from "./lib/doc.js";
+import { classify, researchGuidance, COUNTRIES } from "./lib/intel.js";
+import { review as reviewQuality } from "./lib/quality.js";
 import { svgToPng } from "./lib/brand.js";
 import { createMediaEngine, containerOf, extensionOf, VIDEO_PROFILES } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
@@ -730,6 +732,15 @@ Be terse.`,
     ]);
 
     try {
+      /* A topic about US tax and a topic about Australian payroll need
+         different regulators, different vocabulary and different sources.
+         Telling the engine which one this is, before it searches, is what
+         stops a UK deadline turning up in an Australian post. */
+      const topicClass = classify({ topic });
+      const guidance = [
+        ...researchGuidance(topicClass),
+        "Never invent a statistic, rate, deadline, regulation, quote, source, company, event or person. If a figure cannot be sourced, leave it out — an empty claims list is a correct answer.",
+      ].join("\n");
       const shape = `{"sources":[{"title":"","publisher":"","date":"YYYY-MM-DD","tier":1,"note":"under 14 words","url":"https://…"}],
 "claims":[{"text":"factual claim","sourceIndex":0}],
 "insights":["under 18 words"],"freshness":"Breaking|Recent|Evergreen|Historical","risks":["under 14 words"]}
@@ -744,6 +755,7 @@ Tier 1 = official/primary, 2 = major publication, 3 = industry press, 4 = blogs/
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
           user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}".
 Search the web and return the real URL of every source. Prefer sources from the last 90 days.
+${guidance}
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 400 words.`,
           search: true,
@@ -756,6 +768,7 @@ Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 4
           capability: "research",
           system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
           user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}", from what you already know. Leave url empty.
+${guidance}
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse.`,
           fallback: () => fb.research(topic), onNotice, track: track("Discovery"), signal,
@@ -798,6 +811,32 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
     if (id === runRef.current) setBusy(false);
   }
 
+  /* What the writer is held to. Two things published analysis is blunt
+     about: a post anyone's AI could have written is worth nothing, and a
+     figure the model produced on its own is the one mistake a firm cannot
+     take back. The country rules are here because Unison Globus serves US,
+     UK, Australian and Canadian firms, and those four do not share a
+     vocabulary, a tax year or a regulator. */
+  function writeRules(topic, angle) {
+    const cls = classify({ topic, hook: angle?.headline || "" });
+    const c = cls.country ? COUNTRIES[cls.country] : null;
+    const rules = [
+      "Rules you must follow:",
+      "— Use only the claims listed above. Do not add a statistic, rate, threshold, deadline, regulation, quote or source that is not there. If you have no figure, write the post without one.",
+      "— No filler. Nothing that could have been written about any firm in any country. Say the specific thing.",
+    ];
+    if (c) {
+      rules.push(`— This is a ${c.adjective} post. Use ${c.adjective} terminology and ${c.regulator} rules only. ${c.yearEnd}`);
+      rules.push(`— Never mention ${Object.values(COUNTRIES).filter((x) => x.id !== c.id).map((x) => x.regulator).join(", ")} or their forms and deadlines in this post.`);
+      if (c.spelling === "UK") rules.push("— Use British spelling (organise, analyse, recognised).");
+      else rules.push("— Use American spelling (organize, analyze, recognized).");
+    } else {
+      rules.push("— No country is implied by the topic. Either keep it jurisdiction-neutral or state plainly which country it applies to — do not silently assume the United States.");
+    }
+    if (cls.occasion) rules.push("— This marks an occasion. Keep it short and warm, say something true about the firm, and do not turn a greeting into a sales pitch.");
+    return rules.join("\n");
+  }
+
   async function runWriter(selected, feedback) {
     setAngle(selected); setStage("DRAFT"); setBusy(true); setOpenClaim(null);
     if (draft) pushUndo(feedback ? "rewrite" : "regenerate");
@@ -815,6 +854,7 @@ Angle: ${selected.type} — ${selected.headline}
 Claims available: ${JSON.stringify((research?.claims || []).map((c, i) => ({ i, text: c.text })))}
 ${assets.sourceDoc ? `The user uploaded "${assets.sourceDoc.name}". Use its material in preference to anything else, and keep its figures exact.
 From the document: ${JSON.stringify([...(assets.sourceDoc.stats || []), ...(assets.sourceDoc.facts || [])].slice(0, 6))}` : ""}
+${writeRules(idea, selected)}
 Voice profile (0-100): professional ${voice.professional}, conversational ${voice.conversational}, technical ${voice.technical}, opinionated ${voice.opinionated}, humour ${voice.humour}, emoji ${voice.emoji}.
 CTA style: ${voice.cta}. Paragraphs: ${voice.paragraphs}. Hashtags: ${voice.hashtags}.
 Never use: ${voice.avoid.join(", ")}. Prefer: ${voice.prefer.join(", ")}.
@@ -945,7 +985,10 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
   if (!engineRef.current) engineRef.current = createMediaEngine({ onNotice, track: track("Media"), log: logAudit });
   const engine = engineRef.current;
 
-  const ctxOf = () => ({ hook: draft?.hook || idea, body: draft?.body || "" });
+  /* The visual is decided from the finished post, so the context has to be
+     the finished post — hook, body, call to action and the topic it came
+     from — not just the headline. */
+  const ctxOf = () => ({ hook: draft?.hook || idea, body: draft?.body || "", cta: draft?.cta || "", topic: idea, hashtags: draft?.hashtags || [] });
   const mset = (k, v) => setMstate((m) => ({ ...m, [k]: { ...idle(), ...v } }));
   const patchAssets = (patch) => setAssets((a) => ({ ...a, ...patch }));
 
@@ -968,14 +1011,28 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
   }
 
   const makeImage = (variant = 0) => run("image", async (live) => {
-    const a = await engine.image(ctxOf(), { variant, photo: extras.pollinations === true });
+    const ctx = ctxOf();
+    let a = await engine.image(ctx, { variant, photo: extras.pollinations === true });
+    /* Do not hand over the first attempt just because it rendered. If the
+       gate says a different choice would fix it — the wrong format for the
+       post, or a layout the post cannot fill — try once more before the
+       user ever sees it. */
+    let check = reviewQuality({ draft, classification: a.classification, research, image: a });
+    if (check.regenerate) {
+      logAudit(`Graphic rejected — ${check.blocking[0]?.message || "wrong format"}. Regenerating.`);
+      a = await engine.image(ctx, { variant: variant + 1, photo: extras.pollinations === true });
+      check = reviewQuality({ draft, classification: a.classification, research, image: a });
+    }
     if (!live()) return;
-    patchAssets({ images: [a], upload: null });
+    patchAssets({ images: [{ ...a, check }], upload: null });
+    if (a.strategy) logAudit(`Visual: ${a.strategy.label} — ${a.strategy.reason}`);
   });
 
   const makeVideo = () => run("video", async (live) => {
     const previous = assets.video?.url;
     const a = await engine.video(ctxOf());
+    a.check = reviewQuality({ draft, classification: a.classification, research, video: a, seconds: a.seconds });
+    if (a.check.regenerate) logAudit(`Storyboard off-script — ${a.check.blocking[0]?.message || ""}`);
     if (!live()) return;
     if (previous) URL.revokeObjectURL(previous);       // the old encode is dead weight
     mset("encode", { status: "idle" });
