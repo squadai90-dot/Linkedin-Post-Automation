@@ -246,3 +246,32 @@ describe("publishTimeout", () => {
     expect(publishTimeout({ postType: "image", media: [{ kind: "video" }] })).toBeGreaterThan(MAKE_CONFIG.timeoutMs);
   });
 });
+
+/* The Make scenario stopped answering for two days because a hand edit left
+   it invalid, and Unison reported every one of those posts as "Sent to Make —
+   waiting for LinkedIn to confirm". Nothing was on LinkedIn and nothing was
+   coming. These are the two shapes that must never read as "on its way". */
+describe("a reply that is not a result", () => {
+  it("a bare acceptance is not a state Unison can act on", () => {
+    // Make's default answer when a scenario never reaches a Webhook response:
+    // the route errored, no route matched, or the scenario is switched off.
+    for (const body of ["Accepted", { status: "Accepted" }, {}, null, undefined]) {
+      expect(readMakeReply(body).state).toBe("accepted");
+      expect(readMakeReply(body).published).toBe(false);
+    }
+  });
+
+  it("keeps failed and rejected distinct from accepted, so each can be handled", () => {
+    expect(readMakeReply({ status: "failed", message: "LinkedIn said no" }).state).toBe("failed");
+    expect(readMakeReply({ status: "rejected" }).state).toBe("rejected");
+    expect(readMakeReply({ status: "queued" }).state).toBe("queued");
+    expect(readMakeReply({ status: "unsupported" }).state).toBe("unsupported");
+  });
+
+  it("never reads a failure as published, whatever else rides along", () => {
+    const r = readMakeReply({ status: "failed", message: "403 forbidden", stage: "linkedin" });
+    expect(r.published).toBe(false);
+    expect(r.message).toBe("403 forbidden");
+    expect(r.stage).toBe("linkedin");
+  });
+});

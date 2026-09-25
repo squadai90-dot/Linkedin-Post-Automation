@@ -1395,6 +1395,18 @@ Give up to 4 of each. Only include what the document actually says.`,
         setPosts((p) => [{ ...sentRecord, state: "PUBLISHED", publishedAt: r.at }, ...p.filter((x) => x.id !== postId && !(workId && x.workId === workId))]);
         logAudit(`Published to LinkedIn${viaLinkedIn ? " directly" : " via Make"}${r.urn ? ` — ${r.urn}` : ""}`);
         notify("Published to LinkedIn.");
+      } else if (state === "failed" || state === "rejected") {
+        /* Make said outright that it did not publish. That is a failure even
+           though the request itself succeeded, and it used to be reported as
+           "sent, waiting for LinkedIn" — which reads as "it is on its way"
+           when nothing is. */
+        throw Object.assign(new Error(r.message || "Make did not publish this post."), { kind: state, stage: r.stage || null });
+      } else if (!scheduled && state === "accepted") {
+        /* The scenario answers every immediate post with an explicit result.
+           A bare "Accepted" means it never reached its response — the route
+           errored, or no route matched. Nothing is on LinkedIn, and saying
+           "waiting for LinkedIn to confirm" would be an invention. */
+        throw Object.assign(new Error("Make accepted the request but never reported what it did with it. That means the scenario stopped before it answered — most often because it is switched off or its last edit left it invalid. Nothing is on LinkedIn. Open the scenario's History in Make; the reason is on the most recent run."), { kind: "no-result", stage: "make" });
       } else if (state === "unsupported") {
         /* Nothing is on LinkedIn and nothing will be. Say it plainly rather
            than leaving a pending tick that never resolves. */
@@ -1431,6 +1443,7 @@ Give up to 4 of each. Only include what the document actually says.`,
       else if (kind === "failed") label = e?.stage === "datastore" ? "Make could not store the post" : "LinkedIn refused the post";
       else if (kind === "rejected") label = "Make has no route for this post";
       else if (kind === "hook-dead") label = "The saved webhook address no longer exists";
+      else if (kind === "no-result") label = "Make never said what it did with the post";
       else if (kind === "store-full") label = "Too much media to hold until the scheduled time";
       else if (kind === "relay-missing") { kind = "sandbox"; label = "No publishing service is deployed here"; }
       step(label, "failed");

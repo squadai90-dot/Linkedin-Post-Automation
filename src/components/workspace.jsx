@@ -496,6 +496,13 @@ export function Workspace(p) {
                   <button className="btn" onClick={() => publishNow()}>{realRoute ? "Publish now" : "Publish now (dry run)"}</button>
                   {!realRoute && <button className="btn sm" onClick={() => setModal("settings", "linkedin")}>Connect for real</button>}
                 </div>
+                {/* The date picker sits directly above these two buttons, and
+                    only one of them reads it. Someone who has just set a date
+                    and then presses Publish now has every reason to think the
+                    date applied, so say which button uses it. */}
+                <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+                  <b>Schedule post</b> uses the date and time above. <b>Publish now</b> ignores them and posts straight away.
+                </div>
               </>
             ) : (
               <>
@@ -561,6 +568,7 @@ export function Workspace(p) {
                   <div className="card tight" style={{ marginTop: 16, borderColor: "rgba(255,122,102,.45)" }}>
                     <b>{publishKind === "sandbox" ? "Not sent from here."
                       : publishKind === "hook-dead" ? "Nothing was sent \u2014 the webhook address is out of date."
+                      : publishKind === "no-result" ? "Not published \u2014 Make never reported a result."
                       : publishKind === "store-full" ? "Nothing was sent \u2014 this post is too heavy to schedule."
                       : publishVia === "make" ? "Unable to publish to LinkedIn." : "Publishing failed."}</b>
                     <div className="u-muted" style={{ marginTop: 5 }}>{publishError || "LinkedIn rejected the request."} Your draft and media are safe.</div>
