@@ -140,3 +140,98 @@ describe("the verdict", () => {
     expect(r.regenerate).toBe(true);
   });
 });
+
+import { checkFreshness, checkConflicts, score, STALE_MONTHS } from "../src/lib/quality.js";
+
+const monthsAgo = (n, from = Date.UTC(2026, 8, 27)) => new Date(from - n * 30.44 * 86400000).toISOString().slice(0, 10);
+const NOW = Date.UTC(2026, 8, 27);
+
+describe("how old the evidence is", () => {
+  const factual = { factHeavy: true, country: "UK" };
+
+  it("says nothing when the sources are current", () => {
+    expect(checkFreshness({ classification: factual, research: { sources: [{ date: monthsAgo(2) }] }, now: NOW })).toEqual([]);
+  });
+
+  it("warns when the freshest source is over a year old", () => {
+    const r = checkFreshness({ classification: factual, research: { sources: [{ date: monthsAgo(14) }] }, now: NOW });
+    expect(ids(r)).toContain("sources-ageing");
+    expect(r[0].severity).toBe("warn");
+  });
+
+  it("blocks when the freshest source is over two years old", () => {
+    const r = checkFreshness({ classification: factual, research: { sources: [{ date: monthsAgo(30) }, { date: monthsAgo(40) }] }, now: NOW });
+    expect(ids(r)).toContain("sources-stale");
+    expect(r[0].severity).toBe("blocking");
+  });
+
+  it("judges by the freshest source, not the oldest", () => {
+    const r = checkFreshness({ classification: factual, research: { sources: [{ date: monthsAgo(40) }, { date: monthsAgo(1) }] }, now: NOW });
+    expect(r).toEqual([]);
+  });
+
+  it("asks for dates when none of the sources carry one", () => {
+    expect(ids(checkFreshness({ classification: factual, research: { sources: [{ title: "A page" }] }, now: NOW }))).toContain("sources-undated");
+  });
+
+  it("leaves an opinion post alone — it does not go stale the same way", () => {
+    expect(checkFreshness({ classification: { factHeavy: false }, research: { sources: [{ date: monthsAgo(40) }] }, now: NOW })).toEqual([]);
+    expect(STALE_MONTHS).toBe(12);
+  });
+
+  it("ignores background reading", () => {
+    expect(checkFreshness({ classification: factual, research: { sources: [{ date: monthsAgo(40), background: true }] }, now: NOW })).toEqual([]);
+  });
+});
+
+describe("when the uploaded document disagrees with research", () => {
+  const doc = { name: "review.docx", claims: ["Audit turnaround fell to 9 days across the practice"] };
+
+  it("surfaces the disagreement instead of picking a side", () => {
+    const research = { claims: [{ text: "Audit turnaround across the practice averages 14 days" }] };
+    const r = checkConflicts({ sourceDoc: doc, research });
+    expect(ids(r)).toContain("source-conflict");
+    expect(r[0].message).toContain("review.docx");
+    expect(r[0].fix).toMatch(/Decide which applies/);
+  });
+
+  it("says nothing when they agree", () => {
+    expect(checkConflicts({ sourceDoc: doc, research: { claims: [{ text: "Audit turnaround fell to 9 days across the practice" }] } })).toEqual([]);
+  });
+
+  it("does not compare claims about different things", () => {
+    expect(checkConflicts({ sourceDoc: doc, research: { claims: [{ text: "Payroll headcount rose to 42 people" }] } })).toEqual([]);
+  });
+
+  it("does not compare the document with its own claims", () => {
+    const research = { claims: [{ text: "Audit turnaround averages 14 days across the practice", fromDocument: true }] };
+    expect(checkConflicts({ sourceDoc: doc, research })).toEqual([]);
+  });
+});
+
+describe("where a post is weak", () => {
+  it("scores evidence at zero for an unsourced figure", () => {
+    const d = draft("Turnaround", "Firms cut turnaround by 38% on average.");
+    const r = review({ draft: d, classification: classify(d), research: {} });
+    expect(r.scores.dims.evidence).toBe(0);
+    expect(r.scores.weakest.dimension).toBe("evidence");
+  });
+
+  it("scores originality down for filler, not everything else", () => {
+    const d = draft("Unlock the power", "In today's fast-paced world our cutting-edge solutions are a game-changer.");
+    const r = review({ draft: d, classification: classify(d), research: {} });
+    expect(r.scores.dims.originality).toBeLessThan(30);
+  });
+
+  it("scores country at zero when two jurisdictions are mixed", () => {
+    const d = draft("Deadlines", "File Self Assessment with HMRC, then the 1099 forms with the IRS and Schedule C.");
+    expect(review({ draft: d, classification: classify(d), research: {} }).scores.dims.country).toBe(0);
+  });
+
+  it("does not hide a weak dimension behind a good average", () => {
+    const d = draft("A clean but empty post about working together", "Working with a partner means your team can focus on advisory work and client relationships while someone handles the routine tasks.");
+    const r = review({ draft: d, classification: classify(d), research: {} });
+    expect(r.scores.dims.specificity).toBeLessThanOrEqual(50);   // nothing concrete in it
+    expect(r.scores.weakest.dimension).toBe("specificity");
+  });
+});

@@ -276,6 +276,53 @@ on to spell a greeting or place a decimal point, and a company page cannot
 afford a graphic that is subtly wrong. AI photography stays available as a
 *background* behind the type, never as the thing carrying the message.
 
+#### Polls
+
+The poll is decided from the post, not written in isolation. What kind of
+post it is picks the kind of question worth asking — **Challenge** (which
+form of the problem you have), **Business practice** (how your firm does it
+today), **Adoption** (how far you have got), **Knowledge check** (a fact the
+post itself answers), **Experience** (what happened when you tried), or
+**Preference**. The panel names the style and why.
+
+Limits are LinkedIn's real ones, confirmed against published guidance and
+matching what the publisher and both Make scenarios already enforced: **140
+characters** for the question, **30 per option**, **two to four options**,
+**one day to two weeks**. Validation runs as you type and blocks what
+LinkedIn would reject, plus what it would accept and a reader would not:
+duplicate options, two options that say nearly the same thing (compared
+after light stemming, so "not enough staff" and "not enough staffing" are
+caught), one option worded to win, "All of the above", a knowledge check the
+post does not answer, and a question that states a finding instead of asking
+one. Frequency scales — Always / Usually / Sometimes / Never — are not
+flagged as loaded.
+
+With no AI key the poll is still built from the post's own list of points.
+Where the post is prose with no distinct alternatives, the options fall back
+to a general scale and **the panel says so** rather than passing them off as
+drawn from the post.
+
+#### Video
+
+Each scene now has a **kind**, chosen from what it carries, and draws that
+thing rather than putting every scene on the same background:
+
+| Kind | What it draws |
+|---|---|
+| `stat` | The figure counts up from zero, keeping its units, inside a ring that sweeps round |
+| `steps` | Numbered cards arrive in order with the connector drawing between them |
+| `compare` | Two panels slide in from their own edges |
+| `timeline` | A line draws itself left to right, dated markers appearing as it passes |
+| `bars` | Bars grow to the values they were given — never recomputed |
+| `statement` | Lines of type arrive one after another |
+| `cta` | The closing ask, centred, with a rule drawing under it |
+
+It is canvas animation in the browser: free, offline, and the words are
+always exactly right, which no video model can promise. The same function
+draws the preview and the exported file, so what you approve is what gets
+encoded. A scene whose data is missing falls back to type rather than
+drawing nothing.
+
 #### Country awareness
 
 Unison Globus serves US, UK, Australian and Canadian firms, and those four do
@@ -304,7 +351,14 @@ which is when generated output is thinnest. It blocks:
 - stacked **filler** ("in today's fast-paced…", "game-changer");
 - a format the post **cannot fill** — a statistic card with no statistic;
 - a **festival post that got a business graphic**;
-- **video scenes the post never says**.
+- **video scenes the post never says**;
+- a **figure the uploaded document and the research disagree about** — surfaced for you to decide, never silently resolved;
+- **sources over two years old** on a post about a rule or a threshold (a warning at one year).
+
+It also scores the post on six separate dimensions — evidence, country,
+specificity, originality, clarity, tone — rather than one number, because a
+post can be impeccably sourced and still say nothing. The panel shows which
+dimension is weakest.
 
 Where another attempt could fix it, the app regenerates before you ever see
 the first one. Where it could not — an unsourced figure needs a source, not a

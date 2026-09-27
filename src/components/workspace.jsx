@@ -386,6 +386,36 @@ export function Workspace(p) {
 
       {quality && shows("health") && (
         <Section n={n("health")} title="Content health" engine="Trust engine">
+          {/* These run with no model and no network, so they are the part of
+              this panel that is always real — even when the ticks above are
+              placeholders because the AI was unavailable. */}
+          {quality.review?.findings?.length > 0 && (
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 9 }}>Checked without AI</div>
+              {quality.review.findings.map((f, i) => (
+                <div key={i} className={"badge " + (f.severity === "blocking" ? "bad" : "warn")} style={{ marginBottom: 8, display: "block" }}>
+                  <b>{f.message}</b> {f.fix}
+                </div>
+              ))}
+            </div>
+          )}
+          {quality.review?.scores && (
+            <div className="card">
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+                <span className="eyebrow">Where this post is weak</span>
+                <span className="badge">{quality.review.scores.overall}/100</span>
+              </div>
+              {Object.entries(quality.review.scores.dims).map(([k, v]) => (
+                <div key={k} style={{ marginBottom: 9 }}>
+                  <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
+                    <span style={{ textTransform: "capitalize" }}>{k}</span>
+                    <span className="mono" style={{ color: v < 50 ? "var(--bad)" : v < 75 ? "var(--warn, var(--acc2))" : "var(--muted)" }}>{v}</span>
+                  </div>
+                  <div className="bar"><i style={{ width: `${v}%` }} /></div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="card">
             {quality.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not assessed — the AI was unavailable. These ticks are placeholders.</div>}
             {(quality.checks || []).map((c, i) => (

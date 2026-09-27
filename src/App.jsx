@@ -10,6 +10,7 @@ import { now } from "./lib/util.js";
 import { digestDocument, addDocToResearch } from "./lib/doc.js";
 import { classify, researchGuidance, COUNTRIES } from "./lib/intel.js";
 import { review as reviewQuality } from "./lib/quality.js";
+import { pollStyleFor, pollGuidance, fallbackPoll, checkPoll, LIMITS as POLL_LIMITS } from "./lib/poll.js";
 import { svgToPng } from "./lib/brand.js";
 import { createMediaEngine, containerOf, extensionOf, VIDEO_PROFILES } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
@@ -888,7 +889,8 @@ Post: ${d.hook} ${d.body}
 
       const [ver, q, m] = await Promise.all(jobs);
       if (id !== runRef.current) return;
-      setVerification({ ...normalizeVerification(ver), checkedText: textOf(d) }); setQuality(normalizeQuality(q));
+      setVerification({ ...normalizeVerification(ver), checkedText: textOf(d) });
+      setQuality(withReview(normalizeQuality(q), d));
       if (m) setMedia(m);   // a suggestion only — the user's chosen format wins
       setStage("HUMAN_REVIEW");
       logAudit(ver?.degraded ? "Checks could not run — AI unavailable" : "Claims verified and quality check completed");
@@ -898,6 +900,17 @@ Post: ${d.hook} ${d.body}
       if (id === runRef.current) { setStage(draft ? "HUMAN_REVIEW" : "RESEARCH_COMPLETE"); notify(`Writing stopped: ${friendlyError(e)}`, { tone: "bad", ms: 8000 }); }
     }
     if (id === runRef.current) setBusy(false);
+  }
+
+  /* The model grades the writing; these checks grade what can be checked
+     without one — whether every figure is sourced, whether the sources have
+     gone stale, whether the uploaded document disagrees with them, and
+     whether the post picked a country and stuck to it. They run even when
+     the AI is unavailable, which is when a draft most needs them. */
+  function withReview(q, d) {
+    const cls = classify({ hook: d?.hook, body: d?.body, cta: d?.cta, topic: idea, hashtags: d?.hashtags });
+    const r = reviewQuality({ draft: d, classification: cls, research, sourceDoc: assets.sourceDoc });
+    return { ...q, review: { findings: r.findings, scores: r.scores, pass: r.pass, summary: r.summary }, classification: cls };
   }
 
   /* The two checks that run after every draft: evidence and quality. */
@@ -940,7 +953,8 @@ Scores 0-100. "Evidence verified" passes only if every factual statement is one 
     try {
       const [ver, q] = await Promise.all(checkJobs(draft, signal));
       if (id !== runRef.current) return;
-      setVerification({ ...normalizeVerification(ver), checkedText: textOf(draft) }); setQuality(normalizeQuality(q));
+      setVerification({ ...normalizeVerification(ver), checkedText: textOf(draft) });
+      setQuality(withReview(normalizeQuality(q), draft));
       if (["APPROVED", "SCHEDULED"].includes(stage)) setStage("HUMAN_REVIEW");
       notify(ver?.degraded ? "Checks couldn't run — AI is unavailable." : "Checks updated for the edited text.", { tone: ver?.degraded ? "warn" : "ok" });
     } catch (e) { if (e?.name !== "AbortError") notify(`Re-check failed: ${friendlyError(e)}`, { tone: "bad" }); }
@@ -1017,11 +1031,11 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
        gate says a different choice would fix it — the wrong format for the
        post, or a layout the post cannot fill — try once more before the
        user ever sees it. */
-    let check = reviewQuality({ draft, classification: a.classification, research, image: a });
+    let check = reviewQuality({ draft, classification: a.classification, research, image: a, sourceDoc: assets.sourceDoc });
     if (check.regenerate) {
       logAudit(`Graphic rejected — ${check.blocking[0]?.message || "wrong format"}. Regenerating.`);
       a = await engine.image(ctx, { variant: variant + 1, photo: extras.pollinations === true });
-      check = reviewQuality({ draft, classification: a.classification, research, image: a });
+      check = reviewQuality({ draft, classification: a.classification, research, image: a, sourceDoc: assets.sourceDoc });
     }
     if (!live()) return;
     patchAssets({ images: [{ ...a, check }], upload: null });
@@ -1031,7 +1045,7 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
   const makeVideo = () => run("video", async (live) => {
     const previous = assets.video?.url;
     const a = await engine.video(ctxOf());
-    a.check = reviewQuality({ draft, classification: a.classification, research, video: a, seconds: a.seconds });
+    a.check = reviewQuality({ draft, classification: a.classification, research, video: a, seconds: a.seconds, sourceDoc: assets.sourceDoc });
     if (a.check.regenerate) logAudit(`Storyboard off-script — ${a.check.blocking[0]?.message || ""}`);
     if (!live()) return;
     if (previous) URL.revokeObjectURL(previous);       // the old encode is dead weight
@@ -1052,6 +1066,12 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
   });
 
   const makePoll = () => run("poll", async (live) => {
+    /* The poll is part of the post, so it is decided from the post: what
+       kind of post it is picks the kind of question worth asking, and the
+       country rules apply here exactly as they do to the copy. */
+    const ctx = ctxOf();
+    const cls = classify(ctx);
+    const style = pollStyleFor(cls);
     const r = await askJSON({
       capability: "writing",
       system: `You write LinkedIn polls that sit underneath a written post. ${JSON_RULE}`,
@@ -1059,20 +1079,37 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
 Topic: ${idea}
 Post:
 ${draft ? `${draft.hook}\n${draft.body}\n${draft.cta}` : "(not written yet)"}
-The question must be under 140 characters and read naturally. Give 3 or 4 options, each 30 characters or fewer. No "Other" and no "All of the above".
+${pollGuidance(cls, style)}
 {"question":"","options":["",""]}`,
-      fallback: () => ({ question: "What actually slows your content down?", options: ["Finding a topic", "Getting approval", "Checking the facts", "Finding the time"] }),
+      /* Derived from the post's own points rather than one canned question
+         about content workflows, which is what it used to fall back to
+         whatever the post was about. */
+      fallback: () => fallbackPoll(ctx, cls, style) || { question: "", options: [] },
       onNotice, track: track("Writing"),
     });
-    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map((o) => String(o).slice(0, 30)).filter(Boolean);
+    const opts = (Array.isArray(r.options) ? r.options : [])
+      .map((o) => String(o).trim().slice(0, POLL_LIMITS.option))
+      .filter(Boolean)
+      .slice(0, POLL_LIMITS.maxOptions);
+    const poll = {
+      question: String(r.question || "").trim().slice(0, POLL_LIMITS.question),
+      options: opts,
+      duration: assets.poll?.duration || POLL_LIMITS.defaultDuration,
+      style: style.id,
+      /* Carried from the fallback: when the post had no distinct
+         alternatives in it the options are a general scale, and the panel
+         has to say so rather than presenting them as drawn from the post. */
+      generic: !!r.generic,
+    };
+    if (!poll.question || poll.options.length < POLL_LIMITS.minOptions) {
+      throw new Error("Couldn't build a poll from this post — there aren't enough distinct alternatives in it to ask about.");
+    }
+    poll.check = checkPoll(poll, { classification: cls, content: ctx, style });
     if (!live()) return;
-    patchAssets({
-      poll: {
-        question: String(r.question || "").slice(0, 140) || "What is holding your team back?",
-        options: opts.length >= 2 ? opts : ["Finding a topic", "Getting approval", "Checking the facts"],
-        duration: assets.poll?.duration || "1 week",
-      },
-    });
+    patchAssets({ poll });
+    const blocking = poll.check.filter((f) => f.severity === "blocking");
+    logAudit(`Poll written — ${style.label.toLowerCase()}${blocking.length ? `, ${blocking.length} problem(s)` : ""}`);
+    if (blocking.length) notify(blocking[0].message, { tone: "warn", ms: 8000 });
   });
 
   /* Once the copy is ready, the asset the chosen format needs is produced

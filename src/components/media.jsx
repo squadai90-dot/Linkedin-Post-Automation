@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { FORMAT_BY_ID, normalizeFormats, visualOf } from "../lib/formats.js";
 import { pad } from "../lib/util.js";
-import { drawScene, svgToPng, downloadBlob } from "../lib/brand.js";
+import { checkPoll, STYLE_BY_ID, LIMITS as POLL_LIMITS } from "../lib/poll.js";
+import { svgToPng, downloadBlob } from "../lib/brand.js";
+import { drawScene } from "../lib/scenes.js";
 import { SCENE_SECONDS, videoProvider, extensionOf } from "../lib/media.js";
 import { ImageStudio } from "./imagestudio.jsx";
 
@@ -372,16 +374,38 @@ export function SourceDocPanel({ assets, mstate, ingestDocument }) {
 
 export function PollPanel({ assets, mstate, makePoll, patchAssets }) {
   const poll = assets.poll;
-  const set = (patch) => patchAssets({ poll: { ...poll, ...patch } });
+  /* Editing invalidates whatever the last check said, so it is re-run on the
+     current values rather than left showing a stale verdict. */
+  const set = (patch) => {
+    const next = { ...poll, ...patch };
+    patchAssets({ poll: { ...next, check: checkPoll(next, {}) } });
+  };
+  const findings = poll?.check || [];
+  const style = poll?.style ? STYLE_BY_ID[poll.style] : null;
   return (
     <div className="card">
       <div className="eyebrow" style={{ marginBottom: 10 }}>Poll</div>
       <TaskState state={mstate.poll} idleLabel="Generate poll" busyLabel="Writing poll…" onRun={makePoll} />
       {poll && (
         <div style={{ marginTop: 14 }}>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>Question · {poll.question.length}/140</div>
+          {poll?.generic && (
+            <div className="badge warn" style={{ marginBottom: 8, display: "block" }}>
+              The post had no distinct alternatives in it, so these options are a general scale. Sharpen them to what your readers would actually choose.
+            </div>
+          )}
+          {style && (
+            <div className="u-muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+              <b style={{ color: "var(--ink)" }}>{style.label} poll</b> — {style.note}
+            </div>
+          )}
+          {findings.map((f, i) => (
+            <div key={i} className={"badge " + (f.severity === "blocking" ? "bad" : "warn")} style={{ marginBottom: 8 }}>
+              {f.message} {f.fix}
+            </div>
+          ))}
+          <div className="eyebrow" style={{ marginBottom: 6 }}>Question · {poll.question.length}/{POLL_LIMITS.question}</div>
           <input className="ta" maxLength={140} value={poll.question} onChange={(e) => set({ question: e.target.value })} />
-          <div className="eyebrow" style={{ margin: "14px 0 6px" }}>Options · max 4, 30 characters each</div>
+          <div className="eyebrow" style={{ margin: "14px 0 6px" }}>Options · max {POLL_LIMITS.maxOptions}, {POLL_LIMITS.option} characters each</div>
           {poll.options.map((o, i) => (
             <div className="row" key={i} style={{ marginBottom: 6 }}>
               <span className="mono u-muted" style={{ width: 18 }}>{i + 1}</span>

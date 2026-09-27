@@ -99,45 +99,8 @@ export function repairSVG(raw) {
   return body.slice(0, lastClose + 1) + "</svg>";
 }
 
-export function drawScene(ctx, W, H, scene, i, total, t, brief) {
-  const ease = t < 0.12 ? t / 0.12 : t > 0.88 ? (1 - t) / 0.12 : 1;
-  ctx.fillStyle = BRAND.bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // slow drift so it reads as motion rather than a slideshow
-  const drift = (t - 0.5) * 40;
-  const g = ctx.createRadialGradient(W * 0.78 + drift, H * 0.2, 40, W * 0.78 + drift, H * 0.2, 620);
-  g.addColorStop(0, "rgba(124,140,255,0.30)");
-  g.addColorStop(1, "rgba(124,140,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.globalAlpha = ease;
-  ctx.fillStyle = BRAND.acc2;
-  ctx.font = "500 22px Inter, Helvetica, Arial, sans-serif";
-  ctx.fillText(String(scene.label || `SCENE ${i + 1}`).toUpperCase(), 90, 120);
-  ctx.fillStyle = BRAND.acc;
-  ctx.fillRect(90, 140, 64, 5);
-
-  ctx.fillStyle = BRAND.ink;
-  ctx.font = "700 62px Inter, Helvetica, Arial, sans-serif";
-  wrapText(scene.line || "", 28).slice(0, 4).forEach((l, k) => ctx.fillText(l, 90 + drift * 0.25, 300 + k * 76));
-
-  if (scene.note) {
-    ctx.fillStyle = BRAND.mute;
-    ctx.font = "400 28px Inter, Helvetica, Arial, sans-serif";
-    wrapText(scene.note, 52).slice(0, 2).forEach((l, k) => ctx.fillText(l, 90, 560 + k * 40));
-  }
-
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = BRAND.rule;
-  ctx.fillRect(90, H - 60, W - 180, 3);
-  ctx.fillStyle = BRAND.acc;
-  ctx.fillRect(90, H - 60, (W - 180) * ((i + t) / total), 3);
-  ctx.fillStyle = BRAND.mute;
-  ctx.font = "500 20px Inter, Helvetica, Arial, sans-serif";
-  ctx.fillText(brandName().toUpperCase(), 90, H - 90);
-}
+/* The video scene renderer lives in scenes.js: a scene now draws what it
+   is carrying rather than always drawing type on a background. */
 
 /* ---------- image layouts ----------
    Four compositions, picked by variant, so regenerating visibly changes the

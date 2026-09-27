@@ -179,7 +179,7 @@ exists at the scheduled minute to call one.
 
 ## Unison, tested as code
 
-366 unit tests (`npm test`) and 42 browser tests (`npx playwright test`, both
+421 unit tests (`npm test`) and 46 browser tests (`npx playwright test`, both
 projects) pass.
 
 The browser tests include `e2e/publish-payload.spec.js`, which asserts on the
@@ -228,6 +228,36 @@ Covered by `e2e/content-times.spec.js` and `tests/posts.test.js`.
 Note: the sample posts that ship with the demo carry a date but no publication
 time, because none of them was ever published. They show the date alone rather
 than being given a fabricated minute.
+
+## Polls, video scenes and the checks that run without AI
+
+| # | Case | Result |
+|---|---|---|
+| 44 | LinkedIn's real poll limits (140 / 30 / 2–4 / 1 day–2 weeks) match what the publisher and both Make scenarios enforce | **PASS** |
+| 45 | Duplicate, near-duplicate (after stemming), loaded and filler options are each caught with a named fix | **PASS** |
+| 46 | A knowledge-check poll the post does not answer is blocked | **PASS** |
+| 47 | A poll spanning two tax systems is blocked | **PASS** |
+| 48 | A frequency scale (Always / Usually / Sometimes / Never) is **not** flagged as loaded | **PASS** |
+| 49 | With no AI, the poll is built from the post's own list; for prose it falls back to a scale **and says so** | **PASS** |
+| 50 | In the real app the panel names the style, enforces the counters live, and flags a duplicate as you type | **PASS** (e2e) |
+| 51 | Every video scene carries a kind, they are not all the same, and each line is traceable to the post | **PASS** (e2e) |
+| 52 | A figure counts up keeping units, currency prefix and decimals | **PASS** |
+| 53 | Every scene kind draws at t = 0, 0.5 and 1 without throwing, and falls back to type when its data is missing | **PASS** |
+| 54 | Sources over two years old block a fact-heavy post; over one year warn; the freshest source is what counts | **PASS** |
+| 55 | A document that disagrees with research about the same figure is surfaced, not resolved | **PASS** |
+| 56 | Scoring exposes the weakest dimension instead of hiding it behind an average | **PASS** |
+
+### Bugs this round found, and fixed
+
+| Symptom | Cause |
+|---|---|
+| The storyboard still said "What actually slows teams down" — nothing to do with the post | The brief's own fallback supplied four canned scenes, so the storyboard built from the post **never ran**. Found by reading the storyboard out of the real app, not from the code |
+| Scene lines cut mid-word ("…reaching produ") | Raw `slice`. Now uses the same boundary-aware clip the graphics use |
+| A prose post produced **no poll at all** | The new fallback returned null when the post had no list, which is most posts. Now falls back to a scale and labels it |
+| "Never tried" flagged as biased wording | "never" and "always" are an ordinary frequency scale in an option. Removed from the loaded-wording list |
+| The "these options are generic" warning never appeared | The flag was dropped when the poll object was rebuilt |
+| The stat scene's label drew on top of its own ring | Label sat inside the ring radius |
+| A timeline's **last** marker never appeared | Reveal was keyed to pixel distance; at full progress the leading edge lands exactly on it, giving zero |
 
 ## Content intelligence and visual choice
 

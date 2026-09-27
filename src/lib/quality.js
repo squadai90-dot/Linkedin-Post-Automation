@@ -218,17 +218,118 @@ export function checkVideo({ asset, draft, seconds } = {}) {
   return out;
 }
 
+/* ---------- how old the evidence is ----------
+   A tax post resting on a three-year-old page is not wrong so much as
+   unsafe: thresholds move every year, and the reader cannot tell from the
+   post which year it is describing. Only applied where the post is
+   fact-heavy, because an opinion piece does not go stale the same way. */
+export const STALE_MONTHS = 12;
+export const VERY_STALE_MONTHS = 24;
+
+const monthsSince = (iso, now = Date.now()) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return (now - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+};
+
+export function checkFreshness({ classification, research, now = Date.now() } = {}) {
+  const out = [];
+  if (!classification?.factHeavy) return out;
+  const sources = (research?.sources || []).filter((x) => !x.background);
+  if (!sources.length) return out;
+
+  const ages = sources.map((x) => monthsSince(x.date, now)).filter((x) => x != null);
+  if (!ages.length) {
+    out.push(finding("sources-undated", "warn",
+      "None of the sources carry a date.",
+      "A rule or threshold is only true for a given year. Check when each source was published before this goes out."));
+    return out;
+  }
+  const freshest = Math.min(...ages);
+  if (freshest >= VERY_STALE_MONTHS) {
+    out.push(finding("sources-stale", "blocking",
+      `The most recent source is about ${Math.round(freshest)} months old.`,
+      "Thresholds and deadlines move every year. Re-run research before publishing this as current."));
+  } else if (freshest >= STALE_MONTHS) {
+    out.push(finding("sources-ageing", "warn",
+      `The most recent source is about ${Math.round(freshest)} months old.`,
+      "Check it still reflects the current year before publishing."));
+  }
+  return out;
+}
+
+/* ---------- the uploaded document against the researched sources ----------
+   Silently preferring one over the other is the wrong answer: the user knows
+   which of the two is authoritative for their client and we do not. So a
+   disagreement is surfaced rather than resolved. */
+export function checkConflicts({ sourceDoc, research } = {}) {
+  const out = [];
+  const docClaims = (sourceDoc?.claims || []).map(String);
+  const webClaims = (research?.claims || []).filter((c) => !c.fromDocument).map((c) => String(c.text || ""));
+  if (!docClaims.length || !webClaims.length) return out;
+
+  const subject = (t) => new Set(lower(t).split(/[^a-z0-9]+/).filter((w) => w.length > 4));
+  for (const d of docClaims) {
+    const dFigures = findStats(d);
+    if (!dFigures.length) continue;
+    const dWords = subject(d);
+    for (const w of webClaims) {
+      const wFigures = findStats(w);
+      if (!wFigures.length) continue;
+      const shared = [...subject(w)].filter((x) => dWords.has(x)).length;
+      /* Same subject, different number: that is a disagreement worth a
+         human deciding, not a tie for the app to break. */
+      if (shared >= 2 && !wFigures.some((f) => dFigures.includes(f))) {
+        out.push(finding("source-conflict", "warn",
+          `"${sourceDoc.name}" says ${dFigures[0]} where research says ${wFigures[0]}, about the same thing.`,
+          "Decide which applies — your document may be newer, or narrower — and use only that one."));
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/* ---------- scoring ----------
+   Findings say what is wrong; a score says where the post is weak, which is
+   a different question. Deliberately not one number: a post can be
+   impeccably sourced and say nothing, and a single average hides that. */
+export function score({ draft, classification, research, findings = [] } = {}) {
+  const text = [draft?.hook, draft?.body, draft?.cta].filter(Boolean).join("\n");
+  const has = (id) => findings.some((f) => f.id === id);
+  const stats = findStats(text);
+  const words = text.split(/\s+/).filter(Boolean).length;
+
+  const dims = {
+    evidence: has("unsourced-figure") ? 0 : has("sources-stale") ? 35 : has("sources-ageing") || has("sources-undated") ? 60 : (research?.claims || []).length ? 100 : stats.length ? 50 : 75,
+    country: has("mixed-jurisdiction") ? 0 : has("country-unstated") ? 55 : classification?.country ? 100 : 75,
+    specificity: has("no-specifics") ? 25 : stats.length >= 2 ? 100 : stats.length === 1 ? 85 : classification?.country ? 70 : 50,
+    originality: has("filler") ? 20 : 80,
+    clarity: has("hook-folded") ? 65 : has("too-long") ? 40 : words >= 40 && words <= 300 ? 100 : 70,
+    tone: has("hashtags") ? 70 : 90,
+  };
+  const weakest = Object.entries(dims).sort((a, b) => a[1] - b[1])[0];
+  return {
+    dims,
+    overall: Math.round(Object.values(dims).reduce((a, b) => a + b, 0) / Object.keys(dims).length),
+    weakest: { dimension: weakest[0], value: weakest[1] },
+  };
+}
+
 /* ---------- the verdict ---------- */
 
-export function review({ draft, classification, research, image, video, seconds } = {}) {
+export function review({ draft, classification, research, image, video, seconds, sourceDoc, now } = {}) {
   const findings = [
     ...checkContent({ draft, classification, research }),
+    ...checkFreshness({ classification, research, now }),
+    ...checkConflicts({ sourceDoc, research }),
     ...checkVisual({ asset: image, classification, draft }),
     ...checkVideo({ asset: video, draft, seconds }),
   ];
   const blocking = findings.filter((f) => f.severity === "blocking");
   return {
     findings,
+    scores: score({ draft, classification, research, findings }),
     blocking,
     warnings: findings.filter((f) => f.severity === "warn"),
     pass: blocking.length === 0,

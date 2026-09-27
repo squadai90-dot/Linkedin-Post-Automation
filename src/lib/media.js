@@ -1,10 +1,11 @@
 import { askJSON, askText, JSON_RULE } from "./ai.js";
 
-import { tplPoster, drawScene, renderBrandImage, BRAND_TEXT } from "./brand.js";
+import { tplPoster, renderBrandImage, BRAND_TEXT } from "./brand.js";
+import { drawScene } from "./scenes.js";
 import { pollinationsUrl } from "./freeApis.js";
 import { renderTemplate, TEMPLATE_BY_ID } from "./templates.js";
-import { classify, COUNTRIES, occasionById } from "./intel.js";
-import { visualStrategy } from "./visual.js";
+import { classify, COUNTRIES, occasionById, findStats } from "./intel.js";
+import { visualStrategy, itemsFrom, chooseStat, clip } from "./visual.js";
 
 /* The model can return an object, a string or nothing where a list is
    expected. `|| []` does not catch that; this does. */
@@ -195,17 +196,65 @@ export function createMediaEngine({ track, log, onNotice }) {
      states the problem, the one that carries the figure or the turn, and its
      own call to action. Used when no model is available, so the video still
      tells the post's story rather than a generic one about automation. */
+  /* A storyboard built from the post, where each scene also knows WHAT IT
+     DRAWS. A scene carrying a figure counts that figure up; an ordered list
+     becomes numbered cards arriving in sequence; a two-sided post becomes
+     two panels. Without a kind every scene falls back to type on a
+     background, which is the slideshow this replaced. */
   const storyboardFrom = (ctx, cls) => {
-    const sentences = String(ctx.body || "").split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter((x) => x.length > 12);
-    const withFigure = sentences.find((x) => (cls?.stats || []).some((f) => x.includes(f)));
-    const line = (x, n = 56) => String(x || "").replace(/\s+/g, " ").slice(0, n);
-    const scenes = [{ label: "HOOK", line: line(ctx.hook), note: "" }];
-    if (sentences[0]) scenes.push({ label: "PROBLEM", line: line(sentences[0]), note: "" });
-    if (withFigure && withFigure !== sentences[0]) scenes.push({ label: "PROOF", line: line(withFigure), note: "" });
-    else if (sentences[1]) scenes.push({ label: "INSIGHT", line: line(sentences[1]), note: "" });
-    if (sentences[2] && scenes.length < 4) scenes.push({ label: "INSIGHT", line: line(sentences[2]), note: "" });
-    scenes.push({ label: "CTA", line: line(ctx.cta || "What would you change first?"), note: "" });
+    const body = String(ctx.body || "");
+    const sentences = body.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter((x) => x.length > 12);
+    const stats = cls?.stats?.length ? cls.stats : findStats([ctx.hook, body].join(" "));
+    const withFigure = sentences.find((x) => stats.some((f) => x.includes(f)));
+    const items = itemsFrom(body);
+    /* Cut at a word or clause boundary, not at a character count: a scene
+       ending "…reaching produ" reads as broken software on screen. */
+    const line = (x, n = 64) => clip(x, n);
+    const sequence = /(^|\n)\s*(\d+[.)]\s|step\s*\d|first[,:\s]|then[,:\s]|finally[,:\s])/i.test(body) && items.length >= 3;
+
+    const scenes = [{ label: "HOOK", kind: "statement", line: line(ctx.hook), note: "" }];
+
+    if (sequence) {
+      scenes.push({ label: "HOW", kind: "steps", line: line(sentences[0] || "", 48), data: { items } });
+    } else if (sentences[0]) {
+      scenes.push({ label: "PROBLEM", kind: "statement", line: line(sentences[0]), note: "" });
+    }
+
+    if (withFigure) {
+      const value = chooseStat(ctx, stats);
+      scenes.push({
+        label: "PROOF", kind: "stat", line: line(withFigure),
+        data: { value, label: clip(withFigure.replace(value, "").replace(/\s+/g, " ").replace(/^[\s,;:—-]+/, "").trim(), 72) },
+      });
+    } else if (!sequence && sentences[1]) {
+      scenes.push({ label: "INSIGHT", kind: "statement", line: line(sentences[1]), note: "" });
+    }
+
+    if (!sequence && sentences[2] && scenes.length < 4) {
+      scenes.push({ label: "INSIGHT", kind: "statement", line: line(sentences[2]), note: "" });
+    }
+
+    scenes.push({ label: "CTA", kind: "cta", line: line(ctx.cta || "What would you change first?", 48), note: "" });
     return scenes.slice(0, 5);
+  };
+
+  /* Scenes the model wrote come back as label + line. Give each one the kind
+     that suits what it is carrying, so a model-written storyboard animates
+     the same way a derived one does. */
+  const assignKinds = (scenes, ctx, cls) => {
+    const stats = cls?.stats?.length ? cls.stats : findStats([ctx.hook, ctx.body].join(" "));
+    const items = itemsFrom(ctx.body);
+    return scenes.map((sc, i) => {
+      if (sc.kind) return sc;
+      const label = String(sc.label || "").toUpperCase();
+      if (label === "CTA" || i === scenes.length - 1) return { ...sc, kind: "cta" };
+      const figure = findStats(sc.line)[0] || stats.find((f) => String(sc.line).includes(f));
+      if (figure) {
+        return { ...sc, kind: "stat", data: { value: figure, label: clip(String(sc.line).replace(figure, "").replace(/\s+/g, " ").trim(), 72) } };
+      }
+      if (["HOW", "PROCESS", "STEPS"].includes(label) && items.length >= 3) return { ...sc, kind: "steps", data: { items } };
+      return { ...sc, kind: "statement" };
+    });
   };
 
   /* What the brief must respect for this post's jurisdiction. Empty for a
@@ -241,7 +290,12 @@ ${shared}
 The headline must be readable on a phone at a glance, so keep it to one idea.
 {"subject":"one line","headline":"under 9 words","message":"one line","audience":"one line","composition":"one line","kicker":"under 3 words","support":"under 10 words","aspect":"1.91:1","avoid":"one line"}`,
       fallback: () => (kind === "video"
-        ? { title: ctx.hook?.slice(0, 60) || "Video", concept: "A short explainer built from the post.", audience: "Marketing leaders", style: "Dark, typographic, restrained", motion: "Slow drift between titles", aspect: "16:9", scenes: [{ label: "HOOK", line: ctx.hook || "", note: "" }, { label: "PROBLEM", line: "What actually slows teams down", note: "" }, { label: "INSIGHT", line: "The part nobody automates", note: "" }, { label: "CTA", line: "What would you fix first?", note: "" }], avoid: "stock footage clichés" }
+        ? { title: ctx.hook?.slice(0, 60) || "Video", concept: "A short explainer built from the post.", audience: "Marketing leaders", style: "Dark, typographic, restrained", motion: "Slow drift between titles", aspect: "16:9", /* Deliberately empty. This fallback used to supply four fixed lines —
+             "What actually slows teams down", "The part nobody automates" —
+             and because they were non-empty the storyboard built from the
+             post never ran at all. Leaving scenes out hands that job to
+             storyboardFrom, which uses the post's own sentences. */
+            scenes: [], avoid: "stock footage clichés" }
         : { subject: ctx.hook || "", headline: (ctx.hook || "").slice(0, 60), message: "", audience: "Marketing leaders", composition: "Type-led with one geometric motif", kicker: BRAND_TEXT.name, support: BRAND_TEXT.site || BRAND_TEXT.name, aspect: "1.91:1", avoid: "stock photography" }),
       track, onNotice, signal,
     });
@@ -295,7 +349,7 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
       const cls = classify(ctx);
       const b = await brief("video", ctx, signal, cls);
       const prompt = null;   // no video generator is connected, so no prompt is written for one
-      let storyboard = arr(b.scenes).filter((x) => x && x.line).slice(0, 5);
+      let storyboard = assignKinds(arr(b.scenes).filter((x) => x && x.line).slice(0, 5), ctx, cls);
       /* The fallback used to be four fixed lines about teams and automation,
          which had nothing to do with the post. Built from the post's own
          words instead, it still tells the post's story when the model is
