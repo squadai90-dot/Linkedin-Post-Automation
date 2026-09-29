@@ -11,6 +11,7 @@ import { digestDocument, addDocToResearch } from "./lib/doc.js";
 import { classify, researchGuidance, COUNTRIES } from "./lib/intel.js";
 import { review as reviewQuality } from "./lib/quality.js";
 import { pollStyleFor, pollGuidance, fallbackPoll, checkPoll, LIMITS as POLL_LIMITS } from "./lib/poll.js";
+import { imageCapabilities } from "./lib/aigen.js";
 import { svgToPng } from "./lib/brand.js";
 import { createMediaEngine, containerOf, extensionOf, VIDEO_PROFILES } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
@@ -1024,6 +1025,51 @@ Rules of thumb: a debatable question or a choice → poll; a number or a single 
     }
   }
 
+  /* What the server can actually do, probed once. A probe costs nothing; a
+     generation costs money, so nothing here starts one. */
+  const [gen, setGen] = useState({ image: null });
+  useEffect(() => {
+    let alive = true;
+    imageCapabilities().then((c) => alive && setGen((g) => ({ ...g, image: c }))).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const [visualStyle, setVisualStyle] = useState("auto");
+  const [genState, setGenState] = useState(null);
+
+  /* AI artwork with the approved words composited over it. Deliberately a
+     separate action from the free renderer: it spends money, so it only ever
+     runs when the user presses it. */
+  const makeAiImage = (style = visualStyle) => run("image", async (live) => {
+    const ctx = ctxOf();
+    setGenState({ state: "running", step: "Starting" });
+    try {
+      const a = await engine.aiImage(ctx, { style, onState: (st) => live() && setGenState(st) });
+      if (a?.unsupported) {
+        notify(a.reason, { tone: "warn", ms: 7000 });
+        setGenState(null);
+        return makeImage(0);
+      }
+      const check = reviewQuality({ draft, classification: a.classification, research, image: a, sourceDoc: assets.sourceDoc });
+      if (!live()) return;
+      patchAssets({ images: [{ ...a, check }], upload: null });
+      logAudit(`AI artwork — ${a.provider}/${a.model}, ${a.style}${a.usd ? `, $${a.usd}` : ""}`);
+      notify(`Artwork generated${a.usd ? ` — about $${a.usd}` : ""}. The words were added by Unison, so they are exact.`, { tone: "ok", ms: 7000 });
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      /* Never silently swap in a template: the user asked for artwork and
+         has to be told it did not happen. The approved post is untouched. */
+      const why = e?.code === "not_configured"
+        ? "AI artwork is not switched on. Add OPENAI_API_KEY or GOOGLE_API_KEY to the deployment and redeploy — the browser never sees it."
+        : e?.message || "The artwork could not be generated.";
+      notify(why, { tone: "bad", ms: 10000 });
+      logAudit(`AI artwork failed — ${e?.code || "error"}`);
+      throw e;
+    } finally {
+      setGenState(null);
+    }
+  });
+
   const makeImage = (variant = 0) => run("image", async (live) => {
     const ctx = ctxOf();
     let a = await engine.image(ctx, { variant, photo: extras.pollinations === true });
@@ -1815,6 +1861,7 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
     analytics, busy, tone, setTone, pov, setPov, length, setLength, showDetail, setShowDetail,
     openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter, approve, reject, confirmSchedule,
     publishNow, runDiscovery, setDrawer, reset, cancelWork, setFailMode, undoStack, pushUndo, undo,
+    makeAiImage, visualStyle, setVisualStyle, genState, gen,
     recommendFormat: () => recommendFormat([draft?.hook, draft?.body, draft?.cta].filter(Boolean).join("\n\n")), recommending: recBusy, recommended: recFormat,
     publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras, publishReady,
     setModal: openModal,

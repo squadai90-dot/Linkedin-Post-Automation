@@ -99,6 +99,7 @@ export function Workspace(p) {
     publishState, attempts, publishError, publishVia, publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload, confirmPublished, workId, posts, relay, analytics, busy, tone, setTone, pov, setPov, length, setLength,
     showDetail, setShowDetail, openClaim, setOpenClaim, linkedin, liMeta, claimsBlocking, checksStale, checksDegraded, recheck, unlock, aiInfo, runWriter,
     approve, reject, confirmSchedule, publishNow, runDiscovery, setDrawer, setModal, reset, cancelWork,
+    makeAiImage, visualStyle, setVisualStyle, genState, gen,
     setFailMode, undoStack, undo, pushUndo, assets, patchAssets, mstate, makeImage,
     makeVideo, makePoll, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady, setFormats,
     recommendFormat, recommending, recommended,
@@ -149,6 +150,7 @@ export function Workspace(p) {
     format, formats, assets, patchAssets, mstate, makeImage, makeVideo, makePoll,
     ingestDocument, attachUpload, exportVideo, locked, extras,
     draft, profile, notify,
+    makeAiImage, visualStyle, setVisualStyle, genState, gen,
   };
 
   const evidencePanel = !draft ? null : (

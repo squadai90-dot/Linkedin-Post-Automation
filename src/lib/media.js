@@ -6,6 +6,9 @@ import { pollinationsUrl } from "./freeApis.js";
 import { renderTemplate, TEMPLATE_BY_ID } from "./templates.js";
 import { classify, COUNTRIES, occasionById, findStats } from "./intel.js";
 import { visualStrategy, itemsFrom, chooseStat, clip } from "./visual.js";
+import { imagePrompt, resolveStyle, STYLE_BY_ID } from "./artdirection.js";
+import { generateArtwork, imageCapabilities, GenError } from "./aigen.js";
+import { composite } from "./compose.js";
 
 /* The model can return an object, a string or nothing where a list is
    expected. `|| []` does not catch that; this does. */
@@ -324,6 +327,43 @@ Write one prompt of 40-70 words describing subject, composition, lighting, palet
 
   return {
     providers: { image: imageProvider, video: videoProvider },
+
+    /* Artwork from a model, with the approved words composited over it.
+       Only runs when the user asked for a generated style AND a key is set
+       on the server. A failure is reported rather than quietly replaced with
+       a template, because a graphic that is not what was asked for is worse
+       than an error that says so. */
+    async aiImage(ctx, { style = "auto", signal, onState } = {}) {
+      const cls = classify(ctx);
+      const resolved = resolveStyle(style, cls, ctx);
+      if (STYLE_BY_ID[resolved]?.rendered) {
+        return { unsupported: true, style: resolved, reason: `${STYLE_BY_ID[resolved].label} is drawn by Unison, so the figures are exact.` };
+      }
+      const caps = await imageCapabilities();
+      if (!caps.configured) throw new GenError(caps.reason || "AI artwork is not configured on the server.", "not_configured");
+
+      const prompt = imagePrompt({ classification: cls, content: ctx, style: resolved, brand: { name: BRAND_TEXT.name } });
+      onState?.({ state: "running", step: "Generating artwork" });
+      const art = await generateArtwork({ prompt, shape: "wide", signal });
+
+      const strategy = visualStrategy(cls, ctx, { brand: { name: BRAND_TEXT.name, site: BRAND_TEXT.site } });
+      onState?.({ state: "running", step: "Adding the approved words" });
+      /* The words are the post's own, drawn here rather than by the model —
+         the only way a greeting or a figure is guaranteed correct. */
+      const svgless = await composite({
+        artwork: art.dataUrl,
+        fields: { ...strategy.fields, headline: strategy.fields.headline || ctx.hook },
+        layout: cls.occasion ? "bottom" : "left",
+      });
+      log?.(`Artwork generated — ${art.provider} ${art.model}, ${resolved} style`);
+      return {
+        kind: "url", url: svgless, artwork: art.dataUrl, prompt,
+        style: resolved, strategy, classification: cls,
+        provider: art.provider, model: art.model, usd: art.usd,
+        source: "ai", generated: true,
+        id: "img-" + Math.random().toString(36).slice(2, 8),
+      };
+    },
 
     async image(ctx, { variant = 0, signal, photo = false } = {}) {
       /* Decide from the FINISHED post, not from the topic that started it.

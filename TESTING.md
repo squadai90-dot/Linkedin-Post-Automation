@@ -179,7 +179,7 @@ exists at the scheduled minute to call one.
 
 ## Unison, tested as code
 
-421 unit tests (`npm test`) and 46 browser tests (`npx playwright test`, both
+462 unit tests (`npm test`) and 52 browser tests (`npx playwright test`, both
 projects) pass.
 
 The browser tests include `e2e/publish-payload.spec.js`, which asserts on the
@@ -228,6 +228,43 @@ Covered by `e2e/content-times.spec.js` and `tests/posts.test.js`.
 Note: the sample posts that ship with the demo carry a date but no publication
 time, because none of them was ever published. They show the date alone rather
 than being given a fabricated minute.
+
+## AI artwork, and the publishing contract it must not touch
+
+**No live provider call was made, and none could be:** this environment's
+network policy denies `api.openai.com`, `api.replicate.com`, `fal.run` and
+`api.stability.ai` (403 at the egress proxy), and no provider key was
+supplied. Everything below is a real test of the code this repository owns,
+with the provider mocked. It is not evidence that OpenAI or Google accept
+these requests — that needs one run with a key.
+
+| # | Case | Result |
+|---|---|---|
+| 57 | The publishing contract — payload fields, poll shape, webhook, organisation, media budget, poll limits — is unchanged | **PASS** (frozen baseline, `tests/publish-contract.test.js`) |
+| 58 | Internal poll fields (`style`, `check`, `generic`) cannot leak into the Make payload | **PASS** |
+| 59 | The relays report `configured: false` with no key and say which variable to set | **PASS** |
+| 60 | A key never appears in any relay response | **PASS** |
+| 61 | The key goes upstream as a header, never in the body | **PASS** |
+| 62 | A client cannot smuggle `model`, `n`, `endpoint` or `moderation` past the relay | **PASS** |
+| 63 | Upstream 429 / safety-filter / job-failure become messages, not stack traces | **PASS** |
+| 64 | The video relay caps duration at what the provider supports and prices per second | **PASS** |
+| 65 | Every generated style forbids the model writing text, numbers or logos | **PASS** |
+| 66 | Navratri asks for garba, chaniya choli and dandiya; AI posts are denied the robot | **PASS** |
+| 67 | Compositing produces a 1200×630 PNG with the exact approved words | **PASS** (real browser) |
+| 68 | The source line never collides with the footer, even with a 4-line headline | **PASS** (real browser) |
+| 69 | Compositing refuses to return artwork with no words on it | **PASS** |
+| 70 | The style picker offers all six styles and disables generation when unconfigured | **PASS** (real app) |
+| 71 | Full chain with the relay mocked: probe → style → prompt → artwork → composite → **the composited PNG is what publishes** | **PASS** (real app) |
+| 72 | A relay failure keeps the approved post and shows the error — no template silently substituted | **PASS** (real app) |
+
+### Bugs this round found
+
+| Symptom | Cause |
+|---|---|
+| Every AI image failed with "the artwork could not be read" | The test fixture was a PNG with **bad chunk CRCs**, which the browser refused. The product was correct; the test data was not. Found by decoding the fixture rather than trusting it |
+| `crossOrigin` set on `data:` URLs | Pointless for a data URL and a real hazard. Now only set for `http(s)` |
+| AI artwork labelled "AI photo from Pollinations (free)" | The note keyed off `kind === "url"`, which AI artwork also is |
+| The source line drew straight through the footer | No reserved band; the text block could grow into it |
 
 ## Polls, video scenes and the checks that run without AI
 

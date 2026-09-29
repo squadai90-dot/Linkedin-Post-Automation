@@ -246,6 +246,43 @@ On a paid Make plan, set the scenario's interval to 900 seconds **and**
 `MAKE_CONFIG.schedulerIntervalMs` in `src/lib/publish.js` to `15 * 60 * 1000`.
 Change one without the other and Unison promises something Make does not do.
 
+#### AI artwork (optional, paid, off by default)
+
+Unison can generate genuine artwork with a model and then composite the
+**approved words over it** — the model is never asked to write, because no
+diffusion model spells reliably and a company page cannot publish a graphic
+with a misspelt greeting or a wrong decimal.
+
+Six styles: **Automatic**, Illustrated, 3D animated, Editorial, Infographic,
+Realistic. Automatic resolves from the post, and the panel says which it
+picked. Anything carrying a figure or a rule goes to Unison's own renderer,
+where the number is exact by construction.
+
+The prompt is art-directed from the finished post: a Navratri post asks for
+garba, a chaniya choli and dandiya under festive lights; an AI post is
+explicitly forbidden the robot, a cost post the piggy bank, a growth post the
+arrow over a skyline.
+
+**Keys live on the server only.** Set one of these on the deployment and
+redeploy — the browser never sees them and there is no way to pass one from
+it:
+
+| Variable | Service | Cost at the time of writing |
+|---|---|---|
+| `OPENAI_API_KEY` | `/api/image` → OpenAI Images | ~$0.04 an image |
+| `GOOGLE_API_KEY` | `/api/image` → Imagen, and `/api/video` → Veo | ~$0.04 an image · ~$0.05 a second |
+| `RUNWAY_API_KEY` | `/api/video` → Runway Gen-4 (image-to-video) | ~$0.12 a second |
+
+With none set, the relays report `configured: false`, the button is disabled
+and says why, and Unison keeps using its own free renderer. **Nothing paid
+ever runs on its own** — only from the Generate artwork button — and a
+failure never silently swaps in a template: the post is kept and the error is
+shown. Every graphic carries a badge saying whether a model drew it, Unison
+drew it, or it came from the free photo service.
+
+Verify the prices against the provider before relying on them: they are read
+from the relay's own configuration, which is where to change them.
+
 #### How a visual is chosen
 
 The graphic is decided from the **finished post**, not from the topic that

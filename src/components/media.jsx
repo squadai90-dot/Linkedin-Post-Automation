@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { FORMAT_BY_ID, normalizeFormats, visualOf } from "../lib/formats.js";
 import { pad } from "../lib/util.js";
 import { checkPoll, STYLE_BY_ID, LIMITS as POLL_LIMITS } from "../lib/poll.js";
+import { STYLES, resolveStyle } from "../lib/artdirection.js";
+import { classify } from "../lib/intel.js";
 import { svgToPng, downloadBlob } from "../lib/brand.js";
 import { drawScene } from "../lib/scenes.js";
 import { SCENE_SECONDS, videoProvider, extensionOf } from "../lib/media.js";
@@ -157,6 +159,22 @@ async function saveUrlAsset(url, name) {
    cannot account for is one they cannot trust — and because the decision is
    now a real one worth reading. Findings from the quality gate sit with it,
    since they are about this same asset. */
+/* Where this picture came from. A user approving a graphic should never have
+   to guess whether a model drew it, Unison drew it, or it is a fallback. */
+export function ProvenanceBadge({ asset }) {
+  if (!asset) return null;
+  const ai = asset.source === "ai";
+  return (
+    <div className="badge" style={{ marginTop: 10 }}>
+      {ai
+        ? `AI artwork — ${asset.provider}/${asset.model}${asset.usd ? `, about $${asset.usd}` : ""}. The words were added by Unison, so they are exact.`
+        : asset.kind === "url" && asset.source === "pollinations"
+          ? "AI photo from Pollinations (free)."
+          : "Drawn by Unison from the post's own words — no model involved."}
+    </div>
+  );
+}
+
 export function VisualRationale({ asset }) {
   const s = asset?.strategy;
   const findings = asset?.check?.findings || [];
@@ -173,13 +191,45 @@ export function VisualRationale({ asset }) {
   );
 }
 
-export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify }) {
+/* Pick how the picture should look. "Automatic" resolves from the post, and
+   the panel says which style it landed on so the choice is never a mystery.
+   Costs are shown before anything paid runs. */
+function StylePicker({ value, onChange, resolved, caps, busy }) {
+  const configured = !!caps?.configured;
+  const price = caps?.pricing?.[caps?.defaultProvider]?.usdPerImage;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="eyebrow" style={{ marginBottom: 7 }}>Visual style</div>
+      <div className="chips" style={{ marginTop: 0 }}>
+        {[{ id: "auto", label: "Automatic" }, ...STYLES].map((s) => (
+          <button
+            key={s.id} className={"chip " + (value === s.id ? "on" : "")} disabled={busy}
+            onClick={() => onChange(s.id)}
+            title={s.note || (resolved ? `Chooses for you — this post would get ${resolved}.` : "Chooses for you.")}
+          >{s.label}</button>
+        ))}
+      </div>
+      <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+        {value === "auto" && resolved
+          ? <>Automatic — this post would be drawn <b style={{ color: "var(--ink)" }}>{resolved}</b>.</>
+          : STYLES.find((s) => s.id === value)?.note}
+        {configured
+          ? <> {typeof price === "number" ? `AI artwork costs about $${price.toFixed(3)} an image.` : "AI artwork is available."}</>
+          : <> AI artwork is off — {caps?.reason || "no key is set on the server"}. Unison's own renderer is used instead.</>}
+      </div>
+    </div>
+  );
+}
+
+export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle = "auto", setVisualStyle, genState, gen, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify }) {
   const [variant, setVariant] = useState(0);
   /* Open once the picture exists: the design is the interesting part, and
      hiding it behind a click is what made the old output feel fixed. */
   const [studioOpen, setStudioOpen] = useState(true);
   const img = assets.images[0];
   const fileRef = useRef(null);
+  const busyGen = mstate.image?.status === "generating";
+  const resolved = resolveStyle(visualStyle, classify({ hook: draft?.hook, body: draft?.body, cta: draft?.cta }), { hook: draft?.hook, body: draft?.body });
   return (
     <div className="card">
       <div className="eyebrow" style={{ marginBottom: 10 }}>Post image</div>
@@ -188,6 +238,14 @@ export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUploa
         onRun={() => { const v = variant + 1; setVariant(v); makeImage(v); }}
         extra={<>
           {img && <button className="btn sm" onClick={() => makeImage(variant + 2)}>Another variation</button>}
+          {makeAiImage && (
+            <button
+              className={"btn sm " + (gen?.image?.configured ? "acc" : "")}
+              disabled={busyGen || !gen?.image?.configured}
+              title={gen?.image?.configured ? "Generate artwork with AI, then add the approved words over it" : gen?.image?.reason || "Not configured on the server"}
+              onClick={() => makeAiImage(visualStyle)}
+            >{busyGen ? (genState?.step || "Generating…") : "Generate artwork (AI)"}</button>
+          )}
           <button className="btn sm" onClick={() => fileRef.current?.click()}>Upload your own</button>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) attachUpload(f); e.target.value = ""; }} />
@@ -195,7 +253,11 @@ export function ImagePanel({ assets, mstate, makeImage, patchAssets, attachUploa
           {(img || assets.upload) && <button className="btn sm" onClick={() => patchAssets({ images: [], upload: null })}>Remove</button>}
         </>}
       />
-      {img && <><SvgFrame src={srcOf(img)} /><VisualRationale asset={img} />{img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div> : prototypeNote}</>}
+      {setVisualStyle && <StylePicker value={visualStyle} onChange={setVisualStyle} resolved={resolved} caps={gen?.image} busy={busyGen} />}
+      {busyGen && genState?.step && <div className="badge" style={{ marginTop: 10 }}>{genState.step}…</div>}
+      {img && <><SvgFrame src={srcOf(img)} /><ProvenanceBadge asset={img} /><VisualRationale asset={img} />{img.source === "ai" ? null
+        : img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div>
+        : prototypeNote}</>}
 
       {/* Rolling the dice again is a poor way to fix one wrong word, so the
           composition and the words in it are both editable here. */}
