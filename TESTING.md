@@ -366,6 +366,123 @@ named as the user's own document, in the writer's prompt.
 
 Covered by `e2e/source-document.spec.js` and `tests/doc.test.js`.
 
+## Canva designs, and the publishing contract they must not touch
+
+**No live Canva call was made, and none could be:** this environment's network
+policy denies `api.canva.com` and `www.canva.com` (the egress proxy answers 000
+on CONNECT), and no Canva credential was supplied. Everything below is a real
+test of the code this repository owns, with Canva mocked — the relay exercised
+directly, and the whole workflow driven through the built app in a real browser.
+It is **not** evidence that Canva accepts these requests from a real
+integration. That needs one run with a Canva Enterprise account, and the list of
+what such a run would still be gated on is at the end of this section.
+
+### The seam: nothing in publishing changed
+
+A finalized design becomes an ordinary `File` and goes through `attachUpload`,
+which is the path an uploaded file already took. `collectMedia` returns early on
+`assets.upload` exactly as before. `git diff` over `src/lib/publish.js`,
+`src/lib/linkedin.js`, `src/lib/linkedinAuth.js`, `api/publish.js`,
+`api/linkedin.js`, `src/lib/media.js` and `src/App.jsx` is **empty** — not one
+publishing file was edited to make this work.
+
+| # | Case | Result |
+|---|---|---|
+| 73 | The publishing contract is still the frozen baseline — payload fields, poll shape, webhook, organisation, media budget, poll limits | **PASS** (`tests/publish-contract.test.js`, unchanged) |
+| 74 | `GET /api/canva` reports whether a secret is set and **never returns it**, truncates the client id, and sets `Cache-Control: no-store` | **PASS** |
+| 75 | OAuth uses PKCE; the verifier stays on the server and appears in no response or URL | **PASS** |
+| 76 | Exchange returns a session id and **no access or refresh token** — the token exists only in the relay's own map | **PASS** |
+| 77 | The client secret goes upstream in the Basic header Canva documents, never in a query string | **PASS** |
+| 78 | An authorization whose `state` the relay did not issue is refused, and a code cannot be exchanged twice | **PASS** |
+| 79 | A deployment configured from environment variables refuses to be reconfigured at runtime | **PASS** |
+| 80 | A **deployed** relay with no `UNISON_RELAY_TOKEN` refuses browser configuration altogether, so it cannot be pointed at someone else's Canva integration | **PASS** |
+| 81 | With no session, the relay says "not connected" and makes **no** upstream call | **PASS** |
+| 82 | An expiring token is renewed by the relay itself; the new token never reaches the response | **PASS** |
+| 83 | A failed renewal drops the session and asks the user to reconnect | **PASS** |
+| 84 | Canva's 403 becomes the Enterprise-plan explanation; 429 becomes `rate_limited` | **PASS** |
+| 85 | The asset upload sends `application/octet-stream` with the name base64-encoded in `Asset-Upload-Metadata`, as documented | **PASS** |
+| 86 | `mp4` is requested only for a video; an image asks for lossless PNG | **PASS** |
+| 87 | The download route is **not an open proxy** — `http://`, a non-Canva host, and `canva.com.evil.test` are all refused before any fetch | **PASS** |
+| 88 | No token, secret or session id is ever written to the log, even on an upstream failure | **PASS** |
+| 89 | Scopes requested are exactly the seven the implemented features need | **PASS** |
+| 90 | A connection that can no longer be renewed is swept rather than held forever | **PASS** |
+| 91 | Suggestions: at least three, and every one a **different layout family** — never one design recoloured | **PASS** |
+| 92 | A statistic card is not offered for a post with no figure in it; it leads for a post that turns on one | **PASS** |
+| 93 | A Diwali greeting leads with the occasion layout and the reason names Diwali | **PASS** |
+| 94 | A hiring post listing four roles leads with Open roles | **PASS** |
+| 95 | A template whose shape would have to be distorted is rejected, not stretched | **PASS** |
+| 96 | Video accepts only 16:9, because 1080p horizontal is the export the relay asks for | **PASS** |
+| 97 | Two templates with the same words in the title are never offered as two options | **PASS** |
+| 98 | `sub_title` fills the **supporting line**, not the headline; a name Unison cannot read is left blank and reported | **PASS** |
+| 99 | Autofill data is built per field type — `{type:"text"}`, `{type:"image", asset_id}`; chart and sheet fields are left alone | **PASS** |
+| 100 | Full OAuth round trip through a real pop-up, in a real browser: start → consent → redirect → exchange → connected | **PASS** (real app) |
+| 101 | After connecting, **nothing Canva-related is in `localStorage` or `sessionStorage`** — no session id, no code, no token | **PASS** (real app) |
+| 102 | The suggestions shown are the account's real templates, labelled *Your Canva template*; the rest are labelled *Unison layout* and carry no Canva thumbnail | **PASS** (real app) |
+| 103 | Choosing a template attaches nothing and does not even call autofill | **PASS** (real app) |
+| 104 | The preview is the bytes the relay returned, and **rendering is still not attaching** — the attachment appears only on *Use this image* | **PASS** (real app) |
+| 105 | The finalized design lands in `assets.upload` as `canva-image-….png`, `image/png` — the ordinary upload contract | **PASS** (real app) |
+| 106 | Canva's plan refusal is shown in Canva's own words with a **Try again**, and no *Use this image* button is offered | **PASS** (real app) |
+| 107 | Template video with no 16:9 template is **marked unavailable** — no render control is shown at all, and the storyboard video is named as the fallback | **PASS** (real app) |
+| 108 | With a 16:9 template, the export request asks for `mp4` | **PASS** (real app) |
+| 109 | With no backend, the panel says so and still offers layouts — none of them dressed up as Canva results | **PASS** (real app) |
+
+### Bugs this round found
+
+| Symptom | Cause |
+|---|---|
+| `sub_title` was filled with the **headline** | Field names were matched word by word, and `"title"` is also a word for a headline. The whole name is now tried first, so `sub_title` reads as `subtitle` and belongs to the supporting line. Found by `tests/canva.test.js`, not by reading the code |
+| The OAuth pop-up never came back | The mocked consent page redirected **relative to `canva.com`**, so it navigated to `www.canva.com/?code=…`. The redirect is now absolute — a test-harness bug, but the same mistake in a real integration's redirect URL would fail identically |
+| The pop-up's navigation was not intercepted at all | `page.route` does not apply to a pop-up that page opens. It has to be `page.context().route`. Cost two full timeouts before it was measured rather than guessed |
+| Runtime configuration was an open door on a deployment | Anyone who could reach `/api/canva` could POST their own client id and secret. Now refused in production unless the relay is behind `UNISON_RELAY_TOKEN` |
+| The session map grew without bound | A reconnect added an entry and nothing ever removed it. Dead sessions are swept and the map is capped |
+
+### A failure found in passing, which predates this work
+
+Two `e2e/journey.spec.js` cases — the ones asserting Unison says *AI not
+configured* — failed on the **untouched baseline** as well as on this branch,
+so they are not a Canva regression. The cause is environmental: Vite inlines
+every `VITE_*` variable at **build** time, and this machine has a real
+`VITE_GROQ_API_KEY` in `.env.local` from setting the key up earlier. The built
+bundle therefore boots already configured, and an assertion that the app admits
+it is unconfigured cannot pass. Rebuilt with that variable blanked, all 13 pass.
+
+`npm run test:e2e` now rebuilds with `VITE_GROQ_API_KEY` and
+`VITE_ANTHROPIC_API_KEY` blanked before running Playwright. Blanking them only
+for the test process — which the script did before — is too late, because
+Playwright's web server serves a `dist/` that was already built. **Run the e2e
+suite with `npm run test:e2e`, not `npx playwright test`.**
+
+The delivered `unison-content-os.html` was never affected: `build:standalone`
+already blanks both variables, and `dist/` is gitignored, so no key has ever
+been in the repository or the deliverable. The key itself still wants rotating,
+for the reason given when it was first added — a `VITE_*` key is readable by
+anyone who can open a build made with it.
+
+### Covered by tests
+
+`tests/canva.test.js` (41) and `e2e/canva.spec.js` (6, in a real browser).
+
+### What a real Canva account would still be gated on
+
+Stated so nobody reads the table above as more than it is:
+
+- **Brand templates and autofill need a Canva Enterprise organisation.** Other
+  paid plans get a limited trial while an integration is in development. On an
+  account without either, cases 84 and 106 are what the user will see — which is
+  the honest outcome, not a failure of this code.
+- **`GET /v1/brand-templates` only ever returns the connected account's own
+  templates.** There is no public API for searching Canva's template library, so
+  "suggest a Canva template for this topic" is bounded by what the account owns.
+  Everything else is a Unison layout and is labelled as one.
+- **Colour, font, background, scene, transition, animation and timing edits
+  have no API.** They belong to the brand template. The panel says so and links
+  to the design in Canva rather than showing a control that would do nothing.
+- **Canva cannot generate original footage from a prompt.** Nothing in this
+  integration suggests it can.
+- **Creating a design from a brand template is a preview feature** on Canva's
+  side, and brand template ids were migrated in September 2025 — an integration
+  built before then needs its ids refreshed.
+
 ## Not tested, and honest about it
 
 - **Behaviour at LinkedIn's rate limit** — cannot be provoked without
@@ -378,6 +495,10 @@ Covered by `e2e/source-document.spec.js` and `tests/doc.test.js`.
   MP4 branch of the recorder is covered by the codec-preference list rather
   than by recording one here. The user's own machine takes that branch: the
   video posts above were `video/mp4`.
+- **One live Canva call** — `api.canva.com` and `www.canva.com` are both denied
+  by this environment's network policy, and no Canva credential was supplied.
+  The relay and the whole workflow are tested against a mocked Canva; what a
+  real account would additionally be gated on is listed above.
 
 ## State of the data store
 

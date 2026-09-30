@@ -3,7 +3,15 @@ import { defineConfig, devices } from "@playwright/test";
 /* The app is frontend-only, so the e2e suite runs against the production
    build with no services behind it — which is also how a reviewer will try
    it. Chromium is pre-installed in this environment; PLAYWRIGHT_CHROMIUM
-   lets CI point at its own binary. */
+   lets CI point at its own binary.
+
+   RUN THIS WITH `npm run test:e2e`, not `npx playwright test`. Vite inlines
+   every VITE_* variable at BUILD time, so a `.env.local` holding a real
+   VITE_GROQ_API_KEY produces a bundle that boots already configured — and the
+   tests that assert Unison says "AI not configured" then fail for a reason
+   that has nothing to do with the code. `test:e2e` rebuilds with those
+   variables blanked first; blanking them only for the test process, as this
+   config's webServer does, is too late because it serves an existing dist. */
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM || undefined;
 
 export default defineConfig({

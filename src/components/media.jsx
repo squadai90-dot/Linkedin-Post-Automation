@@ -8,6 +8,10 @@ import { svgToPng, downloadBlob } from "../lib/brand.js";
 import { drawScene } from "../lib/scenes.js";
 import { SCENE_SECONDS, videoProvider, extensionOf } from "../lib/media.js";
 import { ImageStudio } from "./imagestudio.jsx";
+import { CanvaDesigner } from "./canvadesign.jsx";
+
+/* A fresh {} each render would make the suggestion memo recompute forever. */
+const NO_BRIEF = {};
 
 /* ============================================================
    MEDIA UI — one panel per format, all driven by the media engine
@@ -250,7 +254,7 @@ export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle
           <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) attachUpload(f); e.target.value = ""; }} />
           {img && <button className="btn sm" onClick={() => (img.kind === "url" ? saveUrlAsset(img.url, "unison-image") : saveAsset(img.svg, "unison-image", 1200, 630))}>Download</button>}
-          {(img || assets.upload) && <button className="btn sm" onClick={() => patchAssets({ images: [], upload: null })}>Remove</button>}
+          {(img || assets.upload) && <button className="btn sm" onClick={() => patchAssets({ images: [], upload: null, canvaDesign: null })}>Remove</button>}
         </>}
       />
       {setVisualStyle && <StylePicker value={visualStyle} onChange={setVisualStyle} resolved={resolved} caps={gen?.image} busy={busyGen} />}
@@ -275,6 +279,17 @@ export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle
       {assets.upload && !img && (
         <div className="svgframe" style={{ aspectRatio: "1200 / 630" }}><img src={assets.upload.data} alt={assets.upload.name} /></div>
       )}
+
+      {/* Template designs, in the same place as every other way of getting a
+          picture — a separate screen for this would only hide it. */}
+      <details className="studio">
+        <summary>Design from a template{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
+        <CanvaDesigner
+          postType="image" draft={draft} profile={profile} assets={assets}
+          patchAssets={patchAssets} attachUpload={attachUpload} notify={notify}
+          brief={img?.brief || NO_BRIEF}
+        />
+      </details>
       {img?.brief && (
         <details className="brief">
           <summary>Creative brief</summary>
@@ -290,7 +305,7 @@ export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle
 
 /* ---------- video ---------- */
 
-export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets, attachUpload, prototypeNote }) {
+export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets, attachUpload, prototypeNote, draft, profile, notify }) {
   const v = assets.video;
   const fileRef = useRef(null);
   const enc = mstate.encode || {};
@@ -307,7 +322,7 @@ export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets
           <input ref={fileRef} type="file" accept="video/*" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) attachUpload(f); e.target.value = ""; }} />
           {(v || assets.upload) && (
-            <button className="btn sm" onClick={() => { if (v?.url) URL.revokeObjectURL(v.url); patchAssets({ video: null, upload: null }); }}>Remove</button>
+            <button className="btn sm" onClick={() => { if (v?.url) URL.revokeObjectURL(v.url); patchAssets({ video: null, upload: null, canvaDesign: null }); }}>Remove</button>
           )}
         </>}
       />
@@ -361,6 +376,15 @@ export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets
           <VideoPlayer src={assets.upload.data} />
         </div>
       )}
+
+      <details className="studio">
+        <summary>Design from a template{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
+        <CanvaDesigner
+          postType="video" draft={draft} profile={profile} assets={assets}
+          patchAssets={patchAssets} attachUpload={attachUpload} notify={notify}
+          brief={v?.brief || NO_BRIEF}
+        />
+      </details>
 
       {v?.storyboard?.length > 0 && (
         <details className="brief" open>

@@ -146,7 +146,61 @@ allowance is visible, it appears under the buttons — some providers do not
 expose those numbers to a browser, in which case nothing is shown rather than a
 guess.
 
-### 3. Publishing (Settings → LinkedIn)
+### 3. Canva designs (optional, Settings → AI)
+
+Canva fills **your own brand templates** with the finished post and exports the
+result as the image or video to publish. It is optional: without it, Unison's own
+renderer still produces every visual.
+
+It needs `api/canva.js` deployed, because OAuth cannot be done safely from a web
+page. Create an integration at
+[canva.com/developers](https://www.canva.com/developers/integrations), then
+either set `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET` and `CANVA_REDIRECT_URI` in
+the environment (do this for anything deployed), or paste the same three values
+into Settings → AI for local development. The secret is posted once to your own
+backend and held **in memory there** — it is not saved in the browser, not
+written to disk, and no part of the frontend can read it back. Restart the
+server and you re-enter it. The card says so rather than letting you assume
+otherwise.
+
+Press **Connect Canva**, approve in the pop-up, and you are connected. What the
+browser gets back is an opaque session id, not a token: every Canva call goes
+through your backend, which holds the access and refresh tokens and renews them
+itself. The session id is kept in memory in the page and written to no browser
+storage, so a reload means reconnecting — which the memory-only relay would
+have required anyway.
+
+> On a **deployed** instance the relay refuses to be configured from the browser
+> at all unless `UNISON_RELAY_TOKEN` is set, because otherwise anyone who could
+> reach it could point it at their own Canva integration. Setting the three
+> environment variables is the intended route there, and doing so also locks
+> runtime configuration out.
+
+Then, in the Media step of any image or video post, open **Design from a
+template**. Unison reads the post — its topic, pillar, figures, occasion and
+post type — and offers three or four *different* layouts, each with the reason
+it was suggested. Edit the template's own fields, render, look at the actual
+exported file, and only then press **Use this image**. Nothing is attached to
+the post until you do.
+
+**What Canva's API can and cannot do**, stated once so nothing here surprises you:
+
+| Wanted | Available? |
+|---|---|
+| Suggest templates by topic | Yes, from the connected account's **own brand templates**. Canva publishes no API for searching its public template library, so the rest of the suggestions are Unison's layouts — labelled as such, never dressed up as Canva results |
+| Fill text fields | Yes, via autofill |
+| Fill image and logo fields | Yes — the picture is uploaded to Canva as an asset first, which is the only supported way |
+| Export a PNG | Yes |
+| Export an MP4 | Yes, at 1080p horizontal — so a video needs a 16:9 brand template. Anything else is marked unavailable rather than cropped or stretched |
+| Change colours, fonts, backgrounds, scenes, transitions, timing | **No API for it.** Those belong to the template. The panel says so and links straight to the design in Canva |
+| Generate original footage from a prompt | **Not a Canva capability.** Unison does not pretend otherwise; for generated artwork see the AI image and video relays |
+
+**Plan requirements, honestly.** Brand templates and autofill are Canva
+**Enterprise** features; other paid plans get a limited trial while an
+integration is still in development. On an account without them, Canva answers
+403 and Unison shows what it said rather than a mystery error.
+
+### 4. Publishing (Settings → LinkedIn)
 
 LinkedIn has no browser-callable posting API, so the post has to leave through
 something. Three routes, tried in this order:
@@ -495,6 +549,8 @@ Nothing in the app claims more than it can prove. This table is the whole truth.
 | Holidays | Nager.Date, free and keyless | Country inferred from the chosen timezone |
 | Images | Real, downloadable PNG/SVG from brand templates; optionally AI photos via Pollinations | No commercial image model is wired in |
 | Video | A real, playable file encoded in the browser from the storyboard — MP4 where the browser can record H.264, WebM otherwise, and the post says which | Not the output of a video model, and the UI says so |
+| Canva designs | Real when `api/canva.js` is deployed and a Canva account is connected: the templates listed are the account's own, the preview is the file Canva exported, and it reaches the post through the ordinary upload path | Canva's API cannot search its public template library, recolour a design, change its fonts, restructure a template's scenes, or generate original footage — each is stated in the panel rather than offered as a control that does nothing. Brand templates and autofill need a Canva Enterprise organisation; a refusal is shown as Canva's own words |
+| Template suggestions | Real: matched from the post's topic, pillar, figures, occasion and post type against each template's own title and shape | A suggestion that is not one of your Canva templates is labelled **Unison layout** and carries no Canva thumbnail. Nothing fabricated is ever shown as a Canva result |
 | Publishing | Real for all four post types Unison offers | With nothing connected at all it is a **dry run**, labelled everywhere |
 | Source links | Marked **Retrieved** when the model's own search returned that URL | Marked **Unconfirmed link** when the model wrote it but the search did not return it, and **Not a real link** for a placeholder domain. With no search record, nothing is claimed either way |
 | Shared work | Real when `api/workspace.js` is deployed with a store behind it | Otherwise everything is local to one browser and Settings says so |
@@ -524,7 +580,8 @@ Settings → Advanced.
 
 ## Optional serverless relays
 
-`api/ai.js`, `api/publish.js`, `api/linkedin.js` and `api/workspace.js` are
+`api/ai.js`, `api/publish.js`, `api/linkedin.js`, `api/canva.js` and
+`api/workspace.js` are
 Vercel functions. None is **required** — the app detects each one and adapts.
 Deploy them to keep keys off the browser, post to LinkedIn without Make, and
 share a workspace across the team:
@@ -539,6 +596,9 @@ share a workspace across the team:
 | `UNISON_WORKSPACE_KEY` | `api/workspace.js` | Optional; the key the document is stored under |
 | `ANTHROPIC_API_KEY` | `api/ai.js` | Optional; only if the team also uses Anthropic |
 | `MAKE_LINKEDIN_WEBHOOK_URL` | `api/publish.js` | Holds the webhook server-side |
+| `CANVA_CLIENT_ID` | `api/canva.js` | The Canva integration's public id |
+| `CANVA_CLIENT_SECRET` | `api/canva.js` | Never reaches the browser, and no route returns it |
+| `CANVA_REDIRECT_URI` | `api/canva.js` | Must match a redirect URL on the Canva integration |
 | `UNISON_RELAY_TOKEN` | both | Optional shared secret; set the same value in the browser under `localStorage["unison:relay-token"]` |
 
 Both answer `GET` with a health check that sends nothing:
@@ -571,12 +631,18 @@ src/
     media.js           the media engine and its providers
     dates.js           local dates, week/month grids, timezones, due checks
     image.js           downscaling uploads so they fit browser storage
+    canva.js           the Canva client — talks to api/canva.js, holds no secret
+    canvamatch.js      topic to template: the suggestions and why each one
+    intel.js           pillars, occasions, countries, classification
+    visual.js          which layout a finished post should get, and its fields
+    templates.js       the brand layouts themselves, and how they render
     store.js           persistence backend and relay token
     text.jsx           claim location, LinkedIn preview segments, word diff
     seed.js, util.js
-  components/          chrome, dashboard, workspace, media, views, modals,
-                       settings, panels, discover, toasts, error boundary
-api/                   two optional Vercel functions
+  components/          chrome, dashboard, workspace, media, canvadesign, views,
+                       modals, settings, panels, discover, toasts, error boundary
+api/                   optional Vercel functions: ai, publish, linkedin,
+                       workspace, image, video, canva
 tests/                 Vitest unit tests
 e2e/                   Playwright journey tests
 ```

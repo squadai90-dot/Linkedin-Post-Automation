@@ -5,6 +5,7 @@ import { imageProvider, videoProvider } from "../lib/media.js";
 import { TIMEZONES, localTimezone } from "../lib/dates.js";
 import { FREE_APIS, DEFAULT_EXTRAS } from "../lib/freeApis.js";
 import { defaultRedirectUri, authorizationUrl, isLinkedInConfigured, isBridgeConfigured } from "../lib/linkedinAuth.js";
+import { canvaStatus, configureCanva, connect as canvaConnect, disconnect as canvaDisconnect, connectionState, onCanvaChange, defaultCanvaRedirect, loadCanvaPrefs, saveCanvaPrefs } from "../lib/canva.js";
 
 /* ---------- settings ----------
    Six tabs, plain language, nothing a marketer has to guess at. Anything
@@ -33,6 +34,131 @@ function Row({ title, sub, children }) {
 }
 
 const Toggle = ({ on, set, label }) => <button className={"toggle " + (on ? "on" : "")} role="switch" aria-checked={!!on} aria-label={label} onClick={() => set(!on)}><i /></button>;
+
+
+/* ---------- Canva ----------
+   A second integration in this tab rather than a third provider in the picker
+   above: Canva is not an alternative to Groq, it renders the artwork the text
+   providers write copy for.
+
+   The secret typed here is posted straight to /api/canva and then dropped from
+   this component's state. It is never stored, never echoed back by the relay,
+   and there is no route that would return it. */
+function CanvaCard({ notify }) {
+  const [info, setInfo] = useState(null);
+  const [conn, setConn] = useState(connectionState());
+  const [clientId, setClientId] = useState(() => loadCanvaPrefs().clientId);
+  const [secret, setSecret] = useState("");
+  const [redirect, setRedirect] = useState(() => loadCanvaPrefs().redirectUri || defaultCanvaRedirect());
+  const [busy, setBusy] = useState("");
+  const [authUrl, setAuthUrl] = useState("");
+
+  const reload = useCallback(async () => setInfo(await canvaStatus({ fresh: true })), []);
+  useEffect(() => { canvaStatus().then(setInfo); return onCanvaChange(setConn); }, []);
+
+  const save = async () => {
+    setBusy("saving");
+    try {
+      const r = await configureCanva({ clientId: clientId.trim(), clientSecret: secret, redirectUri: redirect.trim() });
+      saveCanvaPrefs({ clientId: clientId.trim(), redirectUri: redirect.trim() });
+      setSecret("");   /* the secret leaves this component the moment it is sent */
+      await reload();
+      notify(r.configured ? "Canva is configured on the server. The secret was not stored in this browser." : "Saved, but Canva still needs a client ID, secret and redirect URI.", { tone: r.configured ? "ok" : "warn", ms: 7000 });
+    } catch (e) {
+      notify(e?.code === "env_locked" ? "This deployment is configured from its environment variables, which cannot be changed from the browser." : `Could not configure Canva: ${e.message}`, { tone: "bad", ms: 9000 });
+    } finally { setBusy(""); }
+  };
+
+  const doConnect = async () => {
+    setBusy("connecting"); setAuthUrl("");
+    try {
+      await canvaConnect({ onUrl: setAuthUrl });
+      notify("Canva connected. The access token stays on the server.", { tone: "ok" });
+    } catch (e) {
+      if (e?.code !== "cancelled") notify(`Canva sign-in failed: ${e.message}`, { tone: "bad", ms: 9000 });
+    } finally { setBusy(""); }
+  };
+
+  const envLocked = info?.configSource === "env";
+  const ready = !!info?.configured;
+
+  return (
+    <div className="conn">
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Canva (template designs)</div>
+      <div className="u-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+        Fills your own Canva brand templates with the finished post and exports the result as the image or video to publish.
+        Canva's API can only reach templates the connected account owns — it has no endpoint for searching Canva's public
+        template library — so Unison suggests from your brand templates and falls back to its own layouts.
+      </div>
+
+      <Row title="Status" sub={
+        info === null ? "Checking…"
+        : !info.present ? "No backend is deployed here, so Canva cannot be connected. This needs /api/canva running."
+        : conn.connected ? `Connected${conn.expiresAt ? ` · authorisation renews automatically until you disconnect` : ""}`
+        : ready ? "Configured — not connected yet"
+        : "Not configured"
+      }>
+        <span className={"dot " + (conn.connected ? "g" : ready ? "y" : "r")} style={{ flex: "none" }} />
+      </Row>
+
+      {info?.present && (
+        <>
+          <div className="grid2">
+            <Field label="Client ID" hint={envLocked ? "Set from CANVA_CLIENT_ID on the server." : <>From your integration at <a href="https://www.canva.com/developers/integrations" target="_blank" rel="noreferrer">canva.com/developers</a>.</>}>
+              <input className="ta mono" spellCheck={false} autoComplete="off" disabled={envLocked} placeholder={info.clientId || "OC-…"} value={clientId} onChange={(e) => setClientId(e.target.value)} />
+            </Field>
+            <Field label="Redirect URL" hint="Add exactly this to the integration's authorised redirect URLs.">
+              <div className="row">
+                <input className="ta mono" style={{ flex: 1, minWidth: 180 }} disabled={envLocked} value={redirect} onChange={(e) => setRedirect(e.target.value)} />
+                <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(redirect); notify("Redirect URL copied."); }}>Copy</button>
+              </div>
+            </Field>
+          </div>
+
+          {!envLocked && (
+            <Field label="Client secret" hint="Sent once to this deployment's own backend and held in memory there. It is never saved in this browser, never written to disk, and no part of Unison can read it back.">
+              <div className="row">
+                <input className="ta mono" style={{ flex: 1, minWidth: 220 }} type="password" autoComplete="off" spellCheck={false} placeholder={info.hasSecret ? "•••••••• already set on the server" : "cnvca…"} value={secret} onChange={(e) => setSecret(e.target.value)} />
+                <button className="btn acc sm" disabled={busy === "saving" || !clientId.trim() || (!secret && !info.hasSecret) || !redirect.trim()} onClick={save}>{busy === "saving" ? "Saving…" : "Save"}</button>
+              </div>
+            </Field>
+          )}
+
+          {info.persistence === "memory" && (
+            <div className="badge warn" style={{ display: "block", lineHeight: 1.6, marginBottom: 12 }}>
+              <b>Session only.</b> {info.memoryWarning} Restart the server and you will re-enter the secret and reconnect.
+              For anything deployed, set <span className="mono">CANVA_CLIENT_ID</span>, <span className="mono">CANVA_CLIENT_SECRET</span> and
+              <span className="mono"> CANVA_REDIRECT_URI</span> in the environment instead.
+            </div>
+          )}
+
+          <div className="row">
+            {conn.connected
+              ? <button className="btn sm" onClick={async () => { await canvaDisconnect(); notify("Canva disconnected. The stored token was discarded."); }}>Disconnect</button>
+              : <button className="btn acc sm" disabled={!ready || busy === "connecting"} onClick={doConnect}>{busy === "connecting" ? "Waiting for Canva…" : "Connect Canva"}</button>}
+            {conn.connected && <button className="btn sm" disabled={busy === "connecting"} onClick={doConnect}>Reconnect</button>}
+            <button className="btn sm" onClick={reload}>Re-check</button>
+          </div>
+
+          {authUrl && !conn.connected && (
+            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+              If no window opened, <a href={authUrl} target="_blank" rel="noreferrer">open the Canva sign-in</a> — it has to come back to this page to finish.
+            </div>
+          )}
+
+          <details className="brief" style={{ marginTop: 12 }}>
+            <summary>What this asks Canva for, and what needs a paid plan</summary>
+            <div style={{ fontSize: 13, lineHeight: 1.65 }}>
+              <div style={{ marginBottom: 8 }}>Scopes requested: <span className="mono">{(info.scopes || []).join(" ")}</span> — reading and filling brand templates, uploading an image or logo, and exporting the result. Nothing else.</div>
+              <div style={{ marginBottom: 8 }}>Canva's autofill and brand template endpoints are available to Canva Enterprise organisations; other paid plans get a limited trial while an integration is still in development. On a free Canva account these calls are refused, and Unison will say so rather than pretend.</div>
+              <div>Unison never receives a Canva token in the browser. Every call goes through this deployment's <span className="mono">/api/canva</span>, which holds the token and the secret.</div>
+            </div>
+          </details>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function Settings(props) {
   const {
@@ -322,6 +448,8 @@ export function Settings(props) {
               </div>
             )}
           </div>
+
+          <CanvaCard notify={notify} />
 
           <div className="eyebrow" style={{ margin: "18px 0 8px" }}>Usage this session</div>
           <div className="quads">
