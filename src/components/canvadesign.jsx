@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  connectionState, onCanvaChange, canvaStatus, listTemplates, templateFields,
-  fillTemplate, exportDesign, uploadAsset, dataUrlToFile, fileToBase64,
+  connectionState, onCanvaChange, refreshConnection, canvaStatus, listTemplates,
+  templateFields, fillTemplate, exportDesign, uploadAsset, dataUrlToFile, fileToBase64,
 } from "../lib/canva.js";
 import { suggestTemplates, mapFields, SHAPES } from "../lib/canvamatch.js";
 import { FIELDS, autoFill, renderTemplate } from "../lib/templates.js";
@@ -56,7 +56,14 @@ export function CanvaDesigner({ postType = "image", draft, profile, assets, patc
   /* A ref change does not re-render, so whether Cancel is offered is state. */
   const [cancellable, setCancellable] = useState(false);
 
-  useEffect(() => { canvaStatus().then(setInfo); return onCanvaChange(setConn); }, []);
+  useEffect(() => {
+    canvaStatus().then(setInfo);
+    /* The relay keeps sessions in memory, so it can lose one between visits.
+       Asking now means "connect again" is said before a long render, not in
+       the middle of it. No-ops when nothing is connected. */
+    refreshConnection();
+    return onCanvaChange(setConn);
+  }, []);
 
   const cls = useMemo(
     () => classify({ hook: draft?.hook, body: draft?.body, cta: draft?.cta, topic: draft?.topic }),
@@ -122,12 +129,34 @@ export function CanvaDesigner({ postType = "image", draft, profile, assets, patc
 
   /* ---------- rendering ---------- */
 
+  /* The caption used to quote the shapes this screen ACCEPTS — "1200 × 627
+     (landscape) or square" — next to a file that is actually 1200 × 630, and
+     for a Canva export the real size is whatever the template is. So the file
+     is measured and its own dimensions reported. */
+  const measure = (dataUrl, isVideo) => new Promise((resolve) => {
+    if (typeof document === "undefined") return resolve(null);
+    const el = document.createElement(isVideo ? "video" : "img");
+    const done = () => resolve(isVideo
+      ? (el.videoWidth ? { width: el.videoWidth, height: el.videoHeight } : null)
+      : (el.naturalWidth ? { width: el.naturalWidth, height: el.naturalHeight } : null));
+    el.onloadedmetadata = done; el.onload = done; el.onerror = () => resolve(null);
+    el.src = dataUrl;
+  });
+
+  const dataUrlBytes = (u) => {
+    const i = String(u).indexOf(",");
+    if (i < 0) return 0;
+    const b = u.length - i - 1;
+    return Math.round(b * 3 / 4) - (u.endsWith("==") ? 2 : u.endsWith("=") ? 1 : 0);
+  };
+
   const renderUnison = async () => {
     setPhase("exporting"); setError("");
     try {
       const svg = renderTemplate(chosen.template, values, null);
       const dataUrl = await svgToPng(svg, 1200, 630);
-      setPreview({ dataUrl, mime: "image/png", bytes: Math.round(dataUrl.length * 0.75), format: "png" });
+      const size = await measure(dataUrl, false);
+      setPreview({ dataUrl, mime: "image/png", bytes: dataUrlBytes(dataUrl), format: "png", ...(size || {}) });
     } catch (e) {
       setError(`That layout could not be rendered: ${e.message}`);
     } finally { setPhase(""); }
@@ -148,7 +177,29 @@ export function CanvaDesigner({ postType = "image", draft, profile, assets, patc
         designId: d.id, format: postType === "video" ? "mp4" : "png",
         signal: ctl.signal, onState: ({ state }) => setPhase(state),
       });
-      setPreview(out);
+      const size = await measure(out.dataUrl, out.format === "mp4");
+      setPreview({ ...out, ...(size || {}) });
+    } catch (e) {
+      if (e?.name !== "AbortError") setError(e.message);
+    } finally { setPhase(""); abort.current = null; setCancellable(false); }
+  };
+
+  /* Export the design that already exists, WITHOUT autofilling it again.
+     This is the way back from Canva's editor: autofill would rebuild the
+     design from the fields on this screen and discard whatever was changed
+     over there. */
+  const reexport = async () => {
+    if (!design?.id) return;
+    setError(""); setPreview(null);
+    const ctl = new AbortController();
+    abort.current = ctl; setCancellable(true);
+    try {
+      const out = await exportDesign({
+        designId: design.id, format: postType === "video" ? "mp4" : "png",
+        signal: ctl.signal, onState: ({ state }) => setPhase(state),
+      });
+      const size = await measure(out.dataUrl, out.format === "mp4");
+      setPreview({ ...out, ...(size || {}) });
     } catch (e) {
       if (e?.name !== "AbortError") setError(e.message);
     } finally { setPhase(""); abort.current = null; setCancellable(false); }
@@ -361,7 +412,7 @@ export function CanvaDesigner({ postType = "image", draft, profile, assets, patc
                   that changes them — autofill only replaces the contents of the fields above.
                   {postType === "video" ? " Scenes, transitions, animation and timing are likewise the template's own." : ""}
                   {design?.editUrl
-                    ? <> To change any of that, <a href={design.editUrl} target="_blank" rel="noreferrer">open this design in Canva</a>, then render again.</>
+                    ? <> To change any of that, <a href={design.editUrl} target="_blank" rel="noreferrer">open this design in Canva</a>, edit and save it there, then come back and press <b style={{ color: "var(--ink)" }}>Bring back my Canva edits</b> — which fetches the design as it now stands. Pressing <b style={{ color: "var(--ink)" }}>Render again</b> instead would rebuild it from the fields above and lose that work.</>
                     : chosen.editUrl
                       ? <> To change any of that, <a href={chosen.editUrl} target="_blank" rel="noreferrer">open the template in Canva</a> and save your own version.</>
                       : null}
@@ -374,6 +425,12 @@ export function CanvaDesigner({ postType = "image", draft, profile, assets, patc
               {busy ? PHASE_LABEL[phase] || "Working…" : preview ? "Render again" : `Render the ${NAMES[postType]}`}
             </button>
             {preview && <button className="btn sm" disabled={busy} onClick={render}>Regenerate</button>}
+            {design?.id && (
+              <button className="btn sm" disabled={busy} onClick={reexport}
+                title="Fetch the design as it stands in Canva, without rebuilding it from the fields above">
+                Bring back my Canva edits
+              </button>
+            )}
             {busy && cancellable && <button className="btn sm" onClick={() => abort.current?.abort()}>Cancel</button>}
           </div>
 
@@ -402,7 +459,8 @@ export function CanvaDesigner({ postType = "image", draft, profile, assets, patc
               </div>
               <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
                 {chosen.source === "canva" ? "Exported from Canva" : "Rendered by Unison"} · {preview.mime}
-                {preview.bytes ? ` · ${(preview.bytes / 1024).toFixed(0)} KB` : ""} · {shape.label}
+                {preview.bytes ? ` · ${(preview.bytes / 1024).toFixed(0)} KB` : ""}
+                {preview.width ? ` · ${preview.width} × ${preview.height}` : ""}
               </div>
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn acc sm" disabled={busy} onClick={finalize}>

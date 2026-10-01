@@ -204,6 +204,36 @@ test.describe("Canva designs", () => {
     expect((await attachment(page)).data).toContain("data:image/png;base64,");
   });
 
+  test("brings back a design edited in Canva instead of overwriting it", async ({ page }) => {
+    const sent = [];
+    await quiet(page);
+    await mockRelay(page, { sent });
+    await draftWith(page, "Audit turnaround fell 38% after we moved first-pass prep offshore", "Image");
+    await connectCanva(page);
+    await page.keyboard.press("Escape");
+
+    const d = designer(page);
+    await d.locator("summary").click();
+    await d.locator(".tpl", { hasText: "Statistic card — data highlight" }).click();
+    await expect(d.locator("#cv-Headline")).toHaveValue(/\S/, { timeout: 30_000 });
+    await d.getByRole("button", { name: "Render the image" }).click();
+    await expect(d.locator(".visual-frame img")).toBeVisible({ timeout: 60_000 });
+    expect(sent.filter((b) => b.action === "autofill").length).toBe(1);
+
+    /* The round trip: the user edits the design in Canva, comes back, and asks
+       for it as it now stands. Autofill would rebuild it from the fields on
+       this screen and throw that work away, so it must NOT run again. */
+    const back = d.getByRole("button", { name: "Bring back my Canva edits" });
+    await expect(back).toBeVisible();
+    await back.click();
+    await expect(d.locator(".visual-frame img")).toBeVisible({ timeout: 60_000 });
+
+    expect(sent.filter((b) => b.action === "autofill").length).toBe(1);        // still one
+    const exports = sent.filter((b) => b.action === "export");
+    expect(exports.length).toBe(2);                                            // exported again
+    expect(exports[1].designId).toBe("DESIGN-1");                              // the same design
+  });
+
   test("explains a plan refusal and offers a retry rather than failing silently", async ({ page }) => {
     await quiet(page);
     await mockRelay(page, { fail: "autofill" });

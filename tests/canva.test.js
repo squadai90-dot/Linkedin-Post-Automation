@@ -134,6 +134,44 @@ describe("suggesting a design for a post", () => {
   });
 });
 
+describe("the reasons shown to the user", () => {
+  /* These sentences are read by a person, and the first version built them by
+     dropping a category label into "It is a ___ post." That produced "It is a
+     how something works post." and "It is a event or webinar post". */
+  it("reads as English for every pillar, with the right article", () => {
+    const posts = [
+      ["How the monthly close actually works", "First reconcile.\nThen review.\nThen sign off."],
+      ["Join our webinar on year-end planning", "Register now.\nSeats are limited.\nIt runs an hour."],
+      ["We are hiring in Ahmedabad", "Senior auditor.\nTax associate.\nBookkeeping lead."],
+      ["Making Tax Digital starts 6 April 2026", "The threshold is £50,000.\nFiling moves quarterly.\nRegister early."],
+      ["Audit turnaround fell 38% this year", "Same team, different queue."],
+      ["Happy Diwali from all of us", "May the year ahead be a bright one."],
+    ];
+    for (const [hook, body] of posts) {
+      const c = { hook, body, cta: "" };
+      const { suggestions } = suggestTemplates({ cls: clsOf(c), content: c, postType: "image" });
+      expect(suggestions.length, hook).toBeGreaterThanOrEqual(3);
+      for (const s of suggestions) {
+        expect(s.why, hook).toBeTruthy();
+        /* the label-jamming shapes, in any form */
+        expect(s.why, `${hook} -> ${s.why}`).not.toMatch(/\bIt is a (how|what|result or|point of|capacity and|season |tax or|festival or|event or|team and)/i);
+        expect(s.why, `${hook} -> ${s.why}`).not.toMatch(/\bA (numbered|key points|open roles|side by side|pull quote|single statement|fact or)/i);
+        /* "a event", "a occasion" — an article that does not fit its noun */
+        expect(s.why, `${hook} -> ${s.why}`).not.toMatch(/\ba [aeiou]/i);
+        expect(s.why.trim(), hook).toMatch(/[.!?]$/);
+      }
+    }
+  });
+
+  it("gives every layout its own sentence, so none has to be assembled", () => {
+    for (const i of INTENTS) {
+      expect(i.blurb, i.id).toBeTruthy();
+      expect(i.blurb.trim(), i.id).toMatch(/[.!?]$/);
+      expect(i.blurb, i.id).not.toContain(i.label.toLowerCase());
+    }
+  });
+});
+
 describe("filling a template's own fields", () => {
   it("matches the designer's field names to what the post provides", () => {
     const canvaFields = [

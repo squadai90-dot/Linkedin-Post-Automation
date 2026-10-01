@@ -168,6 +168,44 @@ describe("the video relay", () => {
     expect(r.body.message).toContain("Safety filter");
   });
 
+  it("never attaches the Google key to a download address that is not Google's", async () => {
+    /* The address comes out of the provider's job response, and the relay adds
+       an API key to it. If that address were ever not Google's, the key would
+       be handed to whoever owned it. The host is checked before the key goes on. */
+    vi.stubEnv("GOOGLE_API_KEY", "g-test");
+    fetchMock.mockResolvedValue(okJson({
+      done: true,
+      response: { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://evil.test/steal.mp4" } }] } },
+    }));
+    const h = await load("video.js");
+    const r = res();
+    await h({ method: "POST", headers: {}, body: { action: "status", id: "operations/abc" } }, r);
+    expect(r.body.ok).not.toBe(true);
+    expect(String(r.body.message)).toMatch(/unexpected address/i);
+    /* one call to read the job, and no download attempt at all */
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(r.body)).not.toContain("g-test");
+  });
+
+  it("downloads from Google's own host, with the key added server-side", async () => {
+    vi.stubEnv("GOOGLE_API_KEY", "g-test");
+    fetchMock.mockResolvedValueOnce(okJson({
+      done: true,
+      response: { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://generativelanguage.googleapis.com/v1beta/files/x:download" } }] } },
+    }));
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, headers: { get: () => "video/mp4" }, arrayBuffer: async () => Buffer.from("MP4BYTES") });
+    const h = await load("video.js");
+    const r = res();
+    await h({ method: "POST", headers: {}, body: { action: "status", id: "operations/abc" } }, r);
+    expect(r.body.state).toBe("done");
+    expect(Buffer.from(r.body.b64, "base64").toString()).toBe("MP4BYTES");
+    const dl = String(fetchMock.mock.calls[1][0]);
+    expect(dl).toContain("generativelanguage.googleapis.com");
+    expect(dl).toContain("key=g-test");
+    /* the key went upstream, never back to the browser */
+    expect(JSON.stringify(r.body)).not.toContain("g-test");
+  });
+
   it("tells the user Runway needs a starting image rather than failing obscurely", async () => {
     vi.stubEnv("GOOGLE_API_KEY", ""); vi.stubEnv("RUNWAY_API_KEY", "rw-test");
     const h = await load("video.js");

@@ -23,7 +23,7 @@
    ============================================================ */
 
 import { FORMATS, decideFormat, visualFields, itemsFrom, chooseStat } from "./visual.js";
-import { PILLAR_BY_ID, occasionById, findStats } from "./intel.js";
+import { occasionById, findStats } from "./intel.js";
 
 /* ---------- the curated library ----------
    One entry per layout family. `tags` and `categories` are what a real Canva
@@ -31,9 +31,29 @@ import { PILLAR_BY_ID, occasionById, findStats } from "./intel.js";
    search for in Canva — they are the vocabulary of the family, not decoration.
    `format` points at the existing local renderer, so a Unison layout suggestion
    is a real, renderable design rather than a placeholder. */
+/* Why a post suits a layout, written as sentences rather than assembled from
+   labels. Dropping a label into "It is a ___ post." produced "It is a how
+   something works post." and "It is a event or webinar post" — the labels are
+   nouns for a category, not adjectives for a post, and one of them needs "an".
+   Each is spelled out instead. */
+const PILLAR_REASON = {
+  regulatory: "It states a rule or a deadline.",
+  seasonal: "It is about getting ready for a season.",
+  capacity: "It is about capacity and staffing pressure.",
+  educational: "It explains how something works.",
+  proof: "It reports a result.",
+  thought: "It argues a point of view.",
+  hiring: "It is a hiring post.",
+  culture: "It is about the team.",
+  occasion: "It marks an occasion.",
+  event: "It is about something to attend.",
+  service: "It describes what the firm offers.",
+};
+
 export const INTENTS = [
   {
     id: "stat", format: "stat", label: "Statistic card",
+    blurb: "One figure, set large enough to read while scrolling.",
     categories: ["data", "report"],
     tags: ["stat", "statistic", "number", "figure", "metric", "kpi", "data", "percent", "percentage", "result", "results", "growth", "infographic"],
     pillars: ["proof", "regulatory", "educational", "capacity"],
@@ -42,6 +62,7 @@ export const INTENTS = [
   },
   {
     id: "factcard", format: "factcard", label: "Fact or deadline card",
+    blurb: "A rule or a date, stated plainly and attributed.",
     categories: ["announcement", "compliance"],
     tags: ["fact", "deadline", "date", "rule", "regulation", "compliance", "notice", "alert", "update", "reminder", "tax", "filing"],
     pillars: ["regulatory", "seasonal"],
@@ -50,6 +71,7 @@ export const INTENTS = [
   },
   {
     id: "steps", format: "steps", label: "Numbered steps",
+    blurb: "A sequence read in order, numbered.",
     categories: ["process", "explainer"],
     tags: ["step", "steps", "process", "how", "guide", "checklist", "workflow", "timeline", "stages", "roadmap", "tutorial"],
     pillars: ["educational", "seasonal", "capacity"],
@@ -58,6 +80,7 @@ export const INTENTS = [
   },
   {
     id: "list", format: "list", label: "Key points",
+    blurb: "Three or four points of equal weight.",
     categories: ["explainer", "tips"],
     tags: ["list", "points", "tips", "takeaways", "reasons", "ways", "bullets", "summary", "highlights"],
     pillars: ["educational", "thought", "capacity", "service"],
@@ -66,6 +89,7 @@ export const INTENTS = [
   },
   {
     id: "compare", format: "compare", label: "Side by side",
+    blurb: "Two things held against each other.",
     categories: ["comparison", "explainer"],
     tags: ["compare", "comparison", "versus", "vs", "before", "after", "myth", "fact", "instead", "either", "two"],
     pillars: ["thought", "educational", "proof"],
@@ -74,6 +98,7 @@ export const INTENTS = [
   },
   {
     id: "statement", format: "statement", label: "Single statement",
+    blurb: "One sentence, set as the whole graphic.",
     categories: ["quote", "announcement"],
     tags: ["statement", "headline", "bold", "text", "typography", "message", "insight", "opinion", "minimal"],
     pillars: ["thought", "service", "proof", "capacity"],
@@ -82,6 +107,7 @@ export const INTENTS = [
   },
   {
     id: "quote", format: "quote", label: "Pull quote",
+    blurb: "Someone's own words, attributed.",
     categories: ["quote", "testimonial"],
     tags: ["quote", "quotation", "testimonial", "said", "words", "client", "review", "feedback", "voice"],
     pillars: ["proof", "culture", "thought"],
@@ -90,6 +116,7 @@ export const INTENTS = [
   },
   {
     id: "roles", format: "roles", label: "Open roles",
+    blurb: "Roles and places, laid out to be scanned.",
     categories: ["hiring", "recruitment"],
     tags: ["hiring", "hire", "job", "jobs", "role", "roles", "vacancy", "vacancies", "recruit", "recruitment", "career", "careers", "join", "team", "apply", "opening", "openings"],
     pillars: ["hiring"],
@@ -98,6 +125,7 @@ export const INTENTS = [
   },
   {
     id: "occasion", format: "occasion", label: "Festival or occasion",
+    blurb: "The festival's own symbols and colours.",
     categories: ["greeting", "festival"],
     tags: ["greeting", "greetings", "wishes", "festival", "celebration", "holiday", "diwali", "holi", "eid", "christmas", "new", "year", "navratri", "dussehra", "easter", "thanksgiving", "womens", "day"],
     pillars: ["occasion", "culture"],
@@ -106,6 +134,7 @@ export const INTENTS = [
   },
   {
     id: "event", format: "event", label: "Event card",
+    blurb: "What it is, when it is, and how to join.",
     categories: ["event", "webinar"],
     tags: ["event", "webinar", "invite", "invitation", "register", "registration", "session", "workshop", "conference", "summit", "live", "rsvp", "agenda"],
     pillars: ["event"],
@@ -114,6 +143,7 @@ export const INTENTS = [
   },
   {
     id: "people", format: "people", label: "People and culture",
+    blurb: "A photograph of people rather than typography.",
     categories: ["culture", "team"],
     tags: ["team", "people", "culture", "photo", "staff", "colleagues", "office", "celebrate", "anniversary", "welcome", "milestone"],
     pillars: ["culture", "hiring"],
@@ -166,7 +196,7 @@ export function rankIntents(cls, content = {}, { postType = "image" } = {}) {
       let score = 0;
       const because = [];
       if (i.format === primary.format) { score += 8; because.push(primary.reason); }
-      if (i.pillars.includes(cls?.pillar)) { score += 3; because.push(`It is a ${PILLAR_BY_ID[cls?.pillar]?.label?.toLowerCase() || "relevant"} post.`); }
+      if (i.pillars.includes(cls?.pillar)) { score += 3; because.push(PILLAR_REASON[cls?.pillar] || "It suits this post."); }
       const hits = i.tags.filter((t) => words.has(t));
       if (hits.length) { score += Math.min(4, hits.length * 1.5); because.push(`The post mentions ${hits.slice(0, 3).join(", ")}.`); }
 
@@ -189,7 +219,7 @@ export function rankIntents(cls, content = {}, { postType = "image" } = {}) {
         because.push(`It marks ${occasionById(cls.occasion)?.label || "an occasion"}.`);
         score += 5;
       }
-      return { intent: i, score, usable, why: because[0] || `A ${i.label.toLowerCase()} suits this post.`, all: because };
+      return { intent: i, score, usable, why: because[0] || i.blurb, all: because };
     })
     .filter((x) => x.usable && x.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -204,7 +234,7 @@ export function rankIntents(cls, content = {}, { postType = "image" } = {}) {
       if (scored.some((s) => s.intent.id === id)) continue;
       if (id === "list" && itemsFrom(content.body).length < 3) continue;
       if ((id === "quote" || id === "statement" || id === "factcard") && !content.hook) continue;
-      scored.push({ intent: i, score: 0.5, usable: true, why: `A ${i.label.toLowerCase()} works from the headline alone.`, all: [] });
+      scored.push({ intent: i, score: 0.5, usable: true, why: i.blurb, all: [] });
     }
   }
   return scored;

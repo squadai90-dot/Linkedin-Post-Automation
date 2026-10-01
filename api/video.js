@@ -136,8 +136,19 @@ async function googleStatus(spec, id, signal) {
   const uri = v?.uri || v?.url;
   if (!uri) throw new Error("Google reported success but returned no video.");
   /* The download URL needs the key, which must not leave the server, so the
-     bytes are fetched here and handed back inline. */
-  const dl = await fetch(uri.includes("key=") ? uri : `${uri}${uri.includes("?") ? "&" : "?"}key=${encodeURIComponent(KEYS.google)}`, { signal });
+     bytes are fetched here and handed back inline.
+
+     The address comes out of Google's job response rather than from this file,
+     and the next line attaches an API key to it. So the host is checked first:
+     a key must never be appended to a URL that is not Google's, however that
+     URL came to be there. */
+  let target;
+  try { target = new URL(uri); } catch { throw new Error("Google returned a video address that could not be read."); }
+  if (target.protocol !== "https:" || !/(^|\.)googleapis\.com$/.test(target.hostname)) {
+    throw new Error("Google returned the video at an unexpected address, so it was not downloaded.");
+  }
+  if (!target.searchParams.has("key")) target.searchParams.set("key", KEYS.google);
+  const dl = await fetch(target, { signal });
   if (!dl.ok) throw new Error(`Could not download the finished video (${dl.status}).`);
   const buf = Buffer.from(await dl.arrayBuffer());
   return { state: "done", mime: "video/mp4", b64: buf.toString("base64"), bytes: buf.length };

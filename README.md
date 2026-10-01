@@ -8,6 +8,22 @@ off your laptop — with no backend and no database. Everything it needs to be
 useful is optional and configured in Settings; everything it cannot do, it says
 so on screen rather than pretending.
 
+### Start here
+
+| If you want to… | Read |
+|---|---|
+| Install and run it on **Windows**, step by step | [`WINDOWS-SETUP.md`](WINDOWS-SETUP.md) |
+| Know what was audited, found, fixed and left alone | [`AUDIT.md`](AUDIT.md) |
+| See exactly what has been tested, and what has not | [`TESTING.md`](TESTING.md) |
+| Configure Groq, OpenAI, Google, Runway or Canva | [Setup, below](#first-run-three-things-to-set-up), and [`.env.example`](.env.example) |
+
+**One standing caution about keys.** Vite bakes every `VITE_*` variable into the
+built JavaScript, so a build made with a real `VITE_GROQ_API_KEY` carries that
+key to anyone who opens it. Put the key in **Settings → AI** (this browser only),
+or on the server as `GROQ_API_KEY` with `api/ai.js` deployed. The same applies
+to running the browser tests — use `npm run test:e2e`, which rebuilds with those
+variables blanked.
+
 ---
 
 ## Run it

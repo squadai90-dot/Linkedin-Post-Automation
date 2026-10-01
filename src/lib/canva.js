@@ -34,7 +34,6 @@ const announce = () => { for (const fn of listeners) { try { fn(connection); } c
 
 export const onCanvaChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 export const connectionState = () => ({ ...connection });
-export const isConnected = () => connection.connected;
 
 /* ---------- relay ---------- */
 
