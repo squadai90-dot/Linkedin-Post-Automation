@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
 import { STORE_KEY, persistentStore, sanitizeSession } from "./lib/store.js";
 import { P, S } from "./lib/pointer.js";
-import { friendlyError, askJSON, JSON_RULE, fb, corroborateSources, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
+import { friendlyError, askJSON, JSON_RULE, fb, corroborateSources, AI_STATUS, loadAISettings, saveAISettings, describeAI, hostedProvider, normalizeDraft, normalizeVerification, normalizeQuality, normalizeAngles, normalizeResearch } from "./lib/ai.js";
 import { EMPTY_CONNECTION, withDerived, linkedinService, readCallbackParams } from "./lib/linkedin.js";
 import { MAKE_CONFIG, makeLinkedInService, publishPost, publishRoute, SCHEDULED_MEDIA_BUDGET } from "./lib/publish.js";
 import { FORMAT_BY_ID, normalizeFormats, visualOf, labelFor, composeFormat, EMPTY_ASSETS, compactAssets, idle } from "./lib/formats.js";
@@ -9,6 +9,7 @@ import { SEED_POSTS, NAV, DEFAULT_VOICE, SEED_TEAM, DEFAULT_PROFILE } from "./li
 import { now } from "./lib/util.js";
 import { digestDocument, addDocToResearch } from "./lib/doc.js";
 import { classify, researchGuidance, COUNTRIES } from "./lib/intel.js";
+import { detectIntent, researchPolicy, researchSystem, occasionBrief, anglePrompt, fallbackAngles, enforceAngles, intentRules } from "./lib/intent.js";
 import { review as reviewQuality } from "./lib/quality.js";
 import { pollStyleFor, pollGuidance, fallbackPoll, checkPoll, LIMITS as POLL_LIMITS } from "./lib/poll.js";
 import { imageCapabilities } from "./lib/aigen.js";
@@ -696,7 +697,7 @@ Be terse.`,
     if (id === oppRunRef.current) setOppBusy(false);
   }
 
-  async function runDiscovery(topic, chosenFormats, existingId) {
+  async function runDiscovery(topic, chosenFormats, existingId, { intent: intentOverride = null, forceResearch = false } = {}) {
     const list = normalizeFormats(chosenFormats || formats);
     setFormats(list);
     const newId = existingId || "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -719,92 +720,123 @@ Be terse.`,
     window.scrollTo({ top: 0 });
 
     const { id, signal } = newRun();
-    const key = topic.trim().toLowerCase();
-    const cached = cacheRef.current[key];
+    /* What the post is for decides everything below: whether to research,
+       which angles exist, and what the writer is held to. A festival is a
+       greeting unless the user asks for something else. */
+    const intent = detectIntent(topic, { override: intentOverride });
+    const policy = researchPolicy(intent);
+    const doResearch = policy.run || forceResearch;
+    const ctx = { topic, company: profile.company || "", industry: profile.industry || "", audience: profile.audience || "", formats: list };
+    const key = `${intent.kind}:${topic.trim().toLowerCase()}`;
+    const cached = doResearch ? cacheRef.current[key] : null;
     const hosted = await hostedProvider.configured();
     if (id !== runRef.current) return;
-    const wikiPromise = extras.wikipedia ? wikiSearch(topic, { limit: 2 }).catch(() => []) : Promise.resolve([]);
+    const wikiPromise = doResearch && extras.wikipedia ? wikiSearch(topic, { limit: 2 }).catch(() => []) : Promise.resolve([]);
 
-    setSteps([
-      { key: "search", label: cached ? "Reusing research from this session" : searchOn ? "Searching the live web" : "Web search is off — using known context", status: "active" },
-      { key: "company", label: "Checking company sources", status: "pending" },
-      { key: "compare", label: "Comparing industry reports", status: "pending" },
-      { key: "insight", label: "Identifying useful insights", status: "pending" },
-      { key: "angles", label: "Building content angles", status: "pending" },
+    setSteps(doResearch ? [
+      { key: "search", label: cached ? "Reusing research from this session" : searchOn && hosted ? "Searching the live web" : "Live search unavailable", status: "active" },
+      { key: "insight", label: "Keeping only sources the search actually returned", status: "pending" },
+      { key: "angles", label: `Building ${intent.label.toLowerCase()} angles`, status: "pending" },
+    ] : [
+      { key: "search", label: `Research skipped — ${policy.reason}`, status: "done" },
+      { key: "angles", label: `Building ${intent.label.toLowerCase()} angles`, status: "active" },
     ]);
 
     try {
-      /* A topic about US tax and a topic about Australian payroll need
-         different regulators, different vocabulary and different sources.
-         Telling the engine which one this is, before it searches, is what
-         stops a UK deadline turning up in an Australian post. */
-      const topicClass = classify({ topic });
-      const guidance = [
-        ...researchGuidance(topicClass),
-        "Never invent a statistic, rate, deadline, regulation, quote, source, company, event or person. If a figure cannot be sourced, leave it out — an empty claims list is a correct answer.",
-      ].join("\n");
-      const shape = `{"sources":[{"title":"","publisher":"","date":"YYYY-MM-DD","tier":1,"note":"under 14 words","url":"https://…"}],
+      let r;
+      if (!doResearch) {
+        r = { sources: [], claims: [], insights: [], risks: [], freshness: "", status: "skipped", skipReason: policy.reason };
+      } else {
+        /* A topic about US tax and a topic about Australian payroll need
+           different regulators, different vocabulary and different sources.
+           Telling the engine which one this is, before it searches, is what
+           stops a UK deadline turning up in an Australian post. */
+        const topicClass = classify({ topic });
+        const guidance = [
+          ...researchGuidance(topicClass),
+          "Never invent a statistic, rate, deadline, regulation, quote, source, company, event or person. If a figure cannot be sourced, leave it out — an empty claims list is a correct answer.",
+        ].join("\n");
+        const shape = `{"sources":[{"title":"","publisher":"","date":"YYYY-MM-DD","tier":1,"note":"under 14 words","url":"https://…"}],
 "claims":[{"text":"factual claim","sourceIndex":0}],
 "insights":["under 18 words"],"freshness":"Breaking|Recent|Evergreen|Historical","risks":["under 14 words"]}
 Tier 1 = official/primary, 2 = major publication, 3 = industry press, 4 = blogs/social (discovery only).`;
 
-      let r = cached;
-      const meta = {};
-      if (!r && searchOn && hosted) {
-        r = await askJSON({
-          capability: "research",
-          meta,
-          system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
-          user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}".
-Search the web and return the real URL of every source. Prefer sources from the last 90 days.
+        r = cached;
+        const meta = {};
+        if (!r && searchOn && hosted) {
+          r = await askJSON({
+            capability: "research",
+            meta,
+            system: `${researchSystem(intent)} ${JSON_RULE}`,
+            user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}".
+Post intent: ${intent.label} — ${intent.guidance}
+${occasionBrief(intent)}
+Search the web and return the real URL of every source. Prefer sources from the last 90 days unless the topic is historical or cultural.
 ${guidance}
 ${shape}
 Give 3 sources, 2 claims, 3 insights. Be terse — the whole reply must fit in 400 words.`,
-          search: true,
-          fallback: () => null, onNotice, track: track("Discovery"), signal,
-        });
+            search: true,
+            fallback: () => null, onNotice, track: track("Discovery"), signal,
+          });
+          if (id !== runRef.current) return;
+        }
+        if (r && !r.status) {
+          r = normalizeResearch(r);
+          /* Only a source the search tool actually returned is shown as a
+             source. A link the model wrote down from memory is not research,
+             and showing it next to real ones is how fake rows got through. */
+          const checked = corroborateSources(r.sources, meta.searchedUrls);
+          const keep = [];
+          const remap = new Map();
+          checked.forEach((src, i) => { if (src && (src.link === "retrieved")) { remap.set(i, keep.length); keep.push(src); } });
+          const claims = (r.claims || []).filter((c) => remap.has(c.sourceIndex)).map((c) => ({ ...c, sourceIndex: remap.get(c.sourceIndex) }));
+          r = { ...r, sources: keep, claims, dropped: checked.length - keep.length, status: keep.length ? "verified" : "none-verified" };
+        }
+        if (!r || r.status === "none-verified") {
+          const dropped = r?.dropped || 0;
+          /* No verified sources. The model can still offer ideas — clearly
+             labelled as its own, with no facts, figures or sources. */
+          const ideas = hosted ? await askJSON({
+            capability: "research",
+            system: `You help plan LinkedIn posts. ${JSON_RULE}`,
+            user: `Topic: "${topic}". Post intent: ${intent.label}.
+You have no web access. Give 3 short ideas worth considering for this post — framing, what the audience will care about, what to double-check. Do not state facts, figures, dates, quotes or sources.
+{"insights":["under 18 words"]}`,
+            fallback: () => ({ insights: [] }), onNotice, track: track("Discovery"), signal,
+          }) : null;
+          if (id !== runRef.current) return;
+          const reason = !hosted ? (aiInfo?.summary || "The AI is not configured.")
+            : !searchOn ? "Web search is turned off in Settings → AI."
+            : dropped ? `The search ran, but none of the ${dropped} source${dropped === 1 ? "" : "s"} it named could be matched to a page it actually retrieved, so none are shown.`
+            : (AI_STATUS.lastError || "The live search did not return usable results.");
+          r = { sources: [], claims: [], insights: ideas && !ideas.degraded ? (ideas.insights || []) : [], risks: [], freshness: "", status: "unavailable", reason, ideasOnly: !!(ideas && !ideas.degraded && (ideas.insights || []).length) };
+        }
+        if (!cached && r.status === "verified") cacheRef.current[key] = r;
+        /* Background reading from Wikipedia — a real page, clearly labelled,
+           never evidence for a claim. */
+        const wiki = await wikiPromise;
         if (id !== runRef.current) return;
+        if (wiki.length && !r.sources.some((x) => x.background)) r = { ...r, sources: [...r.sources, ...wikiToSources(wiki).map((w) => ({ ...w, link: "retrieved" }))] };
+        setStep("search", "done"); setStep("insight", "done");
       }
-      if (!r || !(r.sources || []).length) {
-        r = await askJSON({
-          capability: "research",
-          system: `You are the discovery engine of a B2B content platform. ${JSON_RULE}`,
-          user: `Today is ${todayISO()}. Research this for a LinkedIn company page post: "${topic}", from what you already know. Leave url empty.
-${guidance}
-${shape}
-Give 3 sources, 2 claims, 3 insights. Be terse.`,
-          fallback: () => fb.research(topic), onNotice, track: track("Discovery"), signal,
-        });
-        if (id !== runRef.current) return;
-        if (!r.degraded) r.degraded = searchOn ? "no-search" : "off";
-      }
-      r = normalizeResearch(r);
-      /* A link the model wrote down is not the same as a link it retrieved.
-         Mark each one before anyone treats a T1 row as evidence. */
-      r = { ...r, sources: corroborateSources(r.sources, meta.searchedUrls) };
-      if (!cached && !r.degraded) cacheRef.current[key] = r;
-      /* Background reading from Wikipedia — clearly labelled, never evidence for a claim. */
-      const wiki = await wikiPromise;
-      if (id !== runRef.current) return;
-      if (wiki.length && !r.sources.some((x) => x.background)) r = { ...r, sources: [...r.sources, ...wikiToSources(wiki)] };
 
-      setStep("search", "done"); setStep("company", "done"); setStep("compare", "done");
       if (keptDoc) { r = addDocToResearch(r, keptDoc); logAudit(`Kept ${keptDoc.name} as a source`); }
+      r = { ...r, intent: intent.kind, intentOverride: intentOverride || null, intentLabel: intent.label, intentWhy: intent.why };
       setResearch(r);
-      setStep("insight", "done"); setStep("angles", "active");
-      logAudit(`Discovery returned ${(r.sources || []).length} sources${cached ? " (cached)" : ""}`);
+      setStep("angles", "active");
+      logAudit(r.status === "skipped" ? `Research skipped — ${intent.label}` : `Research: ${(r.sources || []).filter((x) => !x.background).length} verified sources${cached ? " (cached)" : ""}`);
 
+      const verifiedInsights = r.status === "verified" ? (r.insights || []) : [];
       const a = await askJSON({
         capability: "reasoning",
-        system: `You are the content intelligence engine. ${JSON_RULE}`,
-        user: `Topic: "${topic}".
-Insights: ${JSON.stringify((r.insights || []).slice(0, 3))}
-Produce 4 distinct LinkedIn content angles and recommend exactly one.
-{"angles":[{"type":"Contrarian|Educational|Industry insight|Data-driven","headline":"under 14 words","rationale":"one line","recommended":false}],"reason":"why the recommended angle, 1-2 sentences"}`,
-        fallback: () => fb.angles(topic), onNotice, track: track("Intelligence"), signal,
+        system: `You plan LinkedIn posts for a company page. ${JSON_RULE}`,
+        user: anglePrompt(intent, { ...ctx, insights: verifiedInsights.length ? verifiedInsights : (r.insights || []), verified: verifiedInsights.length > 0 }),
+        fallback: () => fallbackAngles(intent, ctx), onNotice, track: track("Intelligence"), signal,
       });
       if (id !== runRef.current) return;
-      setAngles(normalizeAngles(a, topic)); setStep("angles", "done"); setStage("RESEARCH_COMPLETE");
+      const enforced = enforceAngles(intent, normalizeAngles(a, topic), ctx);
+      setAngles({ ...enforced, degraded: a?.degraded, degradedReason: a?.degradedReason, intentLabel: intent.label });
+      setStep("angles", "done"); setStage("RESEARCH_COMPLETE");
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.warn(e);
@@ -835,7 +867,10 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
     } else {
       rules.push("— No country is implied by the topic. Either keep it jurisdiction-neutral or state plainly which country it applies to — do not silently assume the United States.");
     }
-    if (cls.occasion) rules.push("— This marks an occasion. Keep it short and warm, say something true about the firm, and do not turn a greeting into a sales pitch.");
+    const intent = detectIntent(topic, { override: research?.intentOverride });
+    const own = intentRules(intent, { company: profile.company || "" });
+    if (own) rules.push(own);
+    else if (cls.occasion) rules.push("— This marks an occasion. Keep it short and warm, say something true about the firm, and do not turn a greeting into a sales pitch.");
     return rules.join("\n");
   }
 
@@ -849,8 +884,10 @@ Produce 4 distinct LinkedIn content angles and recommend exactly one.
     try {
       const dRaw = await askJSON({
         capability: "writing",
-        system: `You are the brand writer engine. ${JSON_RULE}`,
+        system: `You write LinkedIn posts for a company page, in the company's own voice. ${JSON_RULE}`,
         user: `Write a LinkedIn company page post.
+Company: ${profile.company || "the company"}${profile.industry ? ` (${profile.industry})` : ""}. Audience: ${profile.audience || "its followers"}.
+Post intent: ${detectIntent(idea, { override: research?.intentOverride }).label}
 Topic: ${idea}
 Angle: ${selected.type} — ${selected.headline}
 Claims available: ${JSON.stringify((research?.claims || []).map((c, i) => ({ i, text: c.text })))}
@@ -867,7 +904,7 @@ ${feedback ? `Reviewer feedback to fix: ${feedback}` : ""}
 No corporate clichés, no motivational filler, no headings.
 Claims must be quoted verbatim from the post text so they can be highlighted.
 {"hook":"one line","body":"2-4 short paragraphs separated by \\n\\n","cta":"one line","hashtags":["#Tag"],"claims":[{"text":"sentence copied exactly from the post","sourceIndex":0}]}`,
-        fallback: () => fb.draft(idea), onNotice, track: track("Brand writer"), signal,
+        fallback: () => fb.draft(idea, { intent: detectIntent(idea, { override: research?.intentOverride }), company: profile.company || "" }), onNotice, track: track("Brand writer"), signal,
       });
       if (id !== runRef.current) return;
 

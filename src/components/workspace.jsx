@@ -1,12 +1,12 @@
 import { useState, useRef, useMemo, useEffect } from "react";
-import { LinkBadge } from "./linkbadge.jsx";
 import { FORMAT_BY_ID, VISUAL_FORMATS, normalizeFormats, toggleFormat } from "../lib/formats.js";
 import { REJECT_REASONS } from "../lib/seed.js";
 import { scheduledWindow } from "../lib/publish.js";
-import { pad, tierLabel, host, LI_LIMIT, LI_FOLD } from "../lib/util.js";
+import { pad, LI_LIMIT, LI_FOLD } from "../lib/util.js";
 import { locateClaim, segments } from "../lib/text.jsx";
 import { useNarrow } from "../hooks.js";
 import { AssetPreview, MediaSection, SourceDocPanel } from "./media.jsx";
+import { IntentBar, ResearchResults } from "./research.jsx";
 import { TIMEZONES, localTimezone, countryForTimezone, isDue, todayISO } from "../lib/dates.js";
 import { grammarCheck, applyReplacement, holidayOn } from "../lib/freeApis.js";
 
@@ -163,7 +163,7 @@ export function Workspace(p) {
         </div>
       </div>
       {!verification && <div className="u-muted" style={{ fontSize: 13 }}><span className="pulse" /> Checking claims…</div>}
-      {verification?.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not checked — the AI was unavailable{verification.degradedReason ? ` (${verification.degradedReason})` : ""}. These rows are placeholders.</div>}
+      {verification?.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not checked — the AI was unavailable{verification.degradedReason ? ` (${verification.degradedReason})` : ""}. Read the post yourself before approving it.</div>}
       {checksStale && !verification?.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>The text changed since these checks ran.</div>}
       {(verification?.claims || []).map((c, i) => (
         <div key={i}>
@@ -226,7 +226,13 @@ export function Workspace(p) {
             {versions.length > 1 && <button className="btn sm" onClick={() => setModal("diff")}>Compare versions</button>}
           </div>
         </div>
-        {draft.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Sample text — the AI didn't respond{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. Rewrite it yourself or fix the AI setup and regenerate.</div>}
+        {draft.degraded && (
+          <div className="badge warn" style={{ marginBottom: 10, display: "block", lineHeight: 1.55 }} data-testid="draft-degraded">
+            {draft.template === "greeting" ? <>Written from a greeting template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. It invents nothing — edit it freely, or fix the AI setup and press Regenerate.</>
+              : draft.template ? <>Written from a {draft.template} template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. {draft.needsDetail ? "Add what it is, who it is for and how to get started before you approve it." : "Edit it freely."}</>
+              : <>The AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}, so no draft was written. Write the post here, or fix the AI setup and press Regenerate.</>}
+          </div>
+        )}
         <input className="ta" aria-label="Hook" readOnly={locked} value={draft.hook} onChange={(e) => setDraft({ ...draft, hook: e.target.value })} />
         <textarea className="ta" aria-label="Body" style={{ marginTop: 9 }} rows={7} readOnly={locked} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
         <input className="ta" aria-label="Call to action" style={{ marginTop: 9 }} readOnly={locked} value={draft.cta} onChange={(e) => setDraft({ ...draft, cta: e.target.value })} />
@@ -261,7 +267,7 @@ export function Workspace(p) {
 
       {aiDown && (
         <div className="notice warn" style={{ marginTop: 16 }}>
-          <div><b>AI isn't set up</b> — {aiInfo.summary} Everything generated below is sample data until then.</div>
+          <div><b>AI isn't set up</b> — {aiInfo.summary} Until it is, nothing below is written by AI: greetings and announcements use a clearly marked template, and other posts are left for you to write.</div>
           <button className="btn sm" onClick={() => setModal("settings", "ai")}>Open AI settings</button>
         </div>
       )}
@@ -279,53 +285,21 @@ export function Workspace(p) {
             )}
           </div>
           <SourceDocPanel assets={assets} mstate={mstate} ingestDocument={ingestDocument} />
-          {research && (
-            <>
-              <div className="card">
-                <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-                  <div className="eyebrow">Sources</div><span className="badge">{research.freshness || "Recent"}</span>
-                </div>
-                {(research.sources || []).map((s, i) => (
-                  <div className="src" key={i}>
-                    <span className={"tier t" + (s.tier || 4)}>{s.background ? "Background" : `T${s.tier} · ${tierLabel(s.tier)}`}</span>
-                    <div style={{ minWidth: 0 }}>
-                      {s.url ? <a className="srclink" href={s.url} target="_blank" rel="noreferrer">{s.title} <span className="ext">↗</span></a> : <div style={{ fontWeight: 600 }}>{s.title}</div>}
-                      <div className="u-muted" style={{ fontSize: 13 }}>{s.publisher} · {s.date}{s.uploaded ? " · your upload" : s.url ? ` · ${host(s.url)}` : " · no link available"} <LinkBadge state={s.link} /></div>
-                      <div className="u-muted" style={{ fontSize: 13, marginTop: 3 }}>{s.note}</div>
-                    </div>
-                  </div>
-                ))}
-                {research.degraded && (
-                  <div className="badge warn" style={{ marginTop: 12 }}>
-                    {research.degraded === "sample" ? "The engine didn't respond — these are placeholders, not real sources."
-                      : research.degraded === "off" ? "Web search is off, so these are recalled rather than retrieved. Verify before publishing."
-                      : "Live search didn't return usable results, so these are recalled rather than retrieved. Verify before publishing."}
-                  </div>
-                )}
-              </div>
-              <div className="card">
-                <div className="eyebrow" style={{ marginBottom: 10 }}>What stood out</div>
-                {(research.insights || []).map((x, i) => <div key={i} style={{ padding: "5px 0" }}>— {x}</div>)}
-                {(research.docInsights || []).length > 0 && (
-                  <div style={{ marginTop: 14 }}>
-                    <div className="eyebrow" style={{ marginBottom: 7 }}>From your document</div>
-                    {research.docInsights.map((x, i) => <div key={i} style={{ padding: "5px 0" }}>— {x}</div>)}
-                  </div>
-                )}
-                {(research.risks || []).length > 0 && (
-                  <div style={{ marginTop: 14 }}>
-                    <div className="eyebrow" style={{ marginBottom: 7 }}>Watch out for</div>
-                    {research.risks.map((x, i) => <div key={i} className="u-muted" style={{ padding: "3px 0" }}>⚠ {x}</div>)}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          <IntentBar research={research} busy={busy} locked={locked}
+            onSwitch={(k) => runDiscovery(idea, formats, workId, { intent: k })} />
+          <ResearchResults research={research} busy={busy}
+            onRetry={() => runDiscovery(idea, formats, workId, { intent: research?.intentOverride, forceResearch: true })}
+            onResearchAnyway={() => runDiscovery(idea, formats, workId, { intent: research?.intentOverride, forceResearch: true })} />
         </Section>
       )}
 
       {angles && shows("angle") && (
         <Section n={n("angle")} title="Content angles" engine="Content intelligence">
+          {angles.degraded && (
+            <div className="badge warn" style={{ marginBottom: 12, display: "block", lineHeight: 1.55 }} data-testid="angles-degraded">
+              Suggested from the topic because the AI was unavailable{angles.degradedReason ? ` (${angles.degradedReason})` : ""}. They fit a {String(angles.intentLabel || "post").toLowerCase()}, but they are templates rather than ideas.
+            </div>
+          )}
           <div className="angles">
             {(angles.angles || []).map((a, i) => (
               <button key={i} className={"angle " + (angle?.headline === a.headline ? "sel" : a.recommended ? "rec" : "")} disabled={locked || busy} onClick={() => runWriter(a)} aria-pressed={angle?.headline === a.headline}>
@@ -419,7 +393,7 @@ export function Workspace(p) {
             </div>
           )}
           <div className="card">
-            {quality.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not assessed — the AI was unavailable. These ticks are placeholders.</div>}
+            {quality.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not assessed by AI — it was unavailable. The checks above this card still ran.</div>}
             {(quality.checks || []).map((c, i) => (
               <div key={i} className="chk"><span style={{ color: c.pass ? "var(--ok)" : "var(--bad)" }}>{c.pass ? "✓" : "✕"}</span><span>{c.label}</span></div>
             ))}

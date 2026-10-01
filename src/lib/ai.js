@@ -1,4 +1,5 @@
 import { relayAuthHeaders } from "./store.js";
+import { detectIntent, fallbackAngles, templateDraft } from "./intent.js";
 
 
 /* ============================================================
@@ -259,8 +260,21 @@ export const AI_STATUS = { local: "unknown", localModels: [], lastError: null, r
 
 export const friendlyError = (e) => {
   const m = String(e?.message || e || "");
-  if (e?.code === "no-key" || /No AI key/i.test(m)) return "No AI key configured — add one under Settings → AI.";
-  if (e?.code === "bad-key" || /invalid x-api-key|invalid_api_key|authentication/i.test(m)) return "The AI key was rejected. Check it under Settings → AI.";
+  /* On a deployment with the relay the key lives on the server, and the
+     Settings key box is not even shown — so "add one under Settings" is advice
+     that cannot be followed. Say where the key actually has to go. */
+  const onServer = hostedProvider._mode === "relay";
+  const keyName = AI_CONFIG.provider === "anthropic" ? "ANTHROPIC_API_KEY" : "GROQ_API_KEY";
+  if (e?.code === "no-key" || /No AI key|is not set on the server/i.test(m)) {
+    return onServer
+      ? `${keyName} is not set on the server. Add it in Vercel → Project → Settings → Environment Variables, then redeploy.`
+      : "No AI key configured — add one under Settings → AI.";
+  }
+  if (e?.code === "bad-key" || /invalid x-api-key|invalid_api_key|authentication/i.test(m)) {
+    return onServer
+      ? `The provider rejected the server's ${keyName}. Check its value in Vercel (no spaces or quotes), then redeploy.`
+      : "The AI key was rejected. Check it under Settings → AI.";
+  }
   if (e?.code === "refusal") return "The model declined this request.";
   if (e?.code === "no-model" || /model_not_found|does not exist|decommissioned/i.test(m)) return "That model is not available on your account. Settings → AI → Refresh model list will show the ones that are.";
   if (e?.code === "blocked") return "The browser could not reach the AI service. Check your network, or deploy the relay so calls go server-side.";
@@ -331,7 +345,8 @@ export function providerError(status, body, res) {
   const raw = body?.error?.message || body?.error || body?.message || `HTTP ${status}`;
   const msg = String(raw);
   let code = "api";
-  if (status === 401 || status === 403) code = "bad-key";
+  if (body?.error?.code === "no_server_key") code = "no-key";
+  else if (status === 401 || status === 403) code = "bad-key";
   else if (status === 404 || /model_not_found|decommissioned|does not exist/i.test(msg)) code = "no-model";
   else if (status === 429) code = /per day|TPD|RPD/i.test(msg) ? "daily-limit" : "rate";
   /* "try again in 2m59s" appears in the message; the headers carry the same
@@ -535,6 +550,7 @@ export const hostedProvider = {
       this._mode = res.ok && body?.service === "unison-ai-relay" ? "relay" : "direct";
       /* The relay reports which providers it holds a key for. */
       this._relayKey = this._mode === "relay" ? (body.providers?.[AI_CONFIG.provider] ?? body.keyConfigured) !== false : null;
+      this._relayEnv = this._mode === "relay" ? (body.env || null) : null;
       if (this._mode === "relay" && this._relayKey === false) console.warn(`[unison] AI relay is deployed but has no key for ${AI_CONFIG.provider}.`);
     } catch { this._mode = "direct"; }
     AI_STATUS.hostedVia = this._mode;
@@ -550,6 +566,15 @@ export const hostedProvider = {
      shows up as a picker that self-corrects rather than a 404 mid-draft. */
   async listModels(signal) {
     if (AI_CONFIG.provider !== "groq") return modelsFor("anthropic").map((m) => m.id);
+    if ((await this.resolve()) === "relay") {
+      let res;
+      try { res = await fetch(`${AI_CONFIG.aiRelayEndpoint}?models`, { headers: { Accept: "application/json", ...relayAuthHeaders() }, cache: "no-store", signal }); }
+      catch (e) { throw asNetworkError(e); }
+      const j = await res.json().catch(() => null);
+      if (!j?.ok) throw Object.assign(new Error(j?.reason || "The server could not list models."), { code: /rejected|invalid/i.test(j?.reason || "") ? "bad-key" : /not set/i.test(j?.reason || "") ? "no-key" : "api" });
+      if (j.models?.length) discovered.groq = j.models;
+      return j.models || [];
+    }
     const key = activeKey();
     if (!key) throw Object.assign(new Error("No AI key configured."), { code: "no-key" });
     let res;
@@ -570,7 +595,11 @@ export const hostedProvider = {
      someone decode "does not exist or you do not have access to it", ask the
      key what it can use and move the selection onto something real. */
   async ensureUsableModel(signal) {
-    if (AI_CONFIG.provider !== "groq" || !activeKey()) return { ok: false, reason: "not-applicable" };
+    if (AI_CONFIG.provider !== "groq") return { ok: false, reason: "not-applicable" };
+    /* With the relay the server's key is the one that matters, and it can be
+       asked; without it, only a browser key can. */
+    if ((await this.resolve()) !== "relay" && !activeKey()) return { ok: false, reason: "not-applicable" };
+    if (this._mode === "relay" && this._relayKey === false) return { ok: false, reason: "not-applicable" };
     let available;
     try {
       available = await this.listModels(signal);
@@ -669,7 +698,7 @@ export async function describeAI() {
       ? `This browser could not reach ${p.label}. Nothing was wrong with the key — see Settings → AI for the two ways round it.`
       : local ? `Local model (${AI_CONFIG.localModel}) with ${p.label} as fallback${hosted ? "" : ` — ${p.label} not configured`}`
       : hosted ? `${p.label} ${where} · ${activeModel()}${p.free ? " · free tier" : ""}`
-      : mode === "relay" ? `The AI relay is deployed but has no ${p.label} key on the server`
+      : mode === "relay" ? `The AI relay is deployed, but ${hostedProvider._relayEnv?.[p.id] || (p.id === "anthropic" ? "ANTHROPIC_API_KEY" : "GROQ_API_KEY")} is not set on the server. Add it in Vercel → Project → Settings → Environment Variables (Production), then redeploy — a key typed into this page is not used on a deployment.`
       : `Not configured — add a free ${p.label} key under Settings → AI. Until then, engines return sample data.`,
   };
 }
@@ -840,85 +869,33 @@ export async function askText({ capability = "reasoning", system, user, signal, 
   return text;
 }
 
-/* Fallback rows are dated relative to today so they never read as real,
-   stale sources. */
-const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-
 export const JSON_RULE = "Reply with one raw JSON object and nothing else. No prose, no markdown fences, no preamble.";
 
-/* ---------- fallbacks ---------- */
+/* ---------- fallbacks ----------
+   What the app shows when a model cannot be reached. Every one of these used
+   to be invented content: technology angles pasted onto a festival,
+   "Placeholder" sources, a verification table citing the Financial Times, a
+   quality check that passed everything, and a "28% above your Page average"
+   that no one measured. Labelled or not, a fabricated result is the one
+   thing this product must never show.
+
+   Now: where nothing can be known without the model, the fallback is empty
+   and the UI says why. Where a template is genuinely complete and invents
+   nothing — a festival greeting, the angle options for an intent — it is
+   used, and marked as a template. */
 
 export const fb = {
-  opportunities: () => ({
-    items: [
-      { headline: "Enterprise AI budgets shift from pilots to production", publisher: "Sample row", url: "", date: "", score: 82, whyNow: "Placeholder row so the flow stays usable — not a live story.", gap: "unknown", angle: "Contrarian" },
-      { headline: "Buyers are asking vendors for evidence, not demos", publisher: "Sample row", url: "", date: "", score: 74, whyNow: "Placeholder row so the flow stays usable — not a live story.", gap: "unknown", angle: "Educational" },
-    ], degraded: "sample",
-  }),
-  research: (topic) => ({
-    sources: [
-      { title: `Placeholder: an announcement about ${topic}`, publisher: "Not retrieved", date: daysAgo(18), tier: 1, note: "Example row — no source was fetched.", url: "" },
-      { title: "Placeholder: an adoption report", publisher: "Not retrieved", date: daysAgo(25), tier: 2, note: "Example row — no source was fetched.", url: "" },
-      { title: "Placeholder: a category analysis", publisher: "Not retrieved", date: daysAgo(40), tier: 3, note: "Example row — no source was fetched.", url: "" },
-    ],
-    claims: [
-      { text: `${topic} is moving from pilot projects into production workloads.`, sourceIndex: 1 },
-      { text: "Buyers cite measurable time savings as the main purchase trigger.", sourceIndex: 1 },
-    ],
-    insights: [
-      "Most public commentary describes capability, not outcomes — an outcomes angle is open.",
-      "Recent sources cluster in the last 30 days, so this reads as current rather than evergreen.",
-      "Buyer language is more cautious than vendor language.",
-    ],
-    freshness: "Recent",
-    risks: ["Placeholder sources — nothing here was retrieved from the web."],
-    degraded: "sample",
-  }),
-  angles: (topic) => ({
-    angles: [
-      { type: "Contrarian", headline: `The hard part of ${topic} isn't the technology.`, rationale: "Differentiates from the capability-led commentary everyone else is publishing.", recommended: true },
-      { type: "Educational", headline: `What actually changes when ${topic} reaches production.`, rationale: "Safe, useful, broad reach — lower differentiation." },
-      { type: "Industry insight", headline: `Why the category is consolidating around ${topic}.`, rationale: "Positions the company as a category thinker." },
-      { type: "Data-driven", headline: `Four numbers that explain ${topic} right now.`, rationale: "Strong evidence coverage, weaker originality." },
-    ],
-    reason: "Stronger differentiation than the alternatives, and opinion-led posts have historically outperformed on your Page.",
-  }),
-  draft: (topic) => ({
-    hook: `The hard part of ${topic} was never the technology.`,
-    body: `Every team we talk to can get a demo working in an afternoon.\n\nWhat stalls them is everything after that: who approves it, which source it drew from, what happens when it is wrong.\n\nThe teams that got past pilot did one unglamorous thing first. They made the output reviewable — evidence attached, one owner, one clear approval step.`,
-    cta: "What stopped your last pilot from reaching production?",
-    hashtags: ["#AIagents", "#EnterpriseAI"],
-    claims: [
-      { text: "Teams can get a demo working quickly.", sourceIndex: 2 },
-      { text: "Approval and evidence gaps stall production rollout.", sourceIndex: 1 },
-    ],
-  }),
-  verify: () => ({
-    claims: [
-      { claim: "Every team we talk to can get a demo working in an afternoon.", status: "green", source: "Industry Weekly", confidence: "High", note: "Directly supported by the cited analysis." },
-      { claim: "The teams that got past pilot made the output reviewable.", status: "yellow", source: "Financial Times", confidence: "Medium", note: "Supported directionally, but the source does not use this framing." },
-    ],
-    unresolved: ["One claim needs a human decision before publishing."],
-  }),
-  quality: () => ({
-    checks: [
-      { label: "Evidence verified", pass: true }, { label: "Brand aligned", pass: true },
-      { label: "Strong opening", pass: true }, { label: "No unsupported statistics", pass: true },
-      { label: "No duplicate content", pass: true }, { label: "Low AI-style language", pass: true },
-    ],
-    slop: [], duplicate: { similar: false, days: 0, title: "" },
-    detail: { hook: 82, readability: 79, brand: 88, originality: 74, evidence: 85 },
-  }),
-  media: () => ({
-    format: "image",
-    reason: "One clear argument with no list structure — a single strong visual carries it better than a document.",
-    concept: "Split frame: a working demo on one side, an approval queue on the other, brand rule underneath.",
-  }),
-  performance: () => ({
-    headline: "This post performed 28% above your Page average.",
-    why: ["The opening line stated a position instead of describing a topic.", "Evidence-backed posts have been generating more comments than links.", "Length sat inside your high-performing range."],
-    next: "Publish two more posts on this theme within the next ten days while interest is high.",
-  }),
+  opportunities: () => ({ items: [], degraded: "unavailable" }),
+  research: () => ({ sources: [], claims: [], insights: [], risks: [], freshness: "", degraded: "unavailable" }),
+  angles: (topic, { intent, company } = {}) => fallbackAngles(intent || detectIntent(topic), { topic, company }),
+  draft: (topic, { intent, company } = {}) => {
+    const i = intent || detectIntent(topic);
+    return templateDraft(i, { topic, company }) || { hook: "", body: "", cta: "", hashtags: [], claims: [], empty: true };
+  },
+  verify: () => ({ claims: [], unresolved: ["The claims in this post were not checked — the AI was unavailable."] }),
+  quality: () => ({ checks: [], slop: [], duplicate: { similar: false, days: 0, title: "" }, detail: {} }),
+  media: () => ({ format: "", reason: "", concept: "" }),
+  performance: () => ({ headline: "", why: [], next: "" }),
 };
 
 /* ---------- shape guards ----------

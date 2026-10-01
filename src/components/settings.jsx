@@ -5,6 +5,7 @@ import { imageProvider, videoProvider } from "../lib/media.js";
 import { TIMEZONES, localTimezone } from "../lib/dates.js";
 import { FREE_APIS, DEFAULT_EXTRAS } from "../lib/freeApis.js";
 import { defaultRedirectUri, authorizationUrl, isLinkedInConfigured, isBridgeConfigured } from "../lib/linkedinAuth.js";
+import { checkDeployment } from "../lib/diagnostics.js";
 import { canvaStatus, configureCanva, connect as canvaConnect, disconnect as canvaDisconnect, connectionState, onCanvaChange, defaultCanvaRedirect, loadCanvaPrefs, saveCanvaPrefs } from "../lib/canva.js";
 
 /* ---------- settings ----------
@@ -156,6 +157,47 @@ function CanvaCard({ notify }) {
           </details>
         </>
       )}
+    </div>
+  );
+}
+
+
+/* ---------- deployment check ----------
+   The deployed app used to say "the AI relay has no Groq key" and leave it at
+   that. This names every variable, says which are set, tries the AI key for
+   real, and gives the fix in the words of the place it has to be done. */
+function DeploymentCheck() {
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const run = useCallback(async () => { setBusy(true); try { setRes(await checkDeployment()); } finally { setBusy(false); } }, []);
+  useEffect(() => { run(); }, [run]);
+  const mark = { ok: ["✓", "var(--ok)"], missing: ["!", "var(--warn, #c79500)"], invalid: ["✕", "var(--bad)"], error: ["✕", "var(--bad)"], absent: ["–", "var(--muted)"] };
+  return (
+    <div className="conn" data-testid="deployment-check">
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+        <div>
+          <div style={{ fontWeight: 600 }}>Deployment check</div>
+          <div className="u-muted" style={{ fontSize: 13 }}>Which server variables are set — names only, never values.</div>
+        </div>
+        <button className="btn sm" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check again"}</button>
+      </div>
+      {res && !res.deployed && (
+        <div className="u-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
+          No server functions answered, so this copy of Unison is running without a backend — the standalone file, or <span className="mono">npm run dev</span>.
+          AI calls use the key saved in this browser below. Deployed to Vercel, keys belong in the project's environment variables instead.
+        </div>
+      )}
+      {res?.deployed && res.rows.map((r) => (
+        <div key={r.id} className="setrow" style={{ alignItems: "flex-start" }} data-testid={`check-${r.id}`} data-state={r.state}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600 }}><span style={{ color: mark[r.state][1], display: "inline-block", width: 18 }}>{mark[r.state][0]}</span>{r.label}</div>
+            <div className="u-muted" style={{ fontSize: 13 }}>{r.detail}</div>
+            {r.fix && <div style={{ fontSize: 13, marginTop: 3 }}>{r.fix}</div>}
+            {r.note && r.state !== "ok" && <div className="u-muted" style={{ fontSize: 12.5, marginTop: 3 }}>{r.note}</div>}
+          </div>
+          <div className="mono u-muted" style={{ fontSize: 11.5, textAlign: "right", flex: "none", whiteSpace: "pre-line" }}>{r.vars.join("\n")}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -323,6 +365,7 @@ export function Settings(props) {
       {/* ================= AI ================= */}
       {tab === "ai" && (
         <>
+          <DeploymentCheck />
           <div className="conn">
             <Row title="Status" sub={aiInfo ? aiInfo.summary : "Checking…"}>
               <span className={"dot " + (aiInfo ? (aiInfo.ready ? "g" : "r") : "y")} style={{ flex: "none" }} />

@@ -175,44 +175,105 @@ export const EXCLUSIVE_TERMS = Object.fromEntries(
    `palette` exist so a festival graphic can actually look like the festival
    instead of defaulting to a stock businesswoman at a laptop. */
 export const OCCASIONS = [
+  { id: "uttarayan", label: "Uttarayan", aliases: ["uttarayan", "uttarayana", "makar sankranti", "makara sankranti", "sankranti", "kite festival"], region: "IN",
+    aliasGreeting: { "makar sankranti": "Happy Makar Sankranti", "makara sankranti": "Happy Makar Sankranti", "sankranti": "Happy Makar Sankranti" },
+    symbols: ["kites", "kite string", "clear winter sky", "til-gud sweets"], palette: ["#F2B705", "#E0457B", "#3AA0E0"], greeting: "Happy Uttarayan", moving: true,
+    wish: "May your kites fly high and the new season bring warmth, joy and success.", tags: ["#HappyUttarayan", "#MakarSankranti", "#KiteFestival"],
+    scene: "bright paper kites rising against a clear blue winter sky above rooftops, kite strings catching the sunlight" },
+  { id: "ganeshchaturthi", label: "Ganesh Chaturthi", aliases: ["ganesh chaturthi", "ganeshotsav", "ganesh utsav", "vinayaka chaturthi", "ganpati"], region: "IN",
+    symbols: ["modak", "marigold garland", "diya"], palette: ["#F28C28", "#C7332B", "#FFD27A"], greeting: "Happy Ganesh Chaturthi", moving: true,
+    wish: "May this Ganesh Chaturthi bring wisdom, prosperity and new beginnings to you and your loved ones.", tags: ["#GaneshChaturthi", "#Ganeshotsav"],
+    scene: "a festive table with marigold garlands, modak sweets and a glowing diya, warm saffron light" },
+  { id: "rakshabandhan", label: "Raksha Bandhan", aliases: ["raksha bandhan", "rakshabandhan", "rakhi"], region: "IN",
+    symbols: ["rakhi thread", "marigold", "sweets"], palette: ["#E0457B", "#F2B705", "#7A1F3D"], greeting: "Happy Raksha Bandhan", moving: true,
+    wish: "Celebrating the bond of love, care and protection between brothers and sisters.", tags: ["#RakshaBandhan", "#Rakhi"],
+    scene: "a decorated rakhi thread on a festive plate with marigold petals and sweets, soft warm light" },
+  { id: "janmashtami", label: "Janmashtami", aliases: ["janmashtami", "krishna janmashtami", "gokulashtami"], region: "IN",
+    symbols: ["flute", "peacock feather", "butter pot"], palette: ["#1F4E9E", "#2E9E5B", "#F2B705"], greeting: "Happy Janmashtami", moving: true,
+    wish: "May this Janmashtami fill your home with joy, love and harmony.", tags: ["#Janmashtami", "#KrishnaJanmashtami"],
+    scene: "a wooden flute resting beside a peacock feather on deep blue silk, gentle festive light" },
+  { id: "onam", label: "Onam", aliases: ["onam", "thiruvonam"], region: "IN",
+    symbols: ["pookalam flower carpet", "banana leaf", "boat race"], palette: ["#F2B705", "#E0612B", "#2E9E5B"], greeting: "Happy Onam", moving: true,
+    wish: "May this Onam bring prosperity, happiness and togetherness to you and your family.", tags: ["#HappyOnam", "#Onam"],
+    scene: "a circular pookalam of yellow, orange and white flower petals viewed from above, soft daylight" },
+  { id: "pongal", label: "Pongal", aliases: ["pongal", "thai pongal"], region: "IN",
+    symbols: ["pongal pot", "sugarcane", "kolam"], palette: ["#E0612B", "#F2B705", "#2E9E5B"], greeting: "Happy Pongal", moving: true,
+    wish: "May this harvest festival bring abundance, health and happiness to you and your family.", tags: ["#HappyPongal", "#Pongal", "#HarvestFestival"],
+    scene: "a clay pot overflowing with sweet pongal, sugarcane stalks and a white kolam pattern in morning sun" },
+  { id: "lohri", label: "Lohri", aliases: ["lohri"], region: "IN",
+    symbols: ["bonfire", "harvest", "folk dance"], palette: ["#E0612B", "#F2B705", "#5B1A0E"], greeting: "Happy Lohri", moving: true,
+    wish: "May the warmth of the Lohri bonfire bring joy and prosperity to you and your loved ones.", tags: ["#HappyLohri", "#Lohri"],
+    scene: "a glowing bonfire on a winter evening with people gathered around in festive clothes, warm firelight" },
+  { id: "gurpurab", label: "Guru Nanak Jayanti", aliases: ["guru nanak jayanti", "gurpurab", "guru purab", "prakash purab", "prakash parv"], region: "IN",
+    symbols: ["rows of lamps", "soft light"], palette: ["#F2B705", "#1F3A6B", "#FFF3D6"], greeting: "Happy Gurpurab", moving: true,
+    wish: "May the teachings of Guru Nanak Dev Ji inspire peace, equality and kindness in all of us.", tags: ["#Gurpurab", "#GuruNanakJayanti"],
+    scene: "rows of glowing oil lamps at dusk, calm and luminous" },
+  { id: "durgapuja", label: "Durga Puja", aliases: ["durga puja", "durgotsav", "pujo"], region: "IN",
+    symbols: ["alpana pattern", "dhunuchi", "conch"], palette: ["#C7332B", "#F2B705", "#FFFFFF"], greeting: "Happy Durga Puja", moving: true,
+    wish: "May the spirit of Durga Puja bring strength, joy and togetherness to you and your loved ones.", tags: ["#DurgaPuja", "#Pujo"],
+    scene: "a festive pandal glowing with warm lights, red and white decorations, a lively evening crowd softly blurred" },
+  { id: "republicday", label: "Republic Day", aliases: ["republic day", "gantantra diwas"], region: "IN",
+    symbols: ["tricolour", "ashoka chakra"], palette: ["#FF9933", "#FFFFFF", "#138808"], greeting: "Happy Republic Day", date: "01-26",
+    wish: "Honouring the Constitution and the spirit of the world's largest democracy.", tags: ["#RepublicDay", "#India"],
+    scene: "the Indian tricolour flying against a clear morning sky" },
+  { id: "indiaindependence", label: "Independence Day (India)", aliases: ["indian independence day", "independence day of india", "india independence day", "15 august", "15th august", "swatantrata diwas"], region: "IN",
+    symbols: ["tricolour", "ashoka chakra"], palette: ["#FF9933", "#FFFFFF", "#138808"], greeting: "Happy Independence Day", date: "08-15",
+    wish: "Celebrating the freedom, unity and spirit of India.", tags: ["#IndependenceDay", "#India"],
+    scene: "the Indian tricolour flying against a clear morning sky" },
   { id: "diwali", label: "Diwali", aliases: ["diwali", "deepavali", "dipawali", "festival of lights"], region: "IN",
     symbols: ["diya oil lamps", "rangoli pattern", "marigold", "fireworks"], palette: ["#F5A524", "#C7332B", "#5B2E8C"], greeting: "Happy Diwali", moving: true,
+    wish: "May the festival of lights bring warmth, prosperity and happiness to you and your loved ones.", tags: ["#HappyDiwali", "#Diwali", "#FestivalOfLights"],
     scene: "a row of lit clay diyas on a decorated threshold, rangoli petals around them, warm lamplight and soft bokeh" },
   { id: "navratri", label: "Navratri", aliases: ["navratri", "navaratri", "garba", "dandiya", "nine nights"], region: "IN",
     symbols: ["garba circle", "dandiya sticks", "chaniya choli", "strings of festive lights"], palette: ["#E0457B", "#F2B705", "#2E9E5B"], greeting: "Happy Navratri", moving: true,
+    wish: "Nine nights of devotion, music and garba — may this Navratri bring you and your loved ones joy, strength and new beginnings.", tags: ["#HappyNavratri", "#Navratri", "#Garba"],
     scene: "a woman mid-garba step in an embroidered chaniya choli, dandiya sticks raised, under strings of warm festive lights, other dancers softly out of focus behind her" },
   { id: "dussehra", label: "Dussehra", aliases: ["dussehra", "dasara", "vijayadashami"], region: "IN",
     symbols: ["bow and arrow", "festive effigy silhouette", "marigold"], palette: ["#C7332B", "#F5A524", "#2A0E3D"], greeting: "Happy Dussehra", moving: true,
+    wish: "May the triumph of good over evil inspire courage and positivity in the days ahead.", tags: ["#HappyDussehra", "#Dussehra", "#Vijayadashami"],
     scene: "a warm evening celebration scene with marigold garlands and lanterns, a distant festival crowd silhouetted against a glowing sky" },
   { id: "holi", label: "Holi", aliases: ["holi", "festival of colours", "festival of colors"], region: "IN",
     symbols: ["colour powder", "gulal", "scattered pigment"], palette: ["#E0457B", "#F2B705", "#2E9E5B"], greeting: "Happy Holi", moving: true,
+    wish: "May the festival of colours fill your days with joy, laughter and togetherness.", tags: ["#HappyHoli", "#Holi", "#FestivalOfColours"],
     scene: "hands throwing bright colour powder into the air at a daytime celebration, pigment suspended mid-flight" },
   { id: "eid", label: "Eid", aliases: ["eid", "eid al-fitr", "eid ul fitr", "eid al-adha", "ramadan", "ramzan"], region: "GLOBAL",
     symbols: ["crescent moon", "lantern", "geometric arabesque"], palette: ["#0E7A5F", "#D4AF37", "#0B2E24"], greeting: "Eid Mubarak", moving: true,
+    wish: "May this Eid bring peace, happiness and blessings to you and your loved ones.", tags: ["#EidMubarak", "#Eid"],
     scene: "a crescent moon over ornate lanterns, a family table set for the evening meal, warm and quiet" },
   { id: "christmas", label: "Christmas", aliases: ["christmas", "xmas", "yuletide"], region: "GLOBAL",
     symbols: ["evergreen", "star", "warm string lights"], palette: ["#0F5132", "#A4161A", "#F2E8CF"], greeting: "Merry Christmas", date: "12-25",
+    wish: "Wishing you and your families a peaceful Christmas and a restful holiday season.", tags: ["#MerryChristmas", "#Christmas", "#SeasonsGreetings"],
     scene: "a decorated evergreen with warm string lights in a calm professional interior, soft winter light" },
   { id: "newyear", label: "New Year", aliases: ["new year", "new year's", "happy new year"], region: "GLOBAL",
     symbols: ["fireworks", "clean horizon line", "forward arrow"], palette: ["#1B2A5B", "#C9A227", "#F5F5F0"], greeting: "Happy New Year", date: "01-01",
+    wish: "Thank you for being part of our year. We wish you health, happiness and success in the year ahead.", tags: ["#HappyNewYear", "#NewYear"],
     scene: "a clean horizon at first light with a distant skyline, a sense of a page turning" },
   { id: "thanksgiving", label: "Thanksgiving", aliases: ["thanksgiving"], region: "US",
     symbols: ["autumn leaves", "harvest table", "wheat"], palette: ["#8C4B1F", "#D98324", "#F0E3D2"], greeting: "Happy Thanksgiving", moving: true,
+    wish: "This Thanksgiving, we are grateful for the clients, partners and colleagues who make our work possible.", tags: ["#HappyThanksgiving", "#Thanksgiving", "#Gratitude"],
     scene: "an autumn harvest table with warm light, wheat and seasonal produce arranged simply" },
   { id: "easter", label: "Easter", aliases: ["easter", "good friday"], region: "GLOBAL",
     symbols: ["spring shoots", "soft pastel arc"], palette: ["#6B9BD1", "#F2C5A0", "#FAF6EF"], greeting: "Happy Easter", moving: true,
+    wish: "Wishing you a peaceful Easter and a joyful spring.", tags: ["#HappyEaster", "#Easter"],
     scene: "spring shoots opening in soft morning light, pale and uncluttered" },
   { id: "australiaday", label: "Australia Day", aliases: ["australia day"], region: "AU",
     symbols: ["southern cross", "coastline"], palette: ["#00247D", "#CF142B", "#FFFFFF"], greeting: "", date: "01-26",
     care: "Australia Day is contested. Keep it factual and low-key, or mark the long weekend instead.",
+    wish: "", tags: ["#AustraliaDay"],
     scene: "a wide sunlit coastline under a clear sky, calm and understated" },
-  { id: "independenceday", label: "Independence Day", aliases: ["independence day", "fourth of july", "4th of july"], region: "US",
-    symbols: ["fireworks", "flag-inspired stripes"], palette: ["#0A3161", "#B31942", "#FFFFFF"], greeting: "Happy Fourth", date: "07-04",
+  { id: "independenceday", label: "Independence Day (US)", aliases: ["fourth of july", "4th of july", "july 4th", "us independence day", "american independence day"], region: "US",
+    symbols: ["fireworks", "flag-inspired stripes"], palette: ["#0A3161", "#B31942", "#FFFFFF"], greeting: "Happy Fourth of July", date: "07-04", wish: "Wishing our American clients, partners and colleagues a happy and safe Fourth of July.", tags: ["#FourthOfJuly", "#IndependenceDay"],
     scene: "an evening sky with distant fireworks over a quiet skyline" },
   { id: "internationalwomensday", label: "International Women's Day", aliases: ["international women's day", "womens day", "women's day", "iwd"], region: "GLOBAL",
     symbols: ["portrait grid", "upward line"], palette: ["#6A1B9A", "#E91E63", "#FFF3E0"], greeting: "", date: "03-08",
     care: "Say what the firm actually does about it. A purple graphic on its own reads as decoration.",
+    wish: "", tags: ["#InternationalWomensDay", "#IWD"],
     scene: "a group of professional women in conversation in a bright modern workplace" },
+  { id: "independence", label: "Independence Day", aliases: ["independence day"], region: "GLOBAL",
+    symbols: ["fireworks"], palette: ["#1B2A5B", "#C9A227", "#F5F5F0"], greeting: "Happy Independence Day",
+    care: "Independence Day is a different date in every country. Say which one this is — the topic does not.",
+    wish: "", tags: ["#IndependenceDay"],
+    scene: "an evening sky with distant fireworks over a quiet skyline" },
 ];
 
 const lower = (s) => String(s || "").toLowerCase();
@@ -265,9 +326,22 @@ export function detectCountry(text) {
 export function detectOccasion(text) {
   const hay = ` ${lower(text)} `;
   for (const o of OCCASIONS) {
-    if (o.aliases.some((a) => hasTerm(hay, a))) return o;
+    const hit = o.aliases.find((a) => hasTerm(hay, a));
+    if (hit) return o;
   }
   return null;
+}
+
+/* The greeting that matches what the user actually wrote: "Makar Sankranti"
+   and "Uttarayan" are the same day, but a post that says one should not wish
+   the other. */
+export function greetingFor(occasion, text = "") {
+  if (!occasion) return "";
+  const hay = ` ${lower(text)} `;
+  for (const [alias, g] of Object.entries(occasion.aliasGreeting || {})) {
+    if (hasTerm(hay, alias)) return g;
+  }
+  return occasion.greeting || "";
 }
 
 export const occasionById = (id) => OCCASIONS.find((o) => o.id === id) || null;

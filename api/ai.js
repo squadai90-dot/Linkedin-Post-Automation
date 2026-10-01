@@ -35,9 +35,16 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
 
   if (req.method === "GET") {
+    /* The model list, read with the server's key. Without this a deployed app
+       had no way to notice that Groq had retired its default model: the
+       browser holds no key to ask with, so every call simply failed. */
+    if (req.query?.models !== undefined) return listModels(res);
     return res.status(200).json({
       service: "unison-ai-relay",
-      version: 3,
+      version: 4,
+      /* Which variable each provider reads, so the app can tell a person
+         exactly what to set. Names only — never a value. */
+      env: { groq: "GROQ_API_KEY", anthropic: "ANTHROPIC_API_KEY" },
       providers: { groq: !!KEYS.groq, anthropic: !!KEYS.anthropic },
       defaultProvider: DEFAULT_PROVIDER,
       /* Kept so a frontend built before multi-provider support still reads a
@@ -59,7 +66,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: { message: `Unknown AI provider "${provider}".` } });
   }
   if (!KEYS[provider]) {
-    return res.status(500).json({ error: { message: `${provider === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY"} is not set on the server.` } });
+    const name = provider === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY";
+    return res.status(503).json({ error: {
+      code: "no_server_key",
+      message: `${name} is not set on the server. Add it in your host's environment variables (on Vercel: Project → Settings → Environment Variables), then redeploy — a new variable only takes effect after a redeploy.`,
+    } });
   }
 
   const body = typeof req.body === "string" ? safeParse(req.body) : req.body;
@@ -134,3 +145,23 @@ export default async function handler(req, res) {
 function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
 export const config = { api: { bodyParser: { sizeLimit: "2mb" } }, maxDuration: 60 };
+
+async function listModels(res) {
+  if (!KEYS.groq) return res.status(200).json({ ok: false, provider: "groq", models: [], reason: "GROQ_API_KEY is not set on the server." });
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${KEYS.groq}` }, signal: ctl.signal });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      /* A 401 here is the single most useful thing to surface: the key is set
+         but wrong — copied with a space, revoked, or from another account. */
+      return res.status(200).json({ ok: false, provider: "groq", models: [], status: r.status,
+        reason: r.status === 401 ? "Groq rejected GROQ_API_KEY — it is set, but invalid or revoked." : `Groq answered ${r.status} when listing models.` });
+    }
+    const models = (j?.data || []).filter((m) => m?.active !== false).map((m) => String(m.id)).filter((id) => !/whisper|tts|guard/i.test(id)).sort();
+    return res.status(200).json({ ok: true, provider: "groq", models });
+  } catch (e) {
+    return res.status(200).json({ ok: false, provider: "groq", models: [], reason: e?.name === "AbortError" ? "Groq did not answer in time." : "Groq could not be reached from the server." });
+  } finally { clearTimeout(t); }
+}
