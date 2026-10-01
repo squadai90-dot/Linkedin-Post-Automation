@@ -712,7 +712,11 @@ Be terse.`,
        folded back in below — otherwise re-running research silently throws
        their file away. Starting a different topic drops it, as it should. */
     const keptDoc = reRun ? assets.sourceDoc : null;
-    setQuality(null); setMedia(null); setAssets({ ...EMPTY_ASSETS, sourceDoc: keptDoc }); setMstate({});
+    /* Design edits belong to the post too: re-running research on the same
+       post (or switching what it is for) keeps them. The attachment itself is
+       dropped, because the post it illustrated is being rewritten. */
+    const keptDesign = reRun ? assets.designStudio : null;
+    setQuality(null); setMedia(null); setAssets({ ...EMPTY_ASSETS, sourceDoc: keptDoc, designStudio: keptDesign }); setMstate({});
     setAnalytics(null); setPublishState(null); setAttempts([]); setVersions([]); setAudit([]);
     setDupDismissed(false); setUndoStack([]); setRecFormat(null); autoRef.current = "";
     setPublishError(null); setPublishVia(null); setPublishLimits([]); setPublishKind(null); setPublishUnverified(false);

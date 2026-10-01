@@ -8,10 +8,7 @@ import { svgToPng, downloadBlob } from "../lib/brand.js";
 import { drawScene } from "../lib/scenes.js";
 import { SCENE_SECONDS, videoProvider, extensionOf } from "../lib/media.js";
 import { ImageStudio } from "./imagestudio.jsx";
-import { CanvaDesigner } from "./canvadesign.jsx";
-
-/* A fresh {} each render would make the suggestion memo recompute forever. */
-const NO_BRIEF = {};
+import { DesignStudio } from "./studio.jsx";
 
 /* ============================================================
    MEDIA UI — one panel per format, all driven by the media engine
@@ -225,11 +222,11 @@ function StylePicker({ value, onChange, resolved, caps, busy }) {
   );
 }
 
-export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle = "auto", setVisualStyle, genState, gen, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify }) {
+export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle = "auto", setVisualStyle, genState, gen, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify, topic, intent, workId }) {
   const [variant, setVariant] = useState(0);
-  /* Open once the picture exists: the design is the interesting part, and
-     hiding it behind a click is what made the old output feel fixed. */
-  const [studioOpen, setStudioOpen] = useState(true);
+  /* The design studio below is where most designs are now made, so this
+     older editor for the generated picture starts closed. */
+  const [studioOpen, setStudioOpen] = useState(false);
   const img = assets.images[0];
   const fileRef = useRef(null);
   const busyGen = mstate.image?.status === "generating";
@@ -280,14 +277,15 @@ export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle
         <div className="svgframe" style={{ aspectRatio: "1200 / 630" }}><img src={assets.upload.data} alt={assets.upload.name} /></div>
       )}
 
-      {/* Template designs, in the same place as every other way of getting a
-          picture — a separate screen for this would only hide it. */}
-      <details className="studio">
-        <summary>Design from a template{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
-        <CanvaDesigner
+      {/* The design studio: options for this post, quick edits that change
+          the real design, Canva for deep edits, and an explicit attach. */}
+      <details className="studio" open>
+        <summary>Design studio — designs for this post, quick edit and Canva{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
+        <DesignStudio
+          key={`${workId || "w"}:image`}
           postType="image" draft={draft} profile={profile} assets={assets}
           patchAssets={patchAssets} attachUpload={attachUpload} notify={notify}
-          brief={img?.brief || NO_BRIEF}
+          topic={topic} intent={intent} gen={gen} workId={workId}
         />
       </details>
       {img?.brief && (
@@ -305,7 +303,7 @@ export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle
 
 /* ---------- video ---------- */
 
-export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets, attachUpload, prototypeNote, draft, profile, notify }) {
+export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets, attachUpload, prototypeNote, draft, profile, notify, topic, intent, gen, workId }) {
   const v = assets.video;
   const fileRef = useRef(null);
   const enc = mstate.encode || {};
@@ -377,12 +375,13 @@ export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets
         </div>
       )}
 
-      <details className="studio">
-        <summary>Design from a template{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
-        <CanvaDesigner
+      <details className="studio" open>
+        <summary>Video studio — Canva video, AI footage and the opening frame{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
+        <DesignStudio
+          key={`${workId || "w"}:video`}
           postType="video" draft={draft} profile={profile} assets={assets}
           patchAssets={patchAssets} attachUpload={attachUpload} notify={notify}
-          brief={v?.brief || NO_BRIEF}
+          topic={topic} intent={intent} gen={gen} workId={workId}
         />
       </details>
 

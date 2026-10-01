@@ -7,6 +7,7 @@ import { locateClaim, segments } from "../lib/text.jsx";
 import { useNarrow } from "../hooks.js";
 import { AssetPreview, MediaSection, SourceDocPanel } from "./media.jsx";
 import { IntentBar, ResearchResults } from "./research.jsx";
+import { detectIntent } from "../lib/intent.js";
 import { TIMEZONES, localTimezone, countryForTimezone, isDue, todayISO } from "../lib/dates.js";
 import { grammarCheck, applyReplacement, holidayOn } from "../lib/freeApis.js";
 
@@ -146,11 +147,15 @@ export function Workspace(p) {
     poll: !assets.poll,
   })[f]);
 
+  /* What the post is for decides which designs the studio offers — the same
+     decision the research and the writer used, including the user's choice. */
+  const intent = useMemo(() => detectIntent(idea || "", { override: research?.intentOverride }), [idea, research?.intentOverride]);
   const mediaProps = {
     format, formats, assets, patchAssets, mstate, makeImage, makeVideo, makePoll,
     ingestDocument, attachUpload, exportVideo, locked, extras,
     draft, profile, notify,
     makeAiImage, visualStyle, setVisualStyle, genState, gen,
+    topic: idea || "", intent, workId,
   };
 
   const evidencePanel = !draft ? null : (
@@ -228,7 +233,8 @@ export function Workspace(p) {
         </div>
         {draft.degraded && (
           <div className="badge warn" style={{ marginBottom: 10, display: "block", lineHeight: 1.55 }} data-testid="draft-degraded">
-            {draft.template === "greeting" ? <>Written from a greeting template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. It invents nothing — edit it freely, or fix the AI setup and press Regenerate.</>
+            {draft.template === "starter" ? <>The AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}, so this starter is only your topic, word for word — nothing was written for you and nothing was invented. Write the post here before you approve it, or fix the AI setup and press Regenerate.</>
+              : draft.template === "greeting" ? <>Written from a greeting template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. It invents nothing — edit it freely, or fix the AI setup and press Regenerate.</>
               : draft.template ? <>Written from a {draft.template} template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. {draft.needsDetail ? "Add what it is, who it is for and how to get started before you approve it." : "Edit it freely."}</>
               : <>The AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}, so no draft was written. Write the post here, or fix the AI setup and press Regenerate.</>}
           </div>

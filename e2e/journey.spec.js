@@ -2,8 +2,9 @@ import { test, expect } from "@playwright/test";
 
 /* These run against the built app with nothing connected — no AI key, no
    Make webhook, no LinkedIn. That is the state a reviewer opens it in, and
-   every engine is expected to degrade to labelled sample data rather than
-   fail. Anything that would send a real post must stay a dry run. */
+   every engine is expected to degrade honestly — say what it could not do,
+   invent nothing in its place, and not fail. Anything that would send a real
+   post must stay a dry run. */
 
 /* The build ships the team's Make webhook, so a fresh page really can
    publish. These tests are about the unconfigured product, so the webhook is
@@ -118,7 +119,7 @@ test.describe("desktop", () => {
     await expect(field).toBeFocused();
   });
 
-  test("the whole post journey runs on sample data and never claims to have published", async ({ page }) => {
+  test("the whole post journey runs with no AI, invents nothing, and never claims to have published", async ({ page }) => {
     const errors = errorsOf(page);
     await stubExternals(page);
     await page.goto("/");
@@ -128,14 +129,16 @@ test.describe("desktop", () => {
     await expect(page.locator(".create .fmt")).toHaveCount(0);
     await page.getByRole("button", { name: "Start" }).click();
 
-    // Research falls back and says the sources are placeholders.
-    await expect(page.getByText(/these are placeholders, not real sources/)).toBeVisible({ timeout: 40_000 });
-    await expect(page.getByText("AI isn't set up")).toBeVisible();
+    // Research cannot run, says so, and puts nothing in place of sources.
+    await expect(page.getByTestId("research-unavailable")).toBeVisible({ timeout: 40_000 });
+    await expect(page.locator(".src")).toHaveCount(0);
 
-    // Pick an angle, wait for the draft.
+    // Pick an angle, wait for the draft. With no AI it is the user's own
+    // topic, word for word, and says so — nothing is written for them.
     await page.locator(".angle").first().click();
     await expect(page.locator(".li-body")).toBeVisible({ timeout: 40_000 });
-    await expect(page.getByText(/Sample text/)).toBeVisible();
+    await expect(page.getByTestId("draft-degraded")).toContainText("only your topic, word for word");
+    await expect(page.getByLabel("Hook")).toHaveValue("Why approval workflows decide AI rollouts.");
 
     // Now the post can be read, decide it wants a poll — and the text stays.
     await expect(page.getByText("Add to this post")).toBeVisible();

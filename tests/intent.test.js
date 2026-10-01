@@ -212,10 +212,16 @@ describe("nothing invented when the AI is unavailable", () => {
     expect(all).not.toMatch(/at our team|our team team|the us team/i);
   });
 
-  it("a thought-leadership post gets no made-up prose at all", () => {
-    const d = fb.draft("Why outsourcing works when the brief is clear", {});
-    expect(d.empty).toBe(true);
+  it("a thought-leadership post gets no made-up prose — only the user's own topic", () => {
+    const d = fb.draft("why outsourcing works when the brief is clear", {});
+    expect(d.template).toBe("starter");
+    expect(d.hook).toBe("Why outsourcing works when the brief is clear.");
     expect(d.body).toBe("");
+    expect(d.cta).toBe("");
+    expect(d.claims).toEqual([]);
+    expect(d.needsDetail).toBe(true);
+    /* and with no topic there is nothing to start from */
+    expect(fb.draft("", {}).empty).toBe(true);
   });
 
   it("a launch template never puts instructions where they could be published", () => {

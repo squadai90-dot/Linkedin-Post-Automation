@@ -54,7 +54,9 @@ test.describe("uploading a document you already have", () => {
     const src = page.locator(".src", { hasText: "review.txt" });
     await expect(src).toBeVisible({ timeout: 40_000 });
     await expect(src).toContainText("your upload");
-    await expect(src.locator(".tier")).toContainText("T1");
+    /* top tier, and labelled as the user's own rather than as a web source */
+    await expect(src.locator(".tier")).toHaveClass(/\bt1\b/);
+    await expect(src.locator(".tier")).toContainText("Your document");
     await expect(page.locator(".src").first()).toContainText("review.txt");
 
     // The panel says what the upload did, as a number, not as "added".
@@ -95,9 +97,9 @@ test.describe("uploading a document you already have", () => {
           insights: ["Reviewer hiring is the ceiling on growth"],
           claims: ["Audit turnaround fell from 14 days to 9 days", "Engagements rose 18% year on year"],
         };
-      } else if (/discovery engine/i.test(prompt)) {
+      } else if (/You research (topics|festivals)/i.test(prompt)) {
         reply = { sources: [{ title: "An industry report", publisher: "Test", date: "2026-09-01", tier: 2, note: "From the model", url: "https://example.com/report" }], claims: [{ text: "A researched claim", sourceIndex: 0 }], insights: ["An insight from the engine"], freshness: "Recent", risks: [] };
-      } else if (/content intelligence/i.test(prompt)) {
+      } else if (/You plan LinkedIn posts for a company page/i.test(prompt)) {
         reply = { angles: [{ type: "Data-driven", headline: "Turnaround is the number clients notice", rationale: "It is measurable", recommended: true }], reason: "It is the strongest figure." };
       } else {
         reply = { hook: "Audit turnaround is the number clients notice.", body: "We took it from 14 days to 9.", cta: "What is yours?", hashtags: ["#audit"] };
@@ -112,7 +114,7 @@ test.describe("uploading a document you already have", () => {
     // The research panel visibly grows: the document's own insight appears
     // beside the engine's, under its own heading.
     await expect(page.getByText("From your document")).toBeVisible();
-    await expect(page.locator(".card", { hasText: "What stood out" })).toContainText("Reviewer hiring is the ceiling on growth");
+    await expect(page.locator(".card", { hasText: "From your document" })).toContainText("Reviewer hiring is the ceiling on growth");
     await expect(page.locator(".srcdoc")).toContainText("Audit turnaround fell from 14 days to 9 days");
 
     await page.locator(".angle").first().click();

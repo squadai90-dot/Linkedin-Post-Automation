@@ -69,7 +69,7 @@ export const STAGE_LABEL = {
   evidence: "Evidence", health: "Health", approval: "Approval", schedule: "Publish",
 };
 
-export const EMPTY_ASSETS = { images: [], video: null, poll: null, upload: null, uploadDropped: null, sourceDoc: null, imageDesign: null };
+export const EMPTY_ASSETS = { images: [], video: null, poll: null, upload: null, uploadDropped: null, sourceDoc: null, imageDesign: null, designStudio: null };
 /* What survives a reload. Object URLs and Blobs do not, so the video keeps
    only its storyboard — publishing re-encodes it from that. An uploaded
    image is already downscaled, so it is kept unless it is large; when it has

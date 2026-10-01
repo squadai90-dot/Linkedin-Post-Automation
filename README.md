@@ -13,6 +13,7 @@ so on screen rather than pretending.
 | If you want to… | Read |
 |---|---|
 | Install and run it on **Windows**, step by step | [`WINDOWS-SETUP.md`](WINDOWS-SETUP.md) |
+| Deploy on **Vercel**: every environment variable, redeploying, the in-app Deployment check, and whether Canva needs reconfiguring | [`VERCEL-SETUP.md`](VERCEL-SETUP.md) |
 | Know what was audited, found, fixed and left alone | [`AUDIT.md`](AUDIT.md) |
 | See exactly what has been tested, and what has not | [`TESTING.md`](TESTING.md) |
 | Configure Groq, OpenAI, Google, Runway or Canva | [Setup, below](#first-run-three-things-to-set-up), and [`.env.example`](.env.example) |
@@ -162,59 +163,74 @@ allowance is visible, it appears under the buttons — some providers do not
 expose those numbers to a browser, in which case nothing is shown rather than a
 guess.
 
-### 3. Canva designs (optional, Settings → AI)
+### 3. Designs, Canva and AI media (the Media step)
 
-Canva fills **your own brand templates** with the finished post and exports the
-result as the image or video to publish. It is optional: without it, Unison's own
-renderer still produces every visual.
+Every image or video post gets a **Design studio** in the Media step. It works
+with no setup at all; Canva and the paid AI providers add to it when configured.
 
-It needs `api/canva.js` deployed, because OAuth cannot be done safely from a web
-page. Create an integration at
-[canva.com/developers](https://www.canva.com/developers/integrations), then
-either set `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET` and `CANVA_REDIRECT_URI` in
-the environment (do this for anything deployed), or paste the same three values
-into Settings → AI for local development. The secret is posted once to your own
-backend and held **in memory there** — it is not saved in the browser, not
-written to disk, and no part of the frontend can read it back. Restart the
-server and you re-enter it. The card says so rather than letting you assume
-otherwise.
+**What it does, in order**
 
-Press **Connect Canva**, approve in the pop-up, and you are connected. What the
-browser gets back is an opaque session id, not a token: every Canva call goes
-through your backend, which holds the access and refresh tokens and renews them
-itself. The session id is kept in memory in the page and written to no browser
-storage, so a reload means reconnecting — which the memory-only relay would
-have required anyway.
+1. **Visual brief.** What the post is for (a festival greeting, a launch, a
+   milestone…), the tone, the festival's own cues, and what to avoid — e.g. a
+   greeting never carries an offer, and no deity is ever drawn by a machine.
+2. **Distinct options.** A Navratri or Diwali greeting gets *Elegant
+   traditional*, *Premium corporate*, *Colourful celebratory* and *Modern
+   minimal*, each drawn with that festival's own motif and colours. A launch
+   gets *Product spotlight*, *Launch announcement* and (when your post lists
+   features) *Feature highlights*. A milestone with a number gets *Big number*.
+   Every option is labelled **Unison design** or **Your Canva template** —
+   nothing Unison drew is ever passed off as Canva's.
+3. **Quick edit that changes the real design:** words, colours (presets or any
+   colour), gradient / solid / picture background, your own picture or AI
+   artwork with zoom and position, text left / centred / right, motif, frame,
+   confetti, typeface, weight and size. Undo and reset are there. Edits are
+   kept with the post, survive switching option, changing angle and reloading,
+   and contrast or overflow problems are flagged rather than hidden.
+4. **Deep edit in Canva** (any Canva plan): *Edit in Canva* sends the design to
+   Canva as a new design of the same size and opens Canva's editor. Coming
+   back, Unison **exports the design as it stands in Canva** — it never refills
+   it, so nothing you did there is lost. *Use one of my Canva designs* brings in
+   any design from your account.
+5. **The real file.** A Canva export or AI clip is downloaded through your
+   backend, checked by its own bytes and decoded by the browser (dimensions,
+   and duration for video) before it is shown. Nothing is attached to the post
+   until you press **Use this design / image / video**, which hands an ordinary
+   file to the existing publishing path — publishing itself is unchanged.
 
-> On a **deployed** instance the relay refuses to be configured from the browser
-> at all unless `UNISON_RELAY_TOKEN` is set, because otherwise anyone who could
-> reach it could point it at their own Canva integration. Setting the three
-> environment variables is the intended route there, and doing so also locks
-> runtime configuration out.
+**Video posts** get the same studio for the opening frame, plus: *Start this
+video in Canva* (frame + new 1920 × 1080 design), *Blank 16:9 design in
+Canva*, Canva video brand templates (Autofill → MP4), any of your Canva designs
+exported as MP4, and **AI footage** from Veo (`GOOGLE_API_KEY`) or Runway
+(`RUNWAY_API_KEY`) with the cost shown before you generate. A video is only
+offered once a real MP4 has come back and played here.
 
-Then, in the Media step of any image or video post, open **Design from a
-template**. Unison reads the post — its topic, pillar, figures, occasion and
-post type — and offers three or four *different* layouts, each with the reason
-it was suggested. Edit the template's own fields, render, look at the actual
-exported file, and only then press **Use this image**. Nothing is attached to
-the post until you do.
+**Connecting Canva.** It needs `api/canva.js` deployed. Create an integration
+at [canva.com/developers](https://www.canva.com/developers/integrations), set
+`CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET` and `CANVA_REDIRECT_URI` on the server
+(see [VERCEL-SETUP.md](VERCEL-SETUP.md)), redeploy, then press **Connect
+Canva** in Settings → AI. Tokens are kept in an encrypted, HttpOnly cookie that
+the page cannot read; the browser never receives a token or the secret, and the
+connection survives reloads and serverless cold starts. Optionally set
+`CANVA_SESSION_SECRET` (a long random string) so rotating the client secret does
+not disconnect everyone.
 
-**What Canva's API can and cannot do**, stated once so nothing here surprises you:
+To return from Canva's editor automatically, turn on **Return navigation** in
+the Canva Developer Portal (your integration → *Outside Canva → Configuration*)
+and set the **Return URL** to your Unison address — Settings → AI shows it with
+a Copy button. Without it, come back to the Unison tab and press **Bring back my
+Canva edits**.
+
+**What Canva's API can and cannot do**, stated once so nothing surprises you:
 
 | Wanted | Available? |
 |---|---|
-| Suggest templates by topic | Yes, from the connected account's **own brand templates**. Canva publishes no API for searching its public template library, so the rest of the suggestions are Unison's layouts — labelled as such, never dressed up as Canva results |
-| Fill text fields | Yes, via autofill |
-| Fill image and logo fields | Yes — the picture is uploaded to Canva as an asset first, which is the only supported way |
-| Export a PNG | Yes |
-| Export an MP4 | Yes, at 1080p horizontal — so a video needs a 16:9 brand template. Anything else is marked unavailable rather than cropped or stretched |
-| Change colours, fonts, backgrounds, scenes, transitions, timing | **No API for it.** Those belong to the template. The panel says so and links straight to the design in Canva |
-| Generate original footage from a prompt | **Not a Canva capability.** Unison does not pretend otherwise; for generated artwork see the AI image and video relays |
-
-**Plan requirements, honestly.** Brand templates and autofill are Canva
-**Enterprise** features; other paid plans get a limited trial while an
-integration is still in development. On an account without them, Canva answers
-403 and Unison shows what it said rather than a mystery error.
+| Your own brand templates, filled with the post (Autofill) | Yes — **Canva Enterprise** only. Other accounts get Canva's 403, shown as an explanation |
+| Open any design in Canva's editor and bring the edits back | Yes, on every plan (`POST /v1/designs` + export) |
+| Text from a Unison design editable *as text* in Canva | No — Canva places an uploaded picture as one flat image. Change words in Unison first, or use a brand template. (Canva's newer image-to-design "Magic Layers" import could do this; it is not wired in — see AUDIT.md) |
+| Search Canva's public template library | **No API exists.** Only your account's own templates and designs are reachable |
+| Export PNG / MP4 | Yes. Video exports are requested at 720p 16:9 to stay under the 6 MB the browser can hand to publishing |
+| Place a video on a Canva page for you | No — the clip goes to your Canva *Uploads*; drag it onto the page |
+| Transitions, scene timing, audio, animation from Unison | No. Do those in Canva's editor; Unison does not pretend to |
 
 ### 4. Publishing (Settings → LinkedIn)
 
@@ -655,7 +671,7 @@ src/
     store.js           persistence backend and relay token
     text.jsx           claim location, LinkedIn preview segments, word diff
     seed.js, util.js
-  components/          chrome, dashboard, workspace, media, canvadesign, views,
+  components/          chrome, dashboard, workspace, media, studio, research, views,
                        modals, settings, panels, discover, toasts, error boundary
 api/                   optional Vercel functions: ai, publish, linkedin,
                        workspace, image, video, canva

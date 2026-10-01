@@ -28,9 +28,10 @@ const replyFor = (prompt) => {
   if (/opportunity engine/i.test(prompt)) {
     return { items: [{ headline: "Groq wired in", summary: "Live reply", publisher: "Test", url: "https://news.acme-industry.com/ai-budgets", date: "2026-09-01", score: 91, whyNow: "Proves the path", gap: "open", angle: "Educational" }] };
   }
-  if (/discovery engine/i.test(prompt)) {
+  if (/You research (topics|festivals)/i.test(prompt)) {
     return { sources: [{ title: "A real source", publisher: "Test", date: "2026-09-01", tier: 1, note: "From the model", url: "https://news.acme-industry.com/report" }], claims: [{ text: "A checked claim", sourceIndex: 0 }], insights: ["An insight from Groq"], freshness: "Recent", risks: [] };
   }
+  if (/no web access/i.test(prompt)) return { insights: ["An idea from Groq, not a fact"] };
   return { angles: [], hook: "", body: "", cta: "", hashtags: [] };
 };
 
@@ -74,7 +75,8 @@ test.describe("Groq", () => {
     page.on("pageerror", (e) => errors.push(String(e.message)));
     await quiet(page);
     await withKey(page);
-    await mockGroq(page);
+    /* The search returned the source's address, so it is verified and shown. */
+    await mockGroq(page, { searchedFor: "https://news.acme-industry.com/report" });
     await page.goto("/");
 
     await page.getByPlaceholder("What is this post about?").fill("Why approval workflows decide AI rollouts");
@@ -83,11 +85,11 @@ test.describe("Groq", () => {
     // The model's own words reach the screen — not a fallback dressed up.
     await expect(page.getByText("An insight from Groq")).toBeVisible({ timeout: 40_000 });
     await expect(page.getByText("A real source")).toBeVisible();
-    await expect(page.getByText(/these are placeholders/)).toHaveCount(0);
+    await expect(page.getByTestId("research-unavailable")).toHaveCount(0);
 
     // Research searches the web, so it goes to the compound model — and that
     // model rejects every tuning parameter, so it must be sent none of them.
-    const search = captured.find((c) => /discovery engine/.test(JSON.stringify(c.body.messages)));
+    const search = captured.find((c) => /You research (topics|festivals)/.test(JSON.stringify(c.body.messages)));
     expect(search, "the research engine called Groq").toBeTruthy();
     expect(search.headers.authorization).toBe("Bearer gsk_e2e_key");
     expect(search.body.model).toBe("groq/compound");
@@ -95,7 +97,7 @@ test.describe("Groq", () => {
 
     // The follow-up call does not search, so it takes the chosen model and
     // the full OpenAI parameter set.
-    const plain = captured.find((c) => /content intelligence/.test(JSON.stringify(c.body.messages)));
+    const plain = captured.find((c) => /You plan LinkedIn posts for a company page/.test(JSON.stringify(c.body.messages)));
     expect(plain, "the angle engine called Groq").toBeTruthy();
     expect(plain.body.model).toBe("llama-3.3-70b-versatile");
     expect(plain.body.messages[0].role).toBe("system");
@@ -109,7 +111,7 @@ test.describe("Groq", () => {
   test("shows the daily allowance the reply reported", async ({ page }) => {
     await quiet(page);
     await withKey(page);
-    await mockGroq(page);
+    await mockGroq(page, { searchedFor: "https://news.acme-industry.com/report" });
     await page.goto("/");
 
     await page.getByPlaceholder("What is this post about?").fill("Anything at all");
@@ -127,7 +129,7 @@ test.describe("Groq", () => {
     // the panel must be absent rather than reporting a confident zero.
     await quiet(page);
     await withKey(page);
-    await mockGroq(page, { exposeQuota: false });
+    await mockGroq(page, { exposeQuota: false, searchedFor: "https://news.acme-industry.com/report" });
     await page.goto("/");
 
     await page.getByPlaceholder("What is this post about?").fill("Anything at all");
@@ -170,7 +172,7 @@ test.describe("Groq", () => {
     await expect(page.getByText(/Invalid API Key|rejected/i).first()).toBeVisible({ timeout: 20_000 });
   });
 
-  test("falls back to labelled sample data when the daily limit is spent", async ({ page }) => {
+  test("says plainly when the daily limit is spent, and shows no sample data", async ({ page }) => {
     await quiet(page);
     await withKey(page);
     await mockGroq(page, { status: 429, body: { error: { message: "Rate limit reached for model llama-3.3-70b-versatile: tokens per day (TPD)" } } });
@@ -178,14 +180,15 @@ test.describe("Groq", () => {
 
     await page.getByPlaceholder("What is this post about?").fill("Anything at all");
     await page.getByRole("button", { name: "Start" }).click();
-    // A spent quota must not read as a real result.
-    await expect(page.getByText(/these are placeholders, not real sources/)).toBeVisible({ timeout: 40_000 });
+    // A spent quota must not read as a real result — and nothing stands in for one.
+    await expect(page.getByTestId("research-unavailable")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("A real source")).toHaveCount(0);
+    await expect(page.locator(".src")).toHaveCount(0);
   });
 
-  test("marks a link the model wrote but never retrieved", async ({ page }) => {
-    // The research reply cites https://example.com/s. The search reports a
-    // different URL, so the citation was written, not retrieved — and a row
-    // that reads "T1 · Primary" must not pass for evidence on that basis.
+  test("leaves out a source the model wrote but the search never returned", async ({ page }) => {
+    // The research reply cites a URL the search did not return, so it was
+    // written, not retrieved — and it is not shown as evidence at all.
     await quiet(page);
     await withKey(page);
     await mockGroq(page, { searchedFor: "https://something-else.test/page" });
@@ -193,8 +196,11 @@ test.describe("Groq", () => {
 
     await page.getByPlaceholder("What is this post about?").fill("Anything at all");
     await page.getByRole("button", { name: "Start" }).click();
-    await expect(page.getByText("A real source")).toBeVisible({ timeout: 40_000 });
-    await expect(page.getByText("Unconfirmed link").first()).toBeVisible();
+    await expect(page.getByTestId("research-unavailable")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("A real source")).toHaveCount(0);
+    // What the model can still offer is labelled as ideas, not facts.
+    await expect(page.getByText("Ideas from the AI — not verified")).toBeVisible();
+    await expect(page.getByText("An idea from Groq, not a fact")).toBeVisible();
   });
 
   test("marks a link the search actually returned", async ({ page }) => {
@@ -210,9 +216,9 @@ test.describe("Groq", () => {
     await expect(page.getByText("Unconfirmed link")).toHaveCount(0);
   });
 
-  test("says nothing about a link when there is no search record", async ({ page }) => {
-    // Silence is the right answer here: no record of the search is not the
-    // same as evidence against the link.
+  test("shows no source at all when there is no search record to verify it against", async ({ page }) => {
+    // No record of the search means nothing can be verified — so nothing is
+    // presented as a source.
     await quiet(page);
     await withKey(page);
     await mockGroq(page);
@@ -220,20 +226,20 @@ test.describe("Groq", () => {
 
     await page.getByPlaceholder("What is this post about?").fill("Anything at all");
     await page.getByRole("button", { name: "Start" }).click();
-    await expect(page.getByText("A real source")).toBeVisible({ timeout: 40_000 });
-    await expect(page.getByText("Unconfirmed link")).toHaveCount(0);
-    await expect(page.getByText("Retrieved")).toHaveCount(0);
+    await expect(page.getByTestId("research-unavailable")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("A real source")).toHaveCount(0);
   });
 
-  test("calls out a placeholder domain as not a real link", async ({ page }) => {
+  test("never shows a placeholder domain as a source", async ({ page }) => {
     await quiet(page);
     await withKey(page);
-    await mockGroq(page, { placeholderSource: true });
+    await mockGroq(page, { placeholderSource: true, searchedFor: "https://example.com/report" });
     await page.goto("/");
 
     await page.getByPlaceholder("What is this post about?").fill("Anything at all");
     await page.getByRole("button", { name: "Start" }).click();
-    await expect(page.getByText("Not a real link").first()).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByTestId("research-unavailable")).toBeVisible({ timeout: 40_000 });
+    await expect(page.locator(".src")).toHaveCount(0);
   });
 
   test("offers tier controls and remembers them", async ({ page }) => {

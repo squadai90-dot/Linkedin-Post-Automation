@@ -103,6 +103,55 @@ const bursts = (pts, colours) => pts.map(([cx, cy, r], i) => {
   }).join("") + `<circle cx="${cx}" cy="${cy}" r="5" fill="${c}"/>`;
 }).join("");
 
+/* Petal rings with chosen colours, for the flower-based festivals. */
+const petals = (cx, cy, rings) => rings.map(([r, n, fill, op]) => Array.from({ length: n }, (_, i) => {
+  const a = (i / n) * Math.PI * 2;
+  const x = (cx + Math.cos(a) * r).toFixed(1), y = (cy + Math.sin(a) * r).toFixed(1);
+  return `<ellipse cx="${x}" cy="${y}" rx="${(r / 3.1).toFixed(1)}" ry="${(r / 6.2).toFixed(1)}" fill="${fill}" opacity="${op}" transform="rotate(${((a * 180) / Math.PI).toFixed(1)} ${x} ${y})"/>`;
+}).join("")).join("");
+
+/* A ring of dots, for garba circles and alpana borders. */
+const dotRing = (cx, cy, r, n, colours, size = 8) => Array.from({ length: n }, (_, i) => {
+  const a = (i / n) * Math.PI * 2;
+  return `<circle cx="${(cx + Math.cos(a) * r).toFixed(1)}" cy="${(cy + Math.sin(a) * r).toFixed(1)}" r="${size}" fill="${colours[i % colours.length]}"/>`;
+}).join("");
+
+/* A string of festive bulbs hanging across the top of the art. */
+const bulbs = (x1, x2, y, sag, colours) => {
+  const n = 11;
+  const pts = Array.from({ length: n }, (_, i) => {
+    const t = i / (n - 1);
+    return [x1 + (x2 - x1) * t, y + sag * 4 * t * (1 - t)];
+  });
+  return `<path d="M${x1} ${y} Q${(x1 + x2) / 2} ${y + sag * 2} ${x2} ${y}" stroke="#F2E8CF" stroke-width="1.5" fill="none" opacity="0.5"/>
+${pts.map(([x, yy], i) => `<circle cx="${x.toFixed(1)}" cy="${(yy + 9).toFixed(1)}" r="14" fill="url(#glow)" opacity="0.6"/><circle cx="${x.toFixed(1)}" cy="${(yy + 9).toFixed(1)}" r="6" fill="${colours[i % colours.length]}"/>`).join("")}`;
+};
+
+/* A marigold toran: strands of flowers and leaves hung from a line. */
+const toran = (x1, x2, y, flowers = ["#F5A524", "#FFC24D"]) => {
+  const strands = [];
+  for (let x = x1 + 16, i = 0; x < x2; x += 40, i += 1) {
+    const len = i % 2 ? 3 : 4;
+    strands.push(Array.from({ length: len }, (_, k) => `<circle cx="${x}" cy="${y + 16 + k * 17}" r="8.5" fill="${flowers[(i + k) % flowers.length]}"/>`).join(""));
+    strands.push(`<ellipse cx="${x + 20}" cy="${y + 14}" rx="11" ry="5" fill="#2E7D32" transform="rotate(70 ${x + 20} ${y + 14})"/>`);
+  }
+  return `<path d="M${x1} ${y} L${x2} ${y}" stroke="#2E7D32" stroke-width="3"/>${strands.join("")}`;
+};
+
+/* A diya, on its own. */
+const diya = (x, y, s = 1) => `<g transform="translate(${x} ${y}) scale(${s})"><ellipse cx="0" cy="0" rx="34" ry="13" fill="#8A4B1E"/><path d="M-34 0 a34 13 0 0 0 68 0z" fill="#5E3113"/><circle cx="0" cy="-34" r="26" fill="url(#glow)"/><path d="M0 -52 c10 12 6 22 0 28 c-6 -6 -10 -16 0 -28z" fill="#FFD27A"/></g>`;
+
+/* A paper kite with its spars, a tail of bows, and a string trailing away. */
+const kite = (cx, cy, s, fill, rot) => `<g transform="rotate(${rot} ${cx} ${cy})">
+<path d="M${cx} ${cy - s} L${cx + s * 0.78} ${cy} L${cx} ${cy + s * 1.15} L${cx - s * 0.78} ${cy} Z" fill="${fill}"/>
+<path d="M${cx} ${cy - s} L${cx} ${cy + s * 1.15} M${cx - s * 0.78} ${cy} Q${cx} ${cy - s * 0.35} ${cx + s * 0.78} ${cy}" stroke="#FFFFFF" stroke-width="2" fill="none" opacity="0.7"/>
+<path d="M${cx} ${cy + s * 1.15} q${-s * 0.2} ${s * 0.5} ${s * 0.05} ${s * 0.95}" stroke="#FFFFFF" stroke-width="1.5" fill="none" opacity="0.7"/>
+<path d="M${cx - 7} ${cy + s * 1.62} l7 4 l7 -4 l-7 -4z M${cx - 2} ${cy + s * 1.95} l6 4 l6 -4 l-6 -4z" fill="${fill}"/></g>`;
+
+const wheel = (cx, cy, r, colour) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colour}" stroke-width="${(r / 11).toFixed(1)}"/>
+${Array.from({ length: 24 }, (_, i) => { const a = (i / 24) * Math.PI * 2; return `<line x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}" stroke="${colour}" stroke-width="2"/>`; }).join("")}
+<circle cx="${cx}" cy="${cy}" r="${(r / 6).toFixed(1)}" fill="${colour}"/>`;
+
 export const OCCASION_ART = {
   diwali: { deep: "#2A0E3D", mid: "#7A1F3D", warm: "#FFC24D",
     art: `${rangoli(950, 250)}${diyas(520)}${bursts([[1080, 120, 44], [760, 96, 30]], ["#FFD27A", "#F5A524"])}` },
@@ -143,6 +192,83 @@ ${[0, 1, 2, 3].map((i) => `<rect x="740" y="${450 + i * 26}" width="440" height=
   internationalwomensday: { deep: "#3A0B57", mid: "#6A1B9A", warm: "#FFC7E0",
     art: `${[[900, 300], [1000, 260], [1100, 320]].map(([cx, cy], i) => `<circle cx="${cx}" cy="${cy}" r="${34 - i * 3}" fill="#FFC7E0" opacity="0.85"/><path d="M${cx - 44} ${cy + 96} q44 -56 88 0z" fill="#FFC7E0" opacity="0.6"/>`).join("")}
 <path d="M760 520 L900 452 L1020 486 L1160 396" stroke="#FFD166" stroke-width="5" fill="none" opacity="0.9"/>` },
+  /* ---- Indian festivals added with the intent work. Symbols only — no
+     deities are drawn, because a company page should not risk a depiction
+     that is subtly wrong. ---- */
+  navratri: { deep: "#2E0A3A", mid: "#8E1C5C", warm: "#F2B705",
+    art: `${bulbs(712, 1180, 64, 26, ["#F2B705", "#E0457B", "#2E9E5B", "#3AA0E0", "#FF7A1A"])}
+<circle cx="960" cy="300" r="150" fill="url(#glow)" opacity="0.45"/>
+<circle cx="960" cy="300" r="148" fill="none" stroke="#F2B705" stroke-width="2" opacity="0.55"/>
+${dotRing(960, 300, 148, 18, ["#F2B705", "#E0457B", "#2E9E5B", "#FF7A1A", "#3AA0E0", "#FFFFFF"], 9)}
+${petals(960, 300, [[100, 12, "#E0457B", 0.7], [62, 9, "#F2B705", 0.8], [30, 6, "#FF7A1A", 0.9]])}
+<circle cx="960" cy="300" r="14" fill="#FFFFFF" opacity="0.9"/>
+${[[-1, "#F2B705"], [1, "#FF7A1A"]].map(([d, c]) => `<g transform="rotate(${d * 34} 960 520)"><rect x="954" y="420" width="12" height="200" rx="6" fill="${c}"/>${[450, 520, 590].map((y, k) => `<rect x="952" y="${y}" width="16" height="9" rx="3" fill="${["#E0457B", "#2E9E5B", "#3AA0E0"][k]}"/>`).join("")}</g>`).join("")}` },
+  dussehra: { deep: "#2A0A0E", mid: "#7E1A14", warm: "#F5A524",
+    art: `${toran(704, 1184, 58)}
+<circle cx="960" cy="330" r="190" fill="url(#glow)" opacity="0.55"/>
+<path d="M900 196 Q1064 330 900 464" stroke="#FFC24D" stroke-width="9" fill="none" stroke-linecap="round"/>
+<path d="M900 196 L900 464" stroke="#F2E8CF" stroke-width="2" opacity="0.85"/>
+<path d="M846 330 L1088 330" stroke="#FFC24D" stroke-width="5" stroke-linecap="round"/>
+<path d="M1088 330 l-22 -12 l4 12 l-4 12z" fill="#FFC24D"/>
+<path d="M846 330 l-16 -12 M846 330 l-16 12 M862 330 l-16 -12 M862 330 l-16 12" stroke="#F2E8CF" stroke-width="3" opacity="0.85"/>
+${[[790, 520], [1130, 520]].map(([x, y]) => diya(x, y, 0.8)).join("")}` },
+  uttarayan: { deep: "#0B3C6E", mid: "#2F8FD6", warm: "#FFE08A",
+    art: `<circle cx="1110" cy="120" r="46" fill="#FFE08A" opacity="0.9"/><circle cx="1110" cy="120" r="90" fill="url(#glow)" opacity="0.6"/>
+${[[960, 210, 70, "#E0457B", -12], [1090, 330, 50, "#F2B705", 10], [840, 330, 44, "#2E9E5B", -20], [1010, 450, 36, "#FF7A1A", 6]].map(([cx, cy, sz, c, r]) =>
+      `<path d="M${cx} ${cy + sz * 1.15} q-30 ${140 - sz} -${150 - sz} ${330 - cy * 0.4}" stroke="#FFFFFF" stroke-width="1.2" fill="none" opacity="0.4"/>${kite(cx, cy, sz, c, r)}`).join("")}` },
+  ganeshchaturthi: { deep: "#3E1205", mid: "#A33A16", warm: "#FFD27A",
+    art: `${toran(704, 1184, 58, ["#F28C28", "#FFC24D"])}
+<circle cx="960" cy="380" r="170" fill="url(#glow)" opacity="0.5"/>
+<ellipse cx="960" cy="470" rx="150" ry="22" fill="#C9A227"/><ellipse cx="960" cy="464" rx="138" ry="16" fill="#E5C35A"/>
+${[[890, 432], [960, 418], [1030, 432]].map(([x, y]) => `<path d="M${x} ${y - 48} C${x + 34} ${y - 14} ${x + 36} ${y + 22} ${x} ${y + 26} C${x - 36} ${y + 22} ${x - 34} ${y - 14} ${x} ${y - 48} Z" fill="#F7E7CE"/><path d="M${x} ${y - 46} L${x} ${y + 24} M${x - 14} ${y - 26} Q${x - 18} ${y} ${x - 16} ${y + 22} M${x + 14} ${y - 26} Q${x + 18} ${y} ${x + 16} ${y + 22}" stroke="#D9C2A0" stroke-width="2" fill="none"/>`).join("")}
+${diya(1120, 520, 0.8)}${diya(800, 520, 0.8)}` },
+  rakshabandhan: { deep: "#3E0A26", mid: "#9C2257", warm: "#F2B705",
+    art: `<path d="M704 330 C800 290 860 370 960 330 S1120 290 1184 330" stroke="#C7332B" stroke-width="7" fill="none"/>
+<path d="M704 336 C800 296 860 376 960 336 S1120 296 1184 336" stroke="#F2B705" stroke-width="3" fill="none"/>
+<circle cx="960" cy="332" r="150" fill="url(#glow)" opacity="0.45"/>
+${petals(960, 332, [[96, 14, "#F2B705", 0.85], [62, 10, "#E0457B", 0.9], [32, 8, "#FFFFFF", 0.85]])}
+<circle cx="960" cy="332" r="16" fill="#C7332B"/>
+${[780, 840, 1080, 1140].map((x) => `<circle cx="${x}" cy="${x < 960 ? 318 : 318}" r="7" fill="#F2B705"/>`).join("")}` },
+  janmashtami: { deep: "#0A1A42", mid: "#1F4E9E", warm: "#F2B705",
+    art: `<circle cx="980" cy="300" r="180" fill="url(#glow)" opacity="0.35"/>
+<path d="M1040 540 C1010 420 990 300 1010 170" stroke="#2E9E5B" stroke-width="4" fill="none"/>
+${Array.from({ length: 16 }, (_, i) => { const t = i / 16; const y = 520 - t * 300; const x = 1036 - t * 30; return `<path d="M${x} ${y} q-60 -30 -96 -18 M${x} ${y} q60 -30 96 -18" stroke="#2E9E5B" stroke-width="1.6" fill="none" opacity="0.75"/>`; }).join("")}
+<ellipse cx="1010" cy="190" rx="62" ry="80" fill="#2E9E5B"/><ellipse cx="1010" cy="200" rx="40" ry="54" fill="#1BA3A0"/><ellipse cx="1010" cy="206" rx="24" ry="32" fill="#F2B705"/><ellipse cx="1010" cy="210" rx="13" ry="18" fill="#1F3A8A"/>
+<g transform="rotate(-24 900 430)"><rect x="740" y="420" width="330" height="22" rx="11" fill="#B07A2A"/>${[800, 850, 900, 950, 1000].map((x) => `<circle cx="${x}" cy="431" r="5" fill="#5E3113"/>`).join("")}<rect x="1010" y="418" width="14" height="26" fill="#F2B705"/></g>` },
+  onam: { deep: "#0C3A1C", mid: "#2E7D32", warm: "#F2B705",
+    art: `${petals(990, 320, [[140, 22, "#F2B705", 0.8], [110, 18, "#E0612B", 0.85], [82, 16, "#FFFFFF", 0.85], [54, 12, "#C7332B", 0.85], [28, 8, "#F2B705", 0.95]])}
+<circle cx="990" cy="320" r="14" fill="#E0612B"/>` },
+  pongal: { deep: "#4A1A08", mid: "#B0451A", warm: "#F2B705",
+    art: `<circle cx="1100" cy="130" r="44" fill="#F2B705"/>${Array.from({ length: 14 }, (_, i) => { const a = (i / 14) * Math.PI * 2; return `<line x1="${(1100 + Math.cos(a) * 58).toFixed(1)}" y1="${(130 + Math.sin(a) * 58).toFixed(1)}" x2="${(1100 + Math.cos(a) * 82).toFixed(1)}" y2="${(130 + Math.sin(a) * 82).toFixed(1)}" stroke="#F2B705" stroke-width="4" stroke-linecap="round"/>`; }).join("")}
+${[[810, -8], [1110, 8]].map(([x, r]) => `<g transform="rotate(${r} ${x} 560)">${[0, 1, 2, 3, 4].map((k) => `<rect x="${x - 7}" y="${300 + k * 52}" width="14" height="48" rx="4" fill="#4E8A2E"/>`).join("")}<path d="M${x} 300 q-40 -40 -70 -36 M${x} 300 q40 -50 64 -60" stroke="#6BB04A" stroke-width="5" fill="none"/></g>`).join("")}
+<path d="M880 330 Q960 280 1040 330 Q1004 352 960 350 Q916 352 880 330z" fill="#FFF8E7"/>
+<path d="M884 340 C860 420 880 520 960 530 C1040 520 1060 420 1036 340 Z" fill="#B5651D"/><path d="M890 372 C930 386 990 386 1030 372" stroke="#F2B705" stroke-width="5" fill="none"/>
+${[0, 1, 2, 3, 4, 5, 6].map((i) => `<circle cx="${850 + i * 36}" cy="580" r="4" fill="#FFFFFF" opacity="0.85"/>`).join("")}` },
+  lohri: { deep: "#140604", mid: "#4A1408", warm: "#FF8A1A",
+    art: `<circle cx="960" cy="420" r="210" fill="url(#glow)" opacity="0.65"/>
+<g transform="translate(960 540)"><rect x="-120" y="-10" width="240" height="22" rx="10" fill="#5E3113" transform="rotate(14)"/><rect x="-120" y="-10" width="240" height="22" rx="10" fill="#6E3B17" transform="rotate(-14)"/></g>
+<path d="M960 300 C1030 380 1050 450 1010 520 C990 470 980 450 960 430 C940 460 930 480 910 520 C870 450 890 380 960 300z" fill="#E0612B"/>
+<path d="M960 360 C1010 420 1016 470 990 520 C976 486 970 470 960 456 C950 476 944 490 930 520 C904 470 914 420 960 360z" fill="#F5A524"/>
+<path d="M960 420 C984 456 986 488 972 520 L948 520 C934 488 938 456 960 420z" fill="#FFE08A"/>
+${[[900, 250], [1010, 220], [960, 180], [1060, 290], [860, 300]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.5" fill="#FFD27A"/>`).join("")}` },
+  gurpurab: { deep: "#0C1A36", mid: "#1F3A6B", warm: "#F2B705",
+    art: `${Array.from({ length: 13 }, (_, i) => { const a = Math.PI + (i / 12) * Math.PI; return `<line x1="960" y1="300" x2="${(960 + Math.cos(a) * 260).toFixed(1)}" y2="${(300 + Math.sin(a) * 260).toFixed(1)}" stroke="#F2B705" stroke-width="2" opacity="0.18"/>`; }).join("")}
+<circle cx="960" cy="300" r="150" fill="url(#glow)" opacity="0.5"/>${diyas(520)}
+${[880, 960, 1040].map((x) => diya(x, 400, 0.7)).join("")}` },
+  durgapuja: { deep: "#330606", mid: "#8E1717", warm: "#F2B705",
+    art: `<circle cx="960" cy="300" r="190" fill="url(#glow)" opacity="0.35"/>
+${petals(990, 300, [[124, 20, "#FFFFFF", 0.85], [88, 16, "#FFFFFF", 0.6], [54, 12, "#F2B705", 0.85]])}
+${dotRing(990, 300, 160, 32, ["#FFFFFF"], 4)}<circle cx="990" cy="300" r="22" fill="#C7332B" stroke="#FFFFFF" stroke-width="4"/>
+<rect x="820" y="540" width="364" height="16" fill="#FFFFFF" opacity="0.9"/><rect x="820" y="560" width="364" height="10" fill="#C7332B"/>` },
+  republicday: { deep: "#0A1B33", mid: "#123A6B", warm: "#FF9933",
+    art: `${[["#FF9933", 240], ["#FFFFFF", 300], ["#138808", 360]].map(([c, y]) => `<path d="M830 ${y} C910 ${y - 34} 990 ${y + 34} 1070 ${y} S1160 ${y - 22} 1184 ${y - 14}" stroke="${c}" stroke-width="46" fill="none" opacity="0.92" stroke-linecap="round"/>`).join("")}
+<circle cx="1010" cy="300" r="40" fill="#FFFFFF"/>${wheel(1010, 300, 32, "#000080")}` },
+  indiaindependence: { deep: "#0A1B33", mid: "#123A6B", warm: "#FF9933",
+    art: `${[["#FF9933", 240], ["#FFFFFF", 300], ["#138808", 360]].map(([c, y]) => `<path d="M830 ${y} C910 ${y - 34} 990 ${y + 34} 1070 ${y} S1160 ${y - 22} 1184 ${y - 14}" stroke="${c}" stroke-width="46" fill="none" opacity="0.92" stroke-linecap="round"/>`).join("")}
+<circle cx="1010" cy="300" r="40" fill="#FFFFFF"/>${wheel(1010, 300, 32, "#000080")}
+${bursts([[1100, 120, 40], [820, 110, 30]], ["#FF9933", "#FFFFFF", "#138808"])}` },
+  independence: { deep: "#0B1740", mid: "#1B2A5B", warm: "#E8C766",
+    art: `${bursts([[960, 210, 90], [1110, 360, 62], [830, 340, 48]], ["#E8C766", "#FFFFFF", "#7C8CFF"])}` },
   default: { deep: "#0A0F1A", mid: "#1B2A5B", warm: "#7C8CFF",
     art: `${bursts([[1000, 260, 76], [1120, 400, 48]], ["#7C8CFF", "#39D3C7"])}` },
 };

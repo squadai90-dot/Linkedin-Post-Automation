@@ -46,6 +46,9 @@ const MODELS = {
 
 const DEFAULT_PROVIDER = KEYS.openai ? "openai" : KEYS.google ? "google" : null;
 const MAX_PROMPT = 3000;
+/* Vercel rejects a function response over 4.5 MB. Leave headroom for the JSON
+   around the image. */
+const RESPONSE_CEILING = 4.3 * 1024 * 1024;
 
 const fail = (res, status, code, message) => res.status(status).json({ ok: false, code, message });
 
@@ -92,6 +95,10 @@ export default async function handler(req, res) {
       ? await callOpenAI(spec, prompt, shape, controller.signal)
       : await callGoogle(spec, prompt, shape, controller.signal);
     clearTimeout(timer);
+    if (out.b64.length > RESPONSE_CEILING) {
+      return fail(res, 502, "too_large",
+        "The provider returned an image too large to pass back through this server (Vercel caps a response at 4.5 MB). Try again, or use a smaller shape.");
+    }
     return res.status(200).json({
       ok: true, provider, model: spec.model, shape,
       usd: spec.usd,
@@ -113,13 +120,19 @@ async function callOpenAI(spec, prompt, shape, signal) {
   const r = await fetch(spec.endpoint, {
     method: "POST", signal,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEYS.openai}` },
-    body: JSON.stringify({ model: spec.model, prompt, size: spec.sizes[shape], n: 1 }),
+    /* JPEG rather than the default PNG: a 1536×1024 PNG can approach Vercel's
+       4.5 MB response cap once base64-encoded; a quality-90 JPEG is a few
+       hundred kilobytes and indistinguishable once text is composited on it. */
+    body: JSON.stringify({
+      model: spec.model, prompt, size: spec.sizes[shape], n: 1,
+      ...(/^gpt-image/.test(spec.model) ? { output_format: "jpeg", output_compression: 90 } : {}),
+    }),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j?.error?.message || `OpenAI returned ${r.status}.`);
   const first = j?.data?.[0];
   if (!first?.b64_json) throw new Error("OpenAI returned no image data.");
-  return { b64: first.b64_json, mime: "image/png" };
+  return { b64: first.b64_json, mime: /^gpt-image/.test(spec.model) ? "image/jpeg" : "image/png" };
 }
 
 async function callGoogle(spec, prompt, shape, signal) {

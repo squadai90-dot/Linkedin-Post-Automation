@@ -489,5 +489,19 @@ export function templateDraft(i, { topic = "", company = "" } = {}) {
       needsDetail: true,
     };
   }
-  return null;
+  /* Anything else: a starter made only of the user's own topic. No sentence
+     here was written by a model or by this file, so nothing can be invented —
+     and an empty draft would leave the post with nothing to approve or
+     publish at all. The UI says plainly that this is a starter. */
+  const own = String(topic || "").replace(/\s+/g, " ").trim();
+  if (!own) return null;
+  return {
+    hook: /[.!?]$/.test(own) ? cap(own) : `${cap(own)}.`,
+    body: "",
+    cta: "",
+    hashtags: [],
+    claims: [],
+    template: "starter",
+    needsDetail: true,
+  };
 }

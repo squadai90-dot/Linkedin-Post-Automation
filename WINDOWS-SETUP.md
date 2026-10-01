@@ -79,14 +79,17 @@ Hold `Ctrl` and click that address, or paste it into your browser. Unison opens.
 ## 5. What works without any setup
 
 - Writing posts, choosing angles, the draft editor and approval flow
-- Branded images from Unison's own layouts, and the **Design from a template**
-  panel using those layouts
+- The **Design studio** in the Media step: festival, launch and milestone
+  designs drawn by Unison, with quick edits (words, colours, background, your
+  own picture, crop, layout, type) — all in the browser, no key needed
 - Storyboard video, rendered and encoded in your browser
 - Polls, the calendar, Content history, drafts
 - Everything saves in your browser automatically
 
-With nothing configured, AI text is labelled **sample text** and sources are
-labelled **placeholders**. That labelling is deliberate — it never pretends.
+With no AI configured, nothing is invented to fill the gap: research shows **no
+sources** and says why; a festival greeting, launch or milestone gets a
+labelled template that states no facts; anything else starts as **your own
+topic, word for word**, for you to write. Each case is labelled on screen.
 
 ---
 
@@ -116,29 +119,37 @@ RUNWAY_API_KEY=...        # video
 Running only `npm run dev` on your own machine, there is no server, so the AI
 artwork button stays disabled and says why. That is correct, not a fault.
 
-### Canva — brand template designs (needs Canva Enterprise)
+### Canva — edit designs in Canva, bring them back (any Canva plan)
 
-1. Create an integration at <https://www.canva.com/developers/integrations>.
+1. Create an integration at <https://www.canva.com/developers/integrations>
+   (or use the one you already have — nothing in it needs to change).
 2. Add your Unison address as an **authorised redirect URL**.
 3. Deploy the project so `api/canva.js` is running. **Canva cannot be connected
    from `npm run dev` alone** — OAuth needs a backend.
-4. Set on the server:
+4. Set on the server, then redeploy:
 
    ```
    CANVA_CLIENT_ID=...
    CANVA_CLIENT_SECRET=...
    CANVA_REDIRECT_URI=https://your-address/
+   CANVA_SESSION_SECRET=...   # recommended: any long random string
    ```
 
-5. In Unison: **Settings → AI → Connect Canva**.
+5. In Unison: **Settings → AI → Connect Canva**. Each person does this once.
 
-For local development only, the same three values can be typed into Settings
-and held **in the server's memory** — gone when it restarts. On a deployed
-instance that is refused unless `UNISON_RELAY_TOKEN` is set, so nobody can point
-your relay at their own Canva account.
+Then, in the Media step: **Edit in Canva** opens the design in Canva's editor;
+**Bring back my Canva edits** fetches it as it now stands; **Use one of my
+Canva designs** brings in anything from your account. Optional: turn on
+*Return navigation* in the Developer Portal so Canva sends you straight back —
+see [VERCEL-SETUP.md](VERCEL-SETUP.md), step 6.
 
-Brand templates and autofill are Canva **Enterprise** features. On a free or
-ordinary paid account, Canva returns 403 and Unison shows you Canva's message.
+Filling your **brand templates** automatically (Autofill) is a Canva
+**Enterprise** feature. On other accounts Canva returns 403 and Unison says so;
+everything else above still works.
+
+For local development only, the three values can be typed into Settings and
+held in the server's memory — gone when it restarts. On a deployed instance
+that is refused unless `UNISON_RELAY_TOKEN` is set.
 
 ---
 
@@ -148,7 +159,7 @@ ordinary paid account, Canva returns 403 and Unison shows you Canva's message.
 npm run lint        # code checks
 npm test            # unit and integration tests
 npm run build       # production build
-npm run test:e2e    # full browser tests (slower, ~4 minutes)
+npm run test:e2e    # full browser tests (slower, about 6 minutes)
 ```
 
 > Run the browser tests with **`npm run test:e2e`**, not `npx playwright test`.
@@ -176,4 +187,6 @@ That writes `unison-content-os.html`. It contains no API key.
 | `EADDRINUSE: address already in use` | Something else is on that port. Stop the other window, or run `npm run dev -- --port 5174`. |
 | The AI artwork button is greyed out | No server, or no key on it. Expected with `npm run dev`. |
 | Canva says *"No backend is deployed here"* | Correct for a local run or the standalone file. Canva needs `api/canva.js`. |
-| A post says **sample text** | No AI key configured. Settings → AI. |
+| The draft says it is **only your topic** | No AI was reachable. On your own machine: Settings → AI. Deployed: set `GROQ_API_KEY` on the server and redeploy (see VERCEL-SETUP.md). |
+| Settings → AI → **Deployment check** shows a red row | That server variable is missing or wrong. The row names it and says what to do. |
+| Canva says *"Connect Canva first"* | Each person connects once — Settings → AI → Connect Canva. |

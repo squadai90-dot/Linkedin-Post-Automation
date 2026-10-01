@@ -16,6 +16,8 @@
      labelled alternative rather than substituted behind the user's back.
    ============================================================ */
 
+import { validateMedia } from "./mediacheck.js";
+
 const IMAGE_PATH = (typeof window !== "undefined" && window.UNISON_IMAGE_API) || "/api/image";
 const VIDEO_PATH = (typeof window !== "undefined" && window.UNISON_VIDEO_API) || "/api/video";
 
@@ -88,6 +90,27 @@ async function post(path, body, signal) {
   return j;
 }
 
+/* A binary answer from a relay: the file on success, the relay's own JSON
+   explanation on failure. */
+async function download(path, body, signal) {
+  let r;
+  try {
+    r = await fetch(path, {
+      method: "POST", signal,
+      headers: { "Content-Type": "application/json", ...relayHeaders() },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
+    throw new GenError("Could not reach the generation service to fetch the finished file.", "offline");
+  }
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new GenError(j?.message || `The service answered ${r.status} when fetching the file.`, j?.code || String(r.status));
+  }
+  return r.blob();
+}
+
 /* ---------- images ---------- */
 
 export async function generateArtwork({ prompt, shape = "wide", provider, signal } = {}) {
@@ -108,9 +131,9 @@ export async function generateArtwork({ prompt, shape = "wide", provider, signal
    so the UI can show something truthful rather than a spinner that never
    explains itself. */
 
-export async function generateClip({ prompt, seconds = 8, provider, imageB64, signal, onState, pollMs = 5000, maxWaitMs = 8 * 60 * 1000 } = {}) {
+export async function generateClip({ prompt, seconds = 8, provider, imageB64, imageMime, signal, onState, pollMs = 5000, maxWaitMs = 8 * 60 * 1000 } = {}) {
   if (!prompt || prompt.length < 8) throw new GenError("There is no prompt to generate from.", "bad_prompt");
-  const started = await post(VIDEO_PATH, { prompt, seconds, provider, imageB64 }, signal);
+  const started = await post(VIDEO_PATH, { prompt, seconds, provider, imageB64, imageMime }, signal);
   onState?.({ state: "running", id: started.id, usd: started.usd, provider: started.provider });
 
   const deadline = Date.now() + maxWaitMs;
@@ -122,9 +145,19 @@ export async function generateClip({ prompt, seconds = 8, provider, imageB64, si
     await new Promise((r) => setTimeout(r, pollMs));
     const s = await post(VIDEO_PATH, { action: "status", id: started.id, provider: started.provider }, signal);
     if (s.state === "done") {
+      /* "Done" at the provider is not a video yet. The file is fetched through
+         the relay (which holds the key), then checked by its own bytes and
+         decoded by this browser before it is offered for approval. */
+      onState?.({ state: "downloading" });
+      const blob = await download(VIDEO_PATH, { action: "download", id: started.id, provider: started.provider }, signal);
+      onState?.({ state: "validating" });
+      let checked;
+      try { checked = await validateMedia(blob, { expect: "video", label: "generated video" }); } catch (e) { throw new GenError(e.message, e.code); }
       onState?.({ state: "done" });
       return {
-        b64: s.b64, mime: s.mime || "video/mp4", bytes: s.bytes,
+        blob: checked.blob, url: checked.url, mime: checked.mime, bytes: checked.bytes,
+        width: checked.width, height: checked.height, duration: checked.duration,
+        sourceUrl: s.sourceUrl || null,
         provider: started.provider, model: started.model, usd: started.usd,
         seconds: started.seconds, generated: true, source: "ai",
       };

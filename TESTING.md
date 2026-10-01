@@ -10,6 +10,50 @@ Labels: **PASS** actually tested end to end, with the id LinkedIn returned ·
 **FAIL** tested and failed · **BLOCKED** cannot be tested here, with the
 reason · **NOT TESTED** no test was performed.
 
+## 1 October 2026 — production audit round
+
+What this round changed and how it was tested is in **AUDIT.md**. In short,
+run on the final code in this environment, with **every provider mocked** —
+no call reached Groq, OpenAI, Google, Runway, Canva, Make or LinkedIn, and
+none of the results below is a live provider test:
+
+| Suite | Result |
+|---|---|
+| `npm run lint` | 0 errors |
+| `npm test` (unit, relay, contract) | 598 passed (25 files) |
+| `npm run test:e2e` (desktop + mobile) | 65 passed, 0 failed (63 desktop, 2 mobile-only) |
+| Protected `tests/publish-contract.test.js` | 8 / 8, file unchanged |
+| Protected `e2e/publish-payload.spec.js` | passes, file unchanged |
+
+The four required scenarios, in `e2e/studio.spec.js` (real built app, real
+Chromium, relays mocked):
+
+| Scenario | What is asserted |
+|---|---|
+| Navratri greeting | Brief names Navratri and "a greeting, not a sales message"; options are exactly Elegant traditional / Premium corporate / Colourful celebratory / Modern minimal, all labelled Unison designs; the motif is drawn; headline, colour, alignment and typeface edits change the actual SVG; edits survive switching option, switching the post's intent and reloading; nothing is attached until "Use this design"; a later edit is flagged as not yet attached |
+| Diwali greeting | Diwali's own designs and greeting; the brief rules out offers |
+| Product launch | Product spotlight first; the product name and "Introducing" on the design; an uploaded picture placed in the panel and re-cropped by zoom |
+| Company milestone | Big number from the topic ("10", "YEARS"); nothing invented when no number exists (unit test) |
+
+Canva and video, same spec: the Canva round trip (raw-byte upload, a design of
+the right size, the editor opened with a return marker, the return JWT picked
+up, the design **exported without refilling**), a brand-template refusal
+explained, a non-image file refused, a Canva MP4 played with its real
+duration and attached, a design that cannot be MP4 refused, AI footage
+generated → downloaded → validated → played, AI "footage" that is not a video
+refused, and missing video keys named.
+
+The video fixture is a real 2.2-second MP4 recorded by this Chromium, so the
+duration check is real.
+
+Expectations changed this round, because the product's behaviour changed on
+purpose: `e2e/groq.spec.js` (unverified and placeholder sources are no longer
+shown at all), `e2e/journey.spec.js` (no placeholder research; the no-AI draft
+is the user's own topic), `e2e/canva.spec.js` (replaced by
+`e2e/studio.spec.js`).
+
+---
+
 ## Final state of every post type
 
 Tested **2026-09-25** on the live **Unison Content OS Test** page
@@ -367,6 +411,13 @@ named as the user's own document, in the writer's prompt.
 Covered by `e2e/source-document.spec.js` and `tests/doc.test.js`.
 
 ## Canva designs, and the publishing contract they must not touch
+
+> **Superseded in part on 1 October 2026.** Rows 76 and 101 describe the
+> earlier relay, which kept sessions in function memory and handed the browser
+> a session id. That design could not survive Vercel (each request may run on
+> a different instance), so sessions now live in an encrypted HttpOnly cookie
+> and the browser holds no session id at all. The current tests are listed in
+> "1 October 2026 — production audit round" at the top of this file.
 
 **No live Canva call was made, and none could be:** this environment's network
 policy denies `api.canva.com` and `www.canva.com` (the egress proxy answers 000

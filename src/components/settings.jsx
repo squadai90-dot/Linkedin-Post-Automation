@@ -6,7 +6,8 @@ import { TIMEZONES, localTimezone } from "../lib/dates.js";
 import { FREE_APIS, DEFAULT_EXTRAS } from "../lib/freeApis.js";
 import { defaultRedirectUri, authorizationUrl, isLinkedInConfigured, isBridgeConfigured } from "../lib/linkedinAuth.js";
 import { checkDeployment } from "../lib/diagnostics.js";
-import { canvaStatus, configureCanva, connect as canvaConnect, disconnect as canvaDisconnect, connectionState, onCanvaChange, defaultCanvaRedirect, loadCanvaPrefs, saveCanvaPrefs } from "../lib/canva.js";
+import { getRelayToken, setRelayToken } from "../lib/store.js";
+import { canvaStatus, configureCanva, connect as canvaConnect, disconnect as canvaDisconnect, connectionState, onCanvaChange, refreshConnection, defaultCanvaRedirect, loadCanvaPrefs, saveCanvaPrefs } from "../lib/canva.js";
 
 /* ---------- settings ----------
    Six tabs, plain language, nothing a marketer has to guess at. Anything
@@ -55,7 +56,10 @@ function CanvaCard({ notify }) {
   const [authUrl, setAuthUrl] = useState("");
 
   const reload = useCallback(async () => setInfo(await canvaStatus({ fresh: true })), []);
-  useEffect(() => { canvaStatus().then(setInfo); return onCanvaChange(setConn); }, []);
+  useEffect(() => {
+    canvaStatus().then((i) => { setInfo(i); if (i?.present) refreshConnection(); });
+    return onCanvaChange(setConn);
+  }, []);
 
   const save = async () => {
     setBusy("saving");
@@ -132,6 +136,21 @@ function CanvaCard({ notify }) {
               <span className="mono"> CANVA_REDIRECT_URI</span> in the environment instead.
             </div>
           )}
+          {info.configured && (
+            <details className="brief" style={{ marginBottom: 12 }} data-testid="canva-return-setup">
+              <summary>Bring designs back automatically after editing in Canva (one-time setup)</summary>
+              <div style={{ fontSize: 13, lineHeight: 1.65 }}>
+                In the <a href="https://www.canva.com/developers/integrations" target="_blank" rel="noreferrer">Canva Developer Portal</a>, open your integration,
+                go to <b>Outside Canva → Configuration</b>, turn on <b>Return navigation</b>, and set the <b>Return URL</b> to:
+                <div className="row" style={{ margin: "8px 0" }}>
+                  <span className="mono" style={{ wordBreak: "break-all" }}>{defaultCanvaRedirect()}</span>
+                  <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(defaultCanvaRedirect()); notify("Return URL copied."); }}>Copy</button>
+                </div>
+                Then, when you press <b>Return</b> in Canva's editor, you land back in Unison and the edited design is fetched for you.
+                Without it, editing still works — come back to this tab and press <b>Bring back my Canva edits</b>.
+              </div>
+            </details>
+          )}
 
           <div className="row">
             {conn.connected
@@ -187,6 +206,7 @@ function DeploymentCheck() {
           AI calls use the key saved in this browser below. Deployed to Vercel, keys belong in the project's environment variables instead.
         </div>
       )}
+      <RelayTokenField onSaved={run} />
       {res?.deployed && res.rows.map((r) => (
         <div key={r.id} className="setrow" style={{ alignItems: "flex-start" }} data-testid={`check-${r.id}`} data-state={r.state}>
           <div style={{ minWidth: 0 }}>
@@ -199,6 +219,26 @@ function DeploymentCheck() {
         </div>
       ))}
     </div>
+  );
+}
+
+/* Only needed when UNISON_RELAY_TOKEN is set on the server: every relay then
+   refuses calls that do not carry it. Kept in this browser only. */
+function RelayTokenField({ onSaved }) {
+  const [val, setVal] = useState(() => getRelayToken());
+  const [saved, setSaved] = useState(false);
+  return (
+    <details className="brief" style={{ margin: "4px 0 10px" }} data-testid="relay-token">
+      <summary>Relay token — only if <span className="mono">UNISON_RELAY_TOKEN</span> is set on the server{getRelayToken() ? " · saved in this browser" : ""}</summary>
+      <div className="row" style={{ marginTop: 8 }}>
+        <input className="ta" type="password" autoComplete="off" style={{ flex: 1, minWidth: 200 }} value={val} onChange={(e) => { setVal(e.target.value); setSaved(false); }} aria-label="Relay token" placeholder="The same value as UNISON_RELAY_TOKEN" />
+        <button className="btn sm" onClick={() => { setRelayToken(val); setSaved(true); onSaved?.(); }}>Save</button>
+        {getRelayToken() && <button className="btn sm" onClick={() => { setRelayToken(""); setVal(""); setSaved(true); onSaved?.(); }}>Clear</button>}
+      </div>
+      <div className="u-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+        {saved ? "Saved. Reload the page so every part of the app uses it." : "Stored in this browser only, sent as a header to this deployment's own functions, and never included in exports or the saved session."}
+      </div>
+    </details>
   );
 }
 
