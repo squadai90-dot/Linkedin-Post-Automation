@@ -9,3 +9,6 @@ dist-artifact
 preview.html
 unison-content-os.html
 unison-content-os-project.zip
+# The packaged deliverable. Built from the tracked source by `git archive`, so
+# committing it would store a second copy of the repository inside itself.
+Unison-Content-OS-Final-Project.zip
