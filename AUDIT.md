@@ -43,7 +43,7 @@ again after the last one:
 | `src/lib/linkedinAuth.js` | `496015c26e2f5307…` | **No** |
 | `src/lib/media.js` | `c6017abfcefca42d…` | **No** |
 | `src/lib/image.js` | `9c26dbeed60e1ae4…` | **No** |
-| `api/publish.js` | `fa9d7f81282f4e87…` | **No** |
+| `api/publish.js` | `fa9d7f81282f4e87…` → `307b6f24dfaed2e9…` | **Yes, on 5 Oct — one header, see §9** |
 | `api/linkedin.js` | `7e20a9a46b8b7184…` | **No** |
 | `tests/publish-contract.test.js` | `aafbca7cbe7fc64b…` | **No** |
 | `e2e/publish-payload.spec.js` | `2305b90c…` | **No** |
@@ -197,7 +197,7 @@ The video fixture is a real 2.2-second MP4 recorded by the same Chromium, so
 | Groq / Anthropic | Request shape, parsing, errors — mocked | **No.** Run Settings → AI → Test connection on the deployment |
 | Canva OAuth, templates, Autofill, designs, uploads, exports | Every call mocked at `/api/canva`; relay unit-tested with Canva mocked | **No.** Canva is unreachable from here. The production connection has **not** been verified |
 | OpenAI / Imagen / Veo / Runway | Mocked | **No.** Needs keys and a paid call |
-| LinkedIn via Make | Mocked webhook; payload contract | Previously live-tested on 25 Sep 2026 (TESTING.md); not re-run, because publishing did not change |
+| LinkedIn via Make | Mocked webhook; payload contract | Live-tested on 25 Sep 2026 through the **browser** path only (TESTING.md). The Vercel relay path was never live-tested and was broken — see §9 |
 
 ---
 
@@ -245,3 +245,41 @@ The video fixture is a real 2.2-second MP4 recorded by the same Chromium, so
   image generation times out on a Hobby plan.
 - **Live verification** — §6. Nothing in this report claims the deployed
   integration works against the real services until those checks are done.
+
+---
+
+## 9. 5 October 2026 — publishing from the Vercel deployment failed (fixed)
+
+**Symptom.** A scheduled image post from `unison-content-os.vercel.app` showed
+*"LinkedIn refused the post — The publishing workflow rejected the post
+(500)"*. Three attempts, 11:13–11:15 UTC.
+
+**What Make recorded.** Scenario *Unison LinkedIn Publisher* (7482325): three
+failed executions, each `BundleValidationError: Validation failed for 1
+parameter(s)` after 2 operations — the webhook and the Parse JSON step. No
+LinkedIn module ran, and the data store holds no record for the post
+(`p-w-muv5ejfe4ref`), so nothing was published or queued.
+
+**Cause.** The scenario's first step parses `{{1.value}}`: the raw body Make
+exposes for a `text/plain` request. The browser path has always sent
+`text/plain`, and every earlier live post went that way. On Vercel, posts go
+through `api/publish.js`, which forwarded them as `application/json`. With
+the webhook's JSON pass-through off, Make splits a JSON body into fields,
+`value` is empty, Parse JSON fails validation, and Make answers 500. So
+**every post sent through the Vercel relay failed**, whatever its type; the
+message text in the screenshot is the relay's own wording, which identifies
+the path. The relay had never been live-tested; the 25 September live tests
+used the browser path.
+
+**Fix.** One header in `api/publish.js`: forward the same JSON text as
+`text/plain;charset=UTF-8`, exactly as the browser path does. Payload, webhook,
+scenario, data store, LinkedIn connection and every other publishing file are
+unchanged. The Make scenario was **not** modified.
+
+**Tests.** New `tests/publish-relay.test.js` (6) pins the relay to the
+scenario: scenario A parses `{{1.value}}`; the relay sends `text/plain`; the
+body is the whole payload as JSON text; replies and refusals pass through as
+before. Two of them fail on the old code and pass on the fix. Full unit suite
+604 passed; publishing browser tests (`publish-payload`, `content-times`) 11
+passed. Make is mocked in all of these — **the fix is confirmed only when one
+post from the redeployed site succeeds.**

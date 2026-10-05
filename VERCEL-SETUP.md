@@ -206,4 +206,5 @@ Unison's fields, so nothing done in Canva is overwritten.
 | Canva: "needs Enterprise" on Autofill | Brand templates are Enterprise-only | Use a Unison design + **Edit in Canva**, or **Use one of my Canva designs** |
 | Canva returns to the app but nothing happens | Return navigation not set, or the Unison tab was closed | Press **Bring back my Canva edits** |
 | "Canva says this design cannot be exported as an MP4" | The chosen design is not a video design | Open it in Canva and make it a video, or choose another |
+| Publishing: "The publishing workflow rejected the post (500)" | Deployments before 5 Oct 2026 forwarded posts to Make in a format the scenario cannot read | Redeploy from the current `main`; nothing in Make needs changing (AUDIT.md §9) |
 | AI artwork / footage buttons disabled | No provider key on the server | Optional — add `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `RUNWAY_API_KEY` and redeploy |

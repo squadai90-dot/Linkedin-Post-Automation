@@ -142,11 +142,19 @@ export default async function handler(req, res) {
 
   let upstream;
   try {
-    /* Server to server: real application/json, no CORS, no preflight. The
-       payload is forwarded whole — text, media, poll, company, schedule. */
+    /* Server to server, so there is no CORS and no preflight. The payload is
+       forwarded whole — text, media, poll, company, schedule — as the JSON
+       text, labelled text/plain, exactly as the browser path sends it.
+
+       The label matters. The scenario's first step parses {{1.value}}, the
+       raw body Make exposes for a text/plain request. Sent as
+       application/json, Make splits the body into fields instead, `value`
+       is empty, the parse step fails validation, and Make answers 500 before
+       any LinkedIn module runs — every post through this relay failed that
+       way. Its webhook's JSON pass-through is off, so this must stay text. */
     upstream = await fetch(WEBHOOK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Unison-Idempotency-Key": key },
+      headers: { "Content-Type": "text/plain;charset=UTF-8", "X-Unison-Idempotency-Key": key },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });

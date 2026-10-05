@@ -10,6 +10,22 @@ Labels: **PASS** actually tested end to end, with the id LinkedIn returned ·
 **FAIL** tested and failed · **BLOCKED** cannot be tested here, with the
 reason · **NOT TESTED** no test was performed.
 
+## 5 October 2026 — publishing through the Vercel relay
+
+Publishing from the deployed site failed with "rejected the post (500)". Make
+showed the Parse JSON step failing on `{{1.value}}`, because the relay sent
+`application/json` and the scenario reads the `text/plain` body. Fixed in
+`api/publish.js` (one header); details in AUDIT.md §9.
+
+| Check | Result |
+|---|---|
+| `tests/publish-relay.test.js` (new) | 6 passed; 2 of them fail on the old relay |
+| `npm test` | 604 passed |
+| `e2e/publish-payload.spec.js` + `e2e/content-times.spec.js` | 11 passed |
+| Live post from the redeployed site | **NOT TESTED** — Make and Vercel are unreachable from this environment |
+
+---
+
 ## 1 October 2026 — production audit round
 
 What this round changed and how it was tested is in **AUDIT.md**. In short,
