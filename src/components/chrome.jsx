@@ -215,6 +215,20 @@ export function Rail({ index, active, started, fmt }) {
   );
 }
 
+export function ResumeRail({ idea, step, index, total, onResume }) {
+  if (!idea) return <div className="rail" aria-hidden="true" />;
+  return (
+    <div className="rail">
+      <div className="eyebrow" style={{ marginBottom: 10 }}>In progress</div>
+      <button className="resume" onClick={onResume}>
+        <span className="resume-t">{idea}</span>
+        <span className="u-muted" style={{ fontSize: 12 }}>Step {Math.min(index + 1, total)} of {total} · {STAGE_LABEL[step] || "Research"}</span>
+        <span className="resume-go">Continue →</span>
+      </button>
+    </div>
+  );
+}
+
 export function MobileRail({ index, stages }) {
   const list = stages || FORMAT_BY_ID.text.stages;
   return (

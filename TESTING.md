@@ -10,6 +10,36 @@ Labels: **PASS** actually tested end to end, with the id LinkedIn returned ·
 **FAIL** tested and failed · **BLOCKED** cannot be tested here, with the
 reason · **NOT TESTED** no test was performed.
 
+## 6 October 2026 — usability pass (one post image)
+
+What changed is in AUDIT.md §10. Run against the production build in real
+Chromium; Make, Canva and the AI providers mocked. **Nothing was posted to
+LinkedIn in this round.**
+
+| Check | Result |
+|---|---|
+| `npx vitest run` | 618 passed, 0 failed (27 files) — includes 14 new in `tests/postimage.test.js` |
+| `npm run test:e2e` (desktop + mobile) | 66 passed, 0 failed (64 desktop, 2 mobile-only) |
+| Protected `e2e/publish-payload.spec.js` | passes, file unchanged |
+| Protected files (`api/`, `make/`, `src/lib/publish.js`, `linkedin*.js`, `media.js`, `image.js`, `publish-contract` / `publish-relay` tests) | no diff against the previous commit; hashes match the recorded baseline |
+| Publishing functions inside `src/App.jsx` | byte-identical to the baseline (15 functions, hashed) |
+
+What the new tests prove, in `e2e/studio.spec.js` and `tests/postimage.test.js`:
+
+| Behaviour | Asserted |
+|---|---|
+| One post image | Exactly one `.svgframe img` on the page before and after choosing a design and after a Canva return; it is labelled "This is the image that will be posted" |
+| Choosing replaces | Choosing a design moves **In use** to it, writes it to `images[0]`, clears any file; switching designs keeps one picture; the generated picture can be chosen again |
+| Edits change the post image | Headline, colour, alignment and typeface edits change the attached SVG itself (not a preview); they survive switching design and a reload, and the LinkedIn preview shows the same words |
+| Publishing a chosen design | Approve → Publish now sends one `image/png`, 1200 × 630, built from the edited design |
+| Canva round trip | Edit in Canva sends the post image; on return the export **becomes** the post image ("Edited in Canva", "It is the post's image"), never refilled; choosing a Unison design afterwards replaces it, and the Canva version is one click away in the grid |
+| Refusals | A non-image "export" and a design that cannot be MP4 leave the post image unchanged |
+| Video | A Canva MP4 and AI footage become the post's video when they arrive; *Use the Unison storyboard* puts the storyboard back |
+| Agreement with publishing | Unit test reads `collectMedia` and checks it still prefers an attached file, then `images[0]` — the rule the panel mirrors |
+
+Found and fixed on the way: the hidden composition editor was replacing the
+generated picture with its default layout as soon as it mounted (AUDIT.md §10).
+
 ## 5 October 2026 — publishing through the Vercel relay
 
 Publishing from the deployed site failed with "rejected the post (500)". Make
@@ -46,7 +76,7 @@ Chromium, relays mocked):
 
 | Scenario | What is asserted |
 |---|---|
-| Navratri greeting | Brief names Navratri and "a greeting, not a sales message"; options are exactly Elegant traditional / Premium corporate / Colourful celebratory / Modern minimal, all labelled Unison designs; the motif is drawn; headline, colour, alignment and typeface edits change the actual SVG; edits survive switching option, switching the post's intent and reloading; nothing is attached until "Use this design"; a later edit is flagged as not yet attached |
+| Navratri greeting | Brief names Navratri and "a greeting, not a sales message"; options are exactly Elegant traditional / Premium corporate / Colourful celebratory / Modern minimal, all labelled Unison designs; the motif is drawn; headline, colour, alignment and typeface edits change the actual SVG; edits survive switching option, switching the post's intent and reloading. *(Since 6 October: choosing a design makes it the post image and edits change it in place — see the 6 October section.)* |
 | Diwali greeting | Diwali's own designs and greeting; the brief rules out offers |
 | Product launch | Product spotlight first; the product name and "Introducing" on the design; an uploaded picture placed in the panel and re-cropped by zoom |
 | Company milestone | Big number from the topic ("10", "YEARS"); nothing invented when no number exists (unit test) |

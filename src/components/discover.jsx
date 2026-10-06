@@ -9,7 +9,7 @@ export function Discover({ opps, busy, rerun, start, profile, setProfile }) {
   const items = (opps?.items || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
   return (
     <div style={{ paddingTop: 48 }}>
-      <div className="sec-h"><span className="num">01</span><h2 className="disp">Discover</h2><span className="eyebrow">Opportunity engine</span></div>
+      <div className="sec-h"><h2 className="disp">Discover</h2><span className="eyebrow">Ideas worth posting</span></div>
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="row" style={{ justifyContent: "space-between" }}>

@@ -16,7 +16,7 @@ import { imageCapabilities } from "./lib/aigen.js";
 import { svgToPng } from "./lib/brand.js";
 import { createMediaEngine, containerOf, extensionOf, VIDEO_PROFILES } from "./lib/media.js";
 import { CursorField } from "./components/ambient.jsx";
-import { Header, MobileRail, Rail } from "./components/chrome.jsx";
+import { Header, MobileRail, Rail, ResumeRail } from "./components/chrome.jsx";
 import { Toasts } from "./components/toast.jsx";
 import { setBrandText } from "./lib/brand.js";
 import { nextSlot, localTimezone } from "./lib/dates.js";
@@ -1929,9 +1929,14 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
       )}
 
       {bg3d && <Suspense fallback={null}><PipelineScene theme={theme} level={0.16} /></Suspense>}
-      {idea && <MobileRail index={railIndex} stages={fmt.stages} />}
+      {idea && view === "workspace" && <MobileRail index={railIndex} stages={fmt.stages} />}
       <div className="wrap">
-        <Rail index={railIndex} active={busy} started={!!idea} fmt={fmt} />
+        {/* The steps belong to the post being made. Elsewhere the same column
+            offers the way back to it, rather than steps that mean nothing on
+            a calendar. */}
+        {view === "workspace"
+          ? <Rail index={railIndex} active={busy} started={!!idea} fmt={fmt} />
+          : <ResumeRail idea={idea} step={fmt.stages[Math.min(railIndex, fmt.stages.length - 1)]} index={railIndex} total={fmt.stages.length} onResume={() => setView("workspace")} />}
         <main>
           {view === "home" && (
             <Dashboard

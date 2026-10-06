@@ -9,6 +9,7 @@ import { drawScene } from "../lib/scenes.js";
 import { SCENE_SECONDS, videoProvider, extensionOf } from "../lib/media.js";
 import { ImageStudio } from "./imagestudio.jsx";
 import { DesignStudio } from "./studio.jsx";
+import { generatedImage, currentVideo, storyboardOf, storyboardPatch, keepStoryboardPatch } from "../lib/postimage.js";
 
 /* ============================================================
    MEDIA UI — one panel per format, all driven by the media engine
@@ -149,10 +150,6 @@ export async function saveAsset(svg, name, w, h) {
     downloadBlob(svg, name + ".svg", "image/svg+xml");
   }
 }
-async function saveUrlAsset(url, name) {
-  try { const blob = await fetch(url, { mode: "cors" }).then((r) => r.blob()); downloadBlob(blob, name + ".jpg"); }
-  catch { window.open(url, "_blank", "noopener"); }
-}
 
 /* ---------- image ---------- */
 
@@ -216,7 +213,7 @@ function StylePicker({ value, onChange, resolved, caps, busy }) {
           : STYLES.find((s) => s.id === value)?.note}
         {configured
           ? <> {typeof price === "number" ? `AI artwork costs about $${price.toFixed(3)} an image.` : "AI artwork is available."}</>
-          : <> AI artwork is off — {caps?.reason || "no key is set on the server"}. Unison's own renderer is used instead.</>}
+          : <> AI artwork is off — {String(caps?.reason || "no key is set on the server").replace(/\.+$/, "")}. Unison's own renderer is used instead.</>}
       </div>
     </div>
   );
@@ -224,79 +221,67 @@ function StylePicker({ value, onChange, resolved, caps, busy }) {
 
 export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle = "auto", setVisualStyle, genState, gen, patchAssets, attachUpload, prototypeNote, draft, profile, extras = {}, notify, topic, intent, workId }) {
   const [variant, setVariant] = useState(0);
-  /* The design studio below is where most designs are now made, so this
-     older editor for the generated picture starts closed. */
-  const [studioOpen, setStudioOpen] = useState(false);
-  const img = assets.images[0];
-  const fileRef = useRef(null);
+  const g = generatedImage(assets);
   const busyGen = mstate.image?.status === "generating";
   const resolved = resolveStyle(visualStyle, classify({ hook: draft?.hook, body: draft?.body, cta: draft?.cta }), { hook: draft?.hook, body: draft?.body });
-  return (
-    <div className="card">
-      <div className="eyebrow" style={{ marginBottom: 10 }}>Post image</div>
-      <TaskState
-        state={mstate.image} idleLabel="Generate image" busyLabel="Generating image…"
-        onRun={() => { const v = variant + 1; setVariant(v); makeImage(v); }}
-        extra={<>
-          {img && <button className="btn sm" onClick={() => makeImage(variant + 2)}>Another variation</button>}
-          {makeAiImage && (
-            <button
-              className={"btn sm " + (gen?.image?.configured ? "acc" : "")}
-              disabled={busyGen || !gen?.image?.configured}
-              title={gen?.image?.configured ? "Generate artwork with AI, then add the approved words over it" : gen?.image?.reason || "Not configured on the server"}
-              onClick={() => makeAiImage(visualStyle)}
-            >{busyGen ? (genState?.step || "Generating…") : "Generate artwork (AI)"}</button>
-          )}
-          <button className="btn sm" onClick={() => fileRef.current?.click()}>Upload your own</button>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) attachUpload(f); e.target.value = ""; }} />
-          {img && <button className="btn sm" onClick={() => (img.kind === "url" ? saveUrlAsset(img.url, "unison-image") : saveAsset(img.svg, "unison-image", 1200, 630))}>Download</button>}
-          {(img || assets.upload) && <button className="btn sm" onClick={() => patchAssets({ images: [], upload: null, canvaDesign: null })}>Remove</button>}
-        </>}
-      />
-      {setVisualStyle && <StylePicker value={visualStyle} onChange={setVisualStyle} resolved={resolved} caps={gen?.image} busy={busyGen} />}
+  const another = () => { const v = variant + 1; setVariant(v); makeImage(v); };
+
+  /* The generated picture's own controls. Each makes a new picture, and a
+     new picture becomes the post image — so they sit with the other ways of
+     making one, not beside the picture as if they edited it. */
+  const tools = (
+    <div data-testid="generated-tools">
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Generate a new image</div>
+      <div className="u-muted" style={{ fontSize: 12.5, marginBottom: 10 }}>Unison draws a new picture from your post. It becomes the post image, and the “Generated” design under “Choose a design”.</div>
+      <div className="row">
+        <button className="btn sm" disabled={busyGen} onClick={another}>{busyGen ? "Generating image…" : g ? "Another variation" : "Generate image"}</button>
+        {makeAiImage && (
+          <button
+            className={"btn sm " + (gen?.image?.configured ? "acc" : "")}
+            disabled={busyGen || !gen?.image?.configured}
+            title={gen?.image?.configured ? "Generate artwork with AI, then add the approved words over it" : gen?.image?.reason || "Not configured on the server"}
+            onClick={() => makeAiImage(visualStyle)}
+          >{busyGen ? (genState?.step || "Generating…") : "Generate artwork (AI)"}</button>
+        )}
+      </div>
       {busyGen && genState?.step && <div className="badge" style={{ marginTop: 10 }}>{genState.step}…</div>}
-      {img && <><SvgFrame src={srcOf(img)} /><ProvenanceBadge asset={img} /><VisualRationale asset={img} />{img.source === "ai" ? null
-        : img.kind === "url" ? <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Regenerate for a different take, or switch back to the brand renderer under Settings → Advanced.</div>
-        : prototypeNote}</>}
-
-      {/* Rolling the dice again is a poor way to fix one wrong word, so the
-          composition and the words in it are both editable here. */}
-      {img && img.kind !== "url" && (
-        <details className="studio" open={studioOpen} onToggle={(e) => setStudioOpen(e.currentTarget.open)}>
-          <summary>Change the design and the words</summary>
-          <ImageStudio
-            brief={img.brief} draft={draft} profile={profile} photosOn={extras.commons !== false}
-            value={assets.imageDesign}
-            onChange={(d) => patchAssets({ imageDesign: d, images: [{ ...(assets.images[0] || {}), kind: "svg", svg: d.svg, source: "template", template: d.templateId, photoCredit: d.photo?.credit || null, id: assets.images[0]?.id || "img-studio" }] })}
-            notify={notify}
-          />
-        </details>
-      )}
-      {assets.upload && !img && (
-        <div className="svgframe" style={{ aspectRatio: "1200 / 630" }}><img src={assets.upload.data} alt={assets.upload.name} /></div>
-      )}
-
-      {/* The design studio: options for this post, quick edits that change
-          the real design, Canva for deep edits, and an explicit attach. */}
-      <details className="studio" open>
-        <summary>Design studio — designs for this post, quick edit and Canva{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
-        <DesignStudio
-          key={`${workId || "w"}:image`}
-          postType="image" draft={draft} profile={profile} assets={assets}
-          patchAssets={patchAssets} attachUpload={attachUpload} notify={notify}
-          topic={topic} intent={intent} gen={gen} workId={workId}
-        />
-      </details>
-      {img?.brief && (
+      {setVisualStyle && <StylePicker value={visualStyle} onChange={setVisualStyle} resolved={resolved} caps={gen?.image} busy={busyGen} />}
+      {prototypeNote}
+      {g?.brief && (
         <details className="brief">
           <summary>Creative brief</summary>
-          {Object.entries(img.brief).filter(([k]) => k !== "scenes").map(([k, v]) => (
+          {Object.entries(g.brief).filter(([k]) => k !== "scenes").map(([k, v]) => (
             <div key={k}><span className="eyebrow">{k}</span> {String(v)}</div>
           ))}
-          {img.prompt && <div style={{ marginTop: 8 }}><span className="eyebrow">generation prompt</span> {img.prompt}</div>}
+          {g.prompt && <div style={{ marginTop: 8 }}><span className="eyebrow">generation prompt</span> {g.prompt}</div>}
         </details>
       )}
+    </div>
+  );
+
+  /* Rolling the dice again is a poor way to fix one wrong word, so the
+     generated picture's composition and words are editable too. */
+  const editor = g && g.kind !== "url" ? (
+    <ImageStudio
+      brief={g.brief} draft={draft} profile={profile} photosOn={extras.commons !== false}
+      value={assets.imageDesign}
+      onChange={(d) => patchAssets({ imageDesign: d, upload: null, images: [{ ...(generatedImage(assets) || {}), kind: "svg", svg: d.svg, source: "template", template: d.templateId, photoCredit: d.photo?.credit || null, id: generatedImage(assets)?.id || "img-studio" }] })}
+      notify={notify}
+    />
+  ) : null;
+
+  const note = g ? <>{(g.source === "ai" || g.kind === "url") && <ProvenanceBadge asset={g} />}<VisualRationale asset={g} />{g.kind === "url" && g.source !== "ai" && <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>AI photo from Pollinations (free). Generate another for a different take, or switch back to the brand renderer under Settings → Advanced.</div>}</> : null;
+
+  return (
+    <div className="card">
+      <DesignStudio
+        key={`${workId || "w"}:image`}
+        postType="image" draft={draft} profile={profile} assets={assets}
+        patchAssets={patchAssets} attachUpload={attachUpload} notify={notify}
+        topic={topic} intent={intent} gen={gen} workId={workId}
+        generatedTools={tools} generatedEditor={editor} generatedNote={note}
+        imageTask={mstate.image} onGenerate={another}
+      />
     </div>
   );
 }
@@ -305,78 +290,92 @@ export function ImagePanel({ assets, mstate, makeImage, makeAiImage, visualStyle
 
 export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets, attachUpload, prototypeNote, draft, profile, notify, topic, intent, gen, workId }) {
   const v = assets.video;
+  const cur = currentVideo(assets);
+  const board = storyboardOf(assets);
   const fileRef = useRef(null);
   const enc = mstate.encode || {};
   const canEncode = videoProvider.supported();
+  const busy = mstate.video?.status === "generating";
+  const replaceWith = async (file) => {
+    if (!file) return;
+    patchAssets(keepStoryboardPatch(assets));
+    await attachUpload(file);
+    patchAssets({ canvaDesign: null });
+  };
 
   return (
     <div className="card">
-      <div className="eyebrow" style={{ marginBottom: 10 }}>Video</div>
-      <TaskState
-        state={mstate.video} idleLabel="Generate video" busyLabel="Building storyboard…"
-        onRun={makeVideo}
-        extra={<>
-          <button className="btn sm" onClick={() => fileRef.current?.click()}>Upload your own</button>
+      {/* the video that will be posted */}
+      <div className="pimg-hero" data-testid="current-video">
+        {cur?.kind === "storyboard" && <StoryboardPlayer storyboard={v.storyboard} brief={v.brief} seconds={v.seconds} />}
+        {cur && cur.kind !== "storyboard" && <div className="visual-frame" style={{ marginTop: 0 }}><VideoPlayer src={cur.src} /></div>}
+        {!cur && (
+          <div className="pimg-empty">
+            <div style={{ fontWeight: 600 }}>{busy ? "Building the storyboard…" : "No video yet"}</div>
+            <div className="u-muted" style={{ fontSize: 13, marginTop: 6 }}>{busy ? <><span className="pulse" /> Drawing scenes from your post.</> : "Generate a storyboard video, upload your own, or make one in Canva below."}</div>
+          </div>
+        )}
+        {cur && (
+          <div className="pimg-cap" data-testid="current-source">
+            <span className="pimg-tick" aria-hidden="true">✓</span>
+            <span><b>This is the video that will be posted.</b>{" "}
+              <span className="u-muted">{cur.kind === "storyboard" ? <>Unison storyboard · {v.seconds}s, rendered in this browser — no video model made it.</> : cur.kind === "canva" ? <>Edited in Canva · <b>{cur.label}</b></> : <>Your video · <b>{cur.label}</b></>}</span>
+            </span>
+          </div>
+        )}
+        {cur?.kind === "storyboard" && <VisualRationale asset={v} />}
+        {mstate.video?.status === "error" && (
+          <div className="badge bad" style={{ marginTop: 10 }}>{mstate.video.error || "The video could not be made."}<button className="btn sm" style={{ marginLeft: 8 }} onClick={makeVideo}>Try again</button></div>
+        )}
+
+        <div className="pimg-actions">
+          <button className={"btn sm " + (cur ? "" : "acc")} disabled={busy} onClick={makeVideo}>{busy ? "Building storyboard…" : board ? "New storyboard" : "Generate video"}</button>
+          {board && cur?.kind !== "storyboard" && (
+            <button className="btn sm" onClick={() => { const p = storyboardPatch(assets); if (p) patchAssets(p); }} data-testid="use-storyboard">Use the Unison storyboard</button>
+          )}
+          <button className="btn sm" onClick={() => fileRef.current?.click()}>{cur ? "Replace with your own" : "Upload your own"}</button>
           <input ref={fileRef} type="file" accept="video/*" style={{ display: "none" }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) attachUpload(f); e.target.value = ""; }} />
-          {(v || assets.upload) && (
-            <button className="btn sm" onClick={() => { if (v?.url) URL.revokeObjectURL(v.url); patchAssets({ video: null, upload: null, canvaDesign: null }); }}>Remove</button>
+            onChange={(e) => { replaceWith(e.target.files?.[0]); e.target.value = ""; }} />
+          <span className="pimg-spacer" />
+          {cur?.kind === "storyboard" && !v.url && (
+            <button className="btn sm ghost" disabled={!canEncode || enc.status === "generating"} onClick={exportVideo}>
+              {enc.status === "generating" ? `Encoding… ${Math.round((enc.progress || 0) * 100)}%` : "Export a file"}
+            </button>
           )}
-        </>}
-      />
-
-      {v?.storyboard?.length > 0 && (
-        <>
-          <StoryboardPlayer storyboard={v.storyboard} brief={v.brief} seconds={v.seconds} />
-          <div className="badge warn" style={{ marginTop: 10 }}>
-            Rendered locally from the storyboard — {v.seconds}s. No video model produced this.
-          </div>
-          <VisualRationale asset={v} />
-
-          <div className="row" style={{ marginTop: 12 }}>
-            {!v.url && (
-              <button className="btn sm" disabled={!canEncode || enc.status === "generating"} onClick={exportVideo}>
-                {enc.status === "generating" ? `Encoding… ${Math.round((enc.progress || 0) * 100)}%` : "Export a file"}
-              </button>
-            )}
-            {v.url && (
-              <button className="btn sm" onClick={async () => {
-                const bytes = v.blob || await fetch(v.url).then((r) => r.blob());
-                downloadBlob(bytes, `unison-video.${extensionOf(v.mime || bytes.type)}`);
-              }}>Download .{extensionOf(v.mime)}</button>
-            )}
-            {v.url && <button className="btn sm" onClick={exportVideo}>Re-encode</button>}
-          </div>
-          {enc.status === "generating" && (
-            <div style={{ marginTop: 10 }}>
-              <div className="bar"><i style={{ width: `${(enc.progress || 0) * 100}%` }} /></div>
-              <div className="u-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
-                Encoding runs in real time — about {v.seconds} seconds. Keep this tab in front.
-              </div>
-            </div>
+          {cur?.kind === "storyboard" && v.url && (
+            <button className="btn sm ghost" onClick={async () => {
+              const bytes = v.blob || await fetch(v.url).then((r) => r.blob());
+              downloadBlob(bytes, `unison-video.${extensionOf(v.mime || bytes.type)}`);
+            }}>Download .{extensionOf(v.mime)}</button>
           )}
-          {enc.status === "error" && <div className="badge bad" style={{ marginTop: 10 }}>{enc.error}</div>}
-          {v.url && enc.status !== "generating" && (
-            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
-              File ready · {v.mime?.replace("video/", "").split(";")[0].toUpperCase()} · {v.seconds}s
-            </div>
+          {cur?.kind === "storyboard" && v.url && <button className="btn sm ghost" onClick={exportVideo}>Re-encode</button>}
+          {cur && (
+            <button className="btn sm ghost" onClick={() => { if (v?.url) URL.revokeObjectURL(v.url); patchAssets({ video: null, upload: null, canvaDesign: null, generatedVideo: null }); }}>Remove</button>
           )}
-          {!canEncode && (
-            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
-              This browser can't record a file, so the storyboard preview is the only output here.
-            </div>
-          )}
-        </>
-      )}
-
-      {assets.upload?.type?.startsWith("video") && !v && (
-        <div className="visual-frame" style={{ marginTop: 14 }}>
-          <VideoPlayer src={assets.upload.data} />
         </div>
-      )}
+        {cur?.kind === "storyboard" && enc.status === "generating" && (
+          <div style={{ marginTop: 10 }}>
+            <div className="bar"><i style={{ width: `${(enc.progress || 0) * 100}%` }} /></div>
+            <div className="u-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+              Encoding runs in real time — about {v.seconds} seconds. Keep this tab in front.
+            </div>
+          </div>
+        )}
+        {enc.status === "error" && <div className="badge bad" style={{ marginTop: 10 }}>{enc.error}</div>}
+        {cur?.kind === "storyboard" && v.url && enc.status !== "generating" && (
+          <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+            File ready · {v.mime?.replace("video/", "").split(";")[0].toUpperCase()} · {v.seconds}s
+          </div>
+        )}
+        {cur?.kind === "storyboard" && !canEncode && (
+          <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+            This browser can't record a file, so the storyboard preview is the only output here.
+          </div>
+        )}
+      </div>
 
-      <details className="studio" open>
-        <summary>Video studio — Canva video, AI footage and the opening frame{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
+      <details className="studio">
+        <summary>Make or edit it in Canva, or generate AI footage{assets.canvaDesign ? ` · ${assets.canvaDesign.label}` : ""}</summary>
         <DesignStudio
           key={`${workId || "w"}:video`}
           postType="video" draft={draft} profile={profile} assets={assets}
@@ -385,8 +384,8 @@ export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets
         />
       </details>
 
-      {v?.storyboard?.length > 0 && (
-        <details className="brief" open>
+      {cur?.kind === "storyboard" && (
+        <details className="brief">
           <summary>Storyboard · {v.storyboard.length} scenes</summary>
           {v.storyboard.map((sc, i) => (
             <div key={i} style={{ padding: "6px 0" }}>
@@ -409,21 +408,26 @@ export function VideoPanel({ assets, mstate, makeVideo, exportVideo, patchAssets
 export function SourceDocPanel({ assets, mstate, ingestDocument }) {
   const fileRef = useRef(null);
   const ing = mstate.sourceDoc;
+  const reading = ing?.status === "generating";
 
+  /* Optional, so it is a quiet row rather than a card with a big button —
+     until a document is in, when what came out of it is worth showing. */
   return (
-    <div className="card">
-      <div className="eyebrow" style={{ marginBottom: 10 }}>Work from a document you already have</div>
-      <TaskState
-        state={ing} idleLabel="Upload a document" busyLabel="Reading document…"
-        onRun={() => fileRef.current?.click()}
-        extra={<input ref={fileRef} type="file" accept=".docx,.txt,.md,.csv,.json,.pdf" style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) ingestDocument(f); e.target.value = ""; }} />}
-      />
-      <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>
-        .docx, .txt, .md and .csv are read in full. PDFs only work if their text is uncompressed.
-        What comes out of it goes into Sources as a primary document, and its claims are handed
-        to the writer — so the post is written from your file, not only from the web.
+    <div className="card tight">
+      <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{assets.sourceDoc ? "Your document, read for this post" : "Have a document about this? (optional)"}</div>
+          <div className="u-muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+            Unison lifts the facts out of it, adds it to Sources and gives its claims to the writer. .docx, .txt, .md and .csv are read in full; PDFs only if their text is uncompressed.
+          </div>
+        </div>
+        <button className="btn sm" disabled={reading} onClick={() => fileRef.current?.click()}>{reading ? "Reading document…" : assets.sourceDoc ? "Use another document" : "Upload a document"}</button>
+        <input ref={fileRef} type="file" accept=".docx,.txt,.md,.csv,.json,.pdf" style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) ingestDocument(f); e.target.value = ""; }} />
       </div>
+      {ing?.status === "error" && (
+        <div className="badge bad" style={{ marginTop: 10 }}>{ing.error || "The document could not be read."}<button className="btn sm" style={{ marginLeft: 8 }} onClick={() => fileRef.current?.click()}>Try again</button></div>
+      )}
       {assets.sourceDoc && (
         <div className="srcdoc">
           <div style={{ fontWeight: 600 }}>{assets.sourceDoc.name}</div>

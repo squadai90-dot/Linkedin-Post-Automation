@@ -699,7 +699,7 @@ export async function describeAI() {
       : local ? `Local model (${AI_CONFIG.localModel}) with ${p.label} as fallback${hosted ? "" : ` — ${p.label} not configured`}`
       : hosted ? `${p.label} ${where} · ${activeModel()}${p.free ? " · free tier" : ""}`
       : mode === "relay" ? `The AI relay is deployed, but ${hostedProvider._relayEnv?.[p.id] || (p.id === "anthropic" ? "ANTHROPIC_API_KEY" : "GROQ_API_KEY")} is not set on the server. Add it in Vercel → Project → Settings → Environment Variables (Production), then redeploy — a key typed into this page is not used on a deployment.`
-      : `Not configured — add a free ${p.label} key under Settings → AI. Until then, engines return sample data.`,
+      : `Not configured — add a free ${p.label} key under Settings → AI.`,
   };
 }
 

@@ -79,9 +79,10 @@ Hold `Ctrl` and click that address, or paste it into your browser. Unison opens.
 ## 5. What works without any setup
 
 - Writing posts, choosing angles, the draft editor and approval flow
-- The **Design studio** in the Media step: festival, launch and milestone
-  designs drawn by Unison, with quick edits (words, colours, background, your
-  own picture, crop, layout, type) — all in the browser, no key needed
+- The **post image** in the Media step: festival, launch and milestone
+  designs drawn by Unison to choose from, with quick edits (words, colours,
+  background, your own picture, crop, layout, type) — all in the browser, no
+  key needed
 - Storyboard video, rendered and encoded in your browser
 - Polls, the calendar, Content history, drafts
 - Everything saves in your browser automatically

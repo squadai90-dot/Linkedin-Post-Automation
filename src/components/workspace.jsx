@@ -127,6 +127,31 @@ export function Workspace(p) {
   /* Decided once in App so the button label and the send path agree. */
   const realRoute = !!publishReady;
   const aiDown = aiInfo && !aiInfo.ready;
+  /* The banner at the top already says why the AI is missing; the sections
+     below say what that means for them, without repeating the reason. */
+  const why = (r) => (r && !aiDown ? ` (${r})` : "");
+
+  /* Approving is the moment to choose a time, and the Publish step is far
+     below — so go there, instead of only saying so in a toast. */
+  const lastStage = useRef(stage);
+  /* The same for the two other moments the next step appears below the fold:
+     angles after research, and the post after an angle is picked. Reopening a
+     draft brings both at once and scrolls nowhere. */
+  const seen = useRef({ angles: !!angles, draft: !!draft });
+  useEffect(() => {
+    const was = seen.current;
+    seen.current = { angles: !!angles, draft: !!draft };
+    const go = (id) => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    if (!was.angles && angles && !draft) go("sec-angle");
+    else if (was.angles && !was.draft && draft) go("sec-draft");
+  }, [!!angles, !!draft]);
+  useEffect(() => {
+    const was = lastStage.current;
+    lastStage.current = stage;
+    if (stage === "APPROVED" && was !== "APPROVED") {
+      requestAnimationFrame(() => document.getElementById("sec-publish")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }, [stage]);
 
   useEffect(() => {
     let alive = true;
@@ -168,7 +193,7 @@ export function Workspace(p) {
         </div>
       </div>
       {!verification && <div className="u-muted" style={{ fontSize: 13 }}><span className="pulse" /> Checking claims…</div>}
-      {verification?.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not checked — the AI was unavailable{verification.degradedReason ? ` (${verification.degradedReason})` : ""}. Read the post yourself before approving it.</div>}
+      {verification?.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>Not checked — the AI was unavailable{why(verification.degradedReason)}. Read the post yourself before approving it.</div>}
       {checksStale && !verification?.degraded && <div className="badge warn" style={{ marginBottom: 10 }}>The text changed since these checks ran.</div>}
       {(verification?.claims || []).map((c, i) => (
         <div key={i}>
@@ -233,10 +258,10 @@ export function Workspace(p) {
         </div>
         {draft.degraded && (
           <div className="badge warn" style={{ marginBottom: 10, display: "block", lineHeight: 1.55 }} data-testid="draft-degraded">
-            {draft.template === "starter" ? <>The AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}, so this starter is only your topic, word for word — nothing was written for you and nothing was invented. Write the post here before you approve it, or fix the AI setup and press Regenerate.</>
-              : draft.template === "greeting" ? <>Written from a greeting template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. It invents nothing — edit it freely, or fix the AI setup and press Regenerate.</>
-              : draft.template ? <>Written from a {draft.template} template because the AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}. {draft.needsDetail ? "Add what it is, who it is for and how to get started before you approve it." : "Edit it freely."}</>
-              : <>The AI was unavailable{draft.degradedReason ? ` (${draft.degradedReason})` : ""}, so no draft was written. Write the post here, or fix the AI setup and press Regenerate.</>}
+            {draft.template === "starter" ? <>The AI was unavailable{why(draft.degradedReason)}, so this starter is only your topic, word for word — nothing was written for you and nothing was invented. Write the post here before you approve it, or fix the AI setup and press Regenerate.</>
+              : draft.template === "greeting" ? <>Written from a greeting template because the AI was unavailable{why(draft.degradedReason)}. It invents nothing — edit it freely, or fix the AI setup and press Regenerate.</>
+              : draft.template ? <>Written from a {draft.template} template because the AI was unavailable{why(draft.degradedReason)}. {draft.needsDetail ? "Add what it is, who it is for and how to get started before you approve it." : "Edit it freely."}</>
+              : <>The AI was unavailable{why(draft.degradedReason)}, so no draft was written. Write the post here, or fix the AI setup and press Regenerate.</>}
           </div>
         )}
         <input className="ta" aria-label="Hook" readOnly={locked} value={draft.hook} onChange={(e) => setDraft({ ...draft, hook: e.target.value })} />
@@ -273,14 +298,14 @@ export function Workspace(p) {
 
       {aiDown && (
         <div className="notice warn" style={{ marginTop: 16 }}>
-          <div><b>AI isn't set up</b> — {aiInfo.summary} Until it is, nothing below is written by AI: greetings and announcements use a clearly marked template, and other posts are left for you to write.</div>
-          <button className="btn sm" onClick={() => setModal("settings", "ai")}>Open AI settings</button>
+          <div><b>AI isn't set up yet.</b> {aiInfo.mode === "relay" || aiInfo.blocked ? aiInfo.summary : "Add a free key under Settings → AI."} Until then, nothing below is written by AI: greetings and announcements use a clearly marked template, and other posts are left for you to write.</div>
+          <button className="btn sm" onClick={() => setModal("settings", "ai")}>Set up AI</button>
         </div>
       )}
 
       {steps.length > 0 && (
-        <Section n={n("research")} title="Research" engine="Discovery engine">
-          <div className="card">
+        <Section n={n("research")} title="Research">
+          {(!angles || busy || steps.some((s) => s.status === "failed" || s.status === "active")) && <div className="card">
             {steps.map((s) => (
               <div key={s.key} className={"pstep " + s.status}>
                 <span className="tick" style={s.status === "failed" ? { color: "var(--bad)" } : undefined}>{s.status === "done" ? "✓" : s.status === "active" ? <span className="pulse" /> : s.status === "failed" ? "✕" : "○"}</span>{s.label}
@@ -289,21 +314,21 @@ export function Workspace(p) {
             {!busy && !research && steps.some((s) => s.status === "failed" || s.status === "active") && (
               <button className="btn sm" style={{ marginTop: 10 }} onClick={() => runDiscovery(idea, formats, workId)}>Run research again</button>
             )}
-          </div>
-          <SourceDocPanel assets={assets} mstate={mstate} ingestDocument={ingestDocument} />
+          </div>}
           <IntentBar research={research} busy={busy} locked={locked}
             onSwitch={(k) => runDiscovery(idea, formats, workId, { intent: k })} />
           <ResearchResults research={research} busy={busy}
             onRetry={() => runDiscovery(idea, formats, workId, { intent: research?.intentOverride, forceResearch: true })}
             onResearchAnyway={() => runDiscovery(idea, formats, workId, { intent: research?.intentOverride, forceResearch: true })} />
+          <SourceDocPanel assets={assets} mstate={mstate} ingestDocument={ingestDocument} />
         </Section>
       )}
 
       {angles && shows("angle") && (
-        <Section n={n("angle")} title="Content angles" engine="Content intelligence">
+        <Section n={n("angle")} title="Choose an angle" id="sec-angle">
           {angles.degraded && (
             <div className="badge warn" style={{ marginBottom: 12, display: "block", lineHeight: 1.55 }} data-testid="angles-degraded">
-              Suggested from the topic because the AI was unavailable{angles.degradedReason ? ` (${angles.degradedReason})` : ""}. They fit a {String(angles.intentLabel || "post").toLowerCase()}, but they are templates rather than ideas.
+              Template angles{aiDown ? "" : <> — the AI was unavailable{angles.degradedReason ? ` (${angles.degradedReason})` : ""}</>}. They fit a {String(angles.intentLabel || "post").toLowerCase()}, but they are templates rather than ideas.
             </div>
           )}
           <div className="angles">
@@ -321,7 +346,7 @@ export function Workspace(p) {
       )}
 
       {draft && shows("draft") && (
-        <Section n={n("draft")} title="Content" engine="Brand writer">
+        <Section n={n("draft")} title="Your post" id="sec-draft">
           {narrow && (
             <div className="tabs" style={{ marginBottom: 14 }}>
               <button className={tab === "post" ? "on" : ""} onClick={() => setTab("post")}>Post</button>
@@ -355,19 +380,19 @@ export function Workspace(p) {
       )}
 
       {shows("poll") && draft && (
-        <Section n={n("poll")} title="Poll" engine="Writer">
+        <Section n={n("poll")} title="Poll">
           <MediaSection {...mediaProps} format="poll" />
         </Section>
       )}
 
       {shows("media") && draft && format !== "text" && (
-        <Section n={n("media")} title="Media" engine="Media engine">
+        <Section n={n("media")} title="Media">
           <MediaSection {...mediaProps} format={format} />
         </Section>
       )}
 
       {quality && shows("health") && (
-        <Section n={n("health")} title="Content health" engine="Trust engine">
+        <Section n={n("health")} title="Content health">
           {/* These run with no model and no network, so they are the part of
               this panel that is always real — even when the ticks above are
               placeholders because the AI was unavailable. */}
@@ -436,7 +461,7 @@ export function Workspace(p) {
       )}
 
       {(quality || assets.poll) && !["APPROVED", "SCHEDULED", "PUBLISHING", "PUBLISHED", "ANALYZING", "FAILED"].includes(stage) && (
-        <Section n={n("approval")} title="Approval" engine="Human in the loop">
+        <Section n={n("approval")} title="Approval">
           <div className="card">
             <div className="eyebrow">Content status</div>
             <div style={{ margin: "12px 0 16px" }}>
@@ -457,19 +482,30 @@ export function Workspace(p) {
                 <button className="btn sm" onClick={() => setModal("linkedin")}>Connect now</button>
               </div>
             )}
+            {/* One primary action. With no AI, re-checking can only come back
+                unchecked again, so approving with the checks unrun is the way
+                forward — and it says so. */}
             <div className="row" style={{ marginTop: 20 }}>
-              <button className="btn" onClick={() => { setTab("post"); editRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>Edit</button>
-              {shows("draft") && <button className="btn" disabled={busy} onClick={() => runWriter(angle)}>Regenerate text</button>}
-              <button className="btn" onClick={() => setRejecting(!rejecting)}>Reject</button>
               {(checksStale || checksDegraded) ? (
-                <>
-                  <button className="btn acc" disabled={busy || claimsBlocking || over} onClick={recheck}>{busy ? "Checking…" : "Re-check, then approve"}</button>
-                  <button className="btn" disabled={claimsBlocking || over || busy} onClick={() => approve({ force: true })}>Approve anyway</button>
-                </>
+                aiDown && !checksStale ? (
+                  <button className="btn acc" disabled={claimsBlocking || over || busy} onClick={() => approve({ force: true })}>Approve anyway</button>
+                ) : (
+                  <>
+                    <button className="btn acc" disabled={busy || claimsBlocking || over} onClick={recheck}>{busy ? "Checking…" : "Re-check, then approve"}</button>
+                    <button className="btn" disabled={claimsBlocking || over || busy} onClick={() => approve({ force: true })}>Approve anyway</button>
+                  </>
+                )
               ) : (
                 <button className="btn acc" disabled={claimsBlocking || over || busy} onClick={() => approve()}>Approve &amp; schedule</button>
               )}
+              <span style={{ flex: 1 }} />
+              <button className="btn sm ghost" onClick={() => { setTab("post"); editRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>Edit</button>
+              {shows("draft") && <button className="btn sm ghost" disabled={busy} onClick={() => runWriter(angle)}>Regenerate text</button>}
+              <button className="btn sm ghost" onClick={() => setRejecting(!rejecting)}>Reject…</button>
             </div>
+            {aiDown && checksDegraded && !checksStale && (
+              <div className="u-muted" style={{ fontSize: 12.5, marginTop: 8 }}>The claims could not be checked without AI. Read the post once more, then approve it.</div>
+            )}
             {rejecting && (
               <div style={{ marginTop: 16 }}>
                 <div className="eyebrow" style={{ marginBottom: 9 }}>Why is this not right?</div>
@@ -481,7 +517,7 @@ export function Workspace(p) {
       )}
 
       {["APPROVED", "SCHEDULED", "PUBLISHING", "FAILED"].includes(stage) && (
-        <Section n={n("schedule")} title="Schedule" engine="Scheduler">
+        <Section n={n("schedule")} title="Publish" id="sec-publish">
           <div className="card">
             {!realRoute && stage !== "PUBLISHING" && (
               <div className="notice warn" style={{ marginBottom: 14 }}>
@@ -505,7 +541,7 @@ export function Workspace(p) {
                 {holiday && <div className="badge warn" style={{ marginTop: 12 }}>{holiday.date} is a public holiday ({holiday.name}) where this timezone is — engagement is usually lower.</div>}
                 <div className="card tight" style={{ marginTop: 16 }}>
                   <span className="eyebrow">Tip</span>
-                  <div className="u-muted" style={{ fontSize: 13.5, marginTop: 5 }}>Weekday mornings in the audience's timezone tend to do best for B2B Pages. Unison publishes the post itself, on the minute, as long as it is open at that time. Hand it to Make instead if nobody will be.</div>
+                  <div className="u-muted" style={{ fontSize: 13.5, marginTop: 5 }}>Weekday mornings in your audience's timezone usually do best for company pages. A scheduled post goes out at that minute if Unison is open then. If nobody will have it open, hand it to Make after scheduling and it goes out on its own.</div>
                 </div>
                 {/* Scheduling is local state, so it never needs a connection.
                     Publishing without one is a labelled dry run. */}
@@ -623,7 +659,7 @@ export function Workspace(p) {
       )}
 
       {["PUBLISHED", "ANALYZING"].includes(stage) && (
-        <Section n={fmt.stages.length} title="Performance" engine="Learning engine">
+        <Section n={fmt.stages.length} title="Performance">
           <div className="card">
             {publishState === "SIMULATED"
               ? <span className="badge warn">Simulated publish — nothing was sent to LinkedIn</span>
@@ -678,12 +714,12 @@ export function EmptyWorkspace({ onCreate, drafts = 0, onDrafts }) {
   );
 }
 
-export function Section({ n, title, engine, children }) {
+export function Section({ n, title, engine, id, children }) {
   return (
-    <section className="sec">
+    <section className="sec" id={id}>
       {/* An optional step carries no number: it sits between two numbered
           ones without pushing everything after it along. */}
-      <div className="sec-h"><span className="num">{n == null ? "＋" : pad(n)}</span><h2 className="disp">{title}</h2><span className="eyebrow">{engine}</span></div>
+      <div className="sec-h"><span className="num">{n == null ? "＋" : pad(n)}</span><h2 className="disp">{title}</h2>{engine && <span className="eyebrow">{engine}</span>}</div>
       {children}
     </section>
   );

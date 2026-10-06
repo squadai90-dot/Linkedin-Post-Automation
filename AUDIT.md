@@ -283,3 +283,101 @@ before. Two of them fail on the old code and pass on the fix. Full unit suite
 604 passed; publishing browser tests (`publish-payload`, `content-times`) 11
 passed. Make is mocked in all of these — **the fix is confirmed only when one
 post from the redeployed site succeeds.**
+
+**Confirmed live, 5 October 2026.** After the fix was applied to the deployed
+project, the retried post went through: Make execution `b5d6c2c1…` succeeded,
+the data-store record `p-w-muv6fyd5ronm` reads *published*, and LinkedIn
+returned `urn:li:share:7512839361919643648`. The retry was sent as *publish
+now*, so it went out at once rather than at the original scheduled time.
+
+**Deployment note.** The Vercel project behind `unison-content-os.vercel.app`
+builds from a different GitHub repository from this one; the fix was copied
+there by hand. Until that project is connected to this repository (Vercel →
+Project → Settings → Git), every later change here — including §10 — has to be
+copied across the same way to reach the live site.
+
+---
+
+## 10. 6 October 2026 — usability pass: one post image, a clearer path
+
+A first-time user's walk through the app, in a real browser, found the media
+step to be the main source of confusion, and a handful of smaller problems
+along the way. Publishing was treated as protected throughout: no file under
+`api/`, `make/`, `src/lib/publish.js`, `src/lib/linkedin*.js`,
+`src/lib/media.js` or `src/lib/image.js` changed, and the publishing functions
+inside `src/App.jsx` (`collectMedia`, `buildPublishPayload`, `attachUpload`,
+`publishNow`, the scheduling functions …) are byte-identical to the recorded
+baseline. `e2e/publish-payload.spec.js` passes unmodified.
+
+**The media step showed several pictures at once.** An image post showed the
+generated picture, the old composition editor, the design studio's own preview
+of a different design, and — after Canva — a separate "file that will be
+attached" with its own *Use this* button. Which one would be posted was not
+visible; it depended on which button had been pressed last.
+
+It now has one **post image**, the one publishing will attach, shown large and
+labelled *This is the image that will be posted*, with where it came from.
+Everything else is a choice that replaces it:
+
+| Before | Now |
+|---|---|
+| Generated picture on top, the studio's preview of another design below it | One image. Designs, the generated picture and earlier files are tiles in one *Choose a design* grid; the one in use is marked **In use** |
+| Pick a design, then press *Use this design*; a later edit showed "not yet attached" | Choosing a design makes it the post image; edits change that image directly, so it is never out of date |
+| Quick edit always open under a second preview | **Edit design** opens the editor under the post image; closed by default |
+| A Canva export appeared as a third picture with *Use this image* | **Bring back my Canva edits** makes the export the post image; a step strip shows *Sent to Canva → Edit it → Bring it back → It is the post's image* |
+| Going back to an earlier picture meant regenerating or re-uploading | The generated picture is kept aside when replaced; files used earlier in the session (an upload, a Canva version) stay in the grid |
+| Generate, variation, AI artwork, upload, download, remove — six equal buttons over the picture | One primary action (**Edit design**), then *Edit in Canva* and *Replace with your own*; *Download* and *Remove* are quiet; a new generated picture, AI artwork, styles and the briefs are under **More options** |
+
+How it reaches publishing — the rule is unchanged: an attached file wins,
+otherwise `images[0]`. A chosen Unison design is written to `images[0]` as an
+SVG, the shape the generated picture always had, so `collectMedia` turns it
+into one 1200 × 630 PNG as before. Canva and AI files go through
+`attachUpload`, the same door as an upload. The rules are in
+`src/lib/postimage.js`, with unit tests that also check they still agree with
+`collectMedia`, and an end-to-end test that publishes a chosen, edited design
+and checks the PNG Make receives (one image, 1200 × 630, the edited words).
+
+**Bug found on the way.** The old composition editor was rendered (hidden)
+whenever a picture existed, and on mounting it replaced the generated picture
+with its default "statement" layout — so the art-directed picture the renderer
+chose was swapped out before anyone saw it. The editor now mounts only when
+opened, and changes nothing until something in it is changed.
+
+**Video posts** follow the same rule: the video that will be posted is shown on
+top (storyboard, upload, Canva MP4 or AI footage); a Canva or AI file becomes
+the post's video when it arrives, and *Use the Unison storyboard* puts the
+storyboard back. The Canva and AI tools sit behind one disclosure.
+
+**Elsewhere**
+
+- Section headings carried internal names ("Discovery engine", "Content
+  intelligence", "Brand writer", "Trust engine", "Human in the loop",
+  "Scheduler", "Opportunity engine"). Removed; headings match the progress rail
+  (*Choose an angle*, *Your post*, *Publish*), and single pages lost a stray
+  "01".
+- With no AI key, the reason was repeated in five places. The banner at the
+  top says it once; sections say what it means for them.
+- Research said "research skipped" three times. The progress list now goes
+  once its result is shown, and the optional document upload is a quiet row
+  below the result instead of a card with a large button above it.
+- Approval had five buttons of equal weight. Now one primary action — with no
+  AI it is *Approve anyway*, because re-checking can only come back unchecked
+  again — and *Edit*, *Regenerate text* and *Reject…* are quiet.
+- After approving, the page moves to **Publish** (it was off-screen). It also
+  moves to the angles when they appear and to the post once it is written.
+- The step rail showed the workflow on Home, Content and Calendar, where it
+  meant nothing. It now appears only on the post; elsewhere that column offers
+  *In progress · Continue →*.
+- Home puts *What is this post about?* above the setup checklist, and its hint
+  no longer offers "a document" as a post type (it is not one).
+- The publishing tip says plainly when a scheduled post goes out and when to
+  hand it to Make.
+
+**Deliberately not changed:** the button names the protected publishing test
+relies on (*Approve anyway*, *Publish now*, *Schedule post*, *Hand to Make
+for …*); the header's *Publishing via Make* status (accurate, and the team
+knows Make by name); Settings, Content, Calendar and Insights (no confusion
+found beyond the stray numbering); the draft editor's controls; re-running
+research or switching a post's intent still drops the attachment (documented
+behaviour: the post it illustrated is rewritten — the chosen design and its
+edits are kept and one click away).

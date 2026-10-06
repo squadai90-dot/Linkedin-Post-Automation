@@ -68,7 +68,7 @@ export function ContentList({ posts, open, publish, onCreate }) {
 
   return (
     <div style={{ paddingTop: 44 }}>
-      <div className="sec-h"><span className="num">01</span><h2 className="disp">Content</h2><span className="eyebrow">{shown.length} of {posts.length}</span></div>
+      <div className="sec-h"><h2 className="disp">Content</h2><span className="eyebrow">{shown.length} of {posts.length}</span></div>
       {due.length > 0 && (
         <div className="notice warn" style={{ marginBottom: 14 }}>
           <div><b>{due.length} scheduled post{due.length > 1 ? "s are" : " is"} due.</b> Nothing publishes while Unison is closed — open one and press Publish now.</div>
@@ -141,7 +141,7 @@ export function CalendarView({ posts, open, start }) {
   return (
     <div style={{ paddingTop: 44 }}>
       <div className="sec-h">
-        <span className="num">01</span><h2 className="disp">Calendar</h2>
+        <h2 className="disp">Calendar</h2>
         <div className="row" style={{ marginLeft: "auto" }}>
           <button className="btn sm" onClick={() => step(-1)} aria-label="Previous">←</button>
           <span className="eyebrow" style={{ minWidth: 150, textAlign: "center" }}>{mode === "month" ? fmtMonth(cursor) : `Week of ${fmtDay(rows[0][0])}`}</span>
@@ -186,7 +186,7 @@ export function Insights({ posts, analytics, discover, openPost }) {
   const published = posts.filter((p) => p.state === "PUBLISHED").length;
   return (
     <div style={{ paddingTop: 44 }}>
-      <div className="sec-h"><span className="num">01</span><h2 className="disp">Insights</h2><span className="eyebrow">{withMetrics.length} post{withMetrics.length === 1 ? "" : "s"} with numbers</span></div>
+      <div className="sec-h"><h2 className="disp">Insights</h2><span className="eyebrow">{withMetrics.length} post{withMetrics.length === 1 ? "" : "s"} with numbers</span></div>
       <div className="card">
         {withMetrics.length === 0 ? (
           <>

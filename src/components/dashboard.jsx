@@ -51,6 +51,8 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
         </div>
       </div>
 
+      {composer}
+
       {!setupHidden && <SetupCard profile={profile} aiInfo={aiInfo} publishReady={publishReady} linkedin={linkedin} openSettings={openSettings} onDismiss={hideSetup} />}
 
       {due.length > 0 && (
@@ -59,8 +61,6 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
           <button className="btn sm acc" onClick={() => publish(due[0])}>Publish now</button>
         </div>
       )}
-
-      {composer}
 
       {drafts.length > 0 && (
         <div className="card dash-resume">
@@ -131,14 +131,14 @@ export function Dashboard({ posts, linkedin, schedule, drafts, activeId, onEditD
           </div>
           <div className="dash-stat">
             <span className={"dot " + (aiInfo?.ready ? "g" : "r")} />
-            <span>{aiInfo ? (aiInfo.ready ? (aiInfo.local ? "AI ready · local model" : "AI ready") : "AI not configured — sample data") : "Checking AI…"}</span>
+            <span>{aiInfo ? (aiInfo.ready ? (aiInfo.local ? "AI ready · local model" : "AI ready") : "AI not configured — templates only") : "Checking AI…"}</span>
             {aiInfo && !aiInfo.ready && <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => openSettings("ai")}>Set up</button>}
           </div>
           <div className="dash-stat">
             <span className="dot b" />
             <span>Publishing timezone {schedule.tz}</span>
           </div>
-          <button className="btn sm" style={{ marginTop: 12 }} onClick={onDiscover}>Find something to post</button>
+          <button className="btn sm" style={{ marginTop: 12 }} onClick={onDiscover}>Find ideas in Discover</button>
         </div>
       </div>
     </div>
@@ -185,7 +185,7 @@ export function DraftsList({ drafts, activeId, onEdit, onRemove, onResume, onCre
   const sorted = [...drafts].sort((a, b) => (a.id === activeId ? -1 : b.id === activeId ? 1 : String(b.savedAt).localeCompare(String(a.savedAt))));
   return (
     <div style={{ paddingTop: 44 }}>
-      <div className="sec-h"><span className="num">01</span><h2 className="disp">Drafts</h2><span className="eyebrow">{drafts.length} unfinished</span></div>
+      <div className="sec-h"><h2 className="disp">Drafts</h2><span className="eyebrow">{drafts.length} unfinished</span></div>
       {drafts.length === 0 ? (
         <div className="card">
           <div style={{ fontWeight: 600 }}>No drafts.</div>
@@ -238,8 +238,8 @@ export function CreateFlow({ onStart, seed, clearSeed }) {
       </div>
 
       <p className="u-muted" style={{ margin: "18px 0 0", fontSize: 13.5, maxWidth: 560 }}>
-        Unison writes the post first. Once you can read it, you decide whether it needs an image, a poll,
-        a document or nothing at all — and you can change your mind then.
+        Unison writes the post first. Once you can read it, you decide whether it needs an image, a video,
+        a poll or nothing at all — and you can change your mind then.
       </p>
     </div>
   );

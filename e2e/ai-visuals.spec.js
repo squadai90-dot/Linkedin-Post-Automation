@@ -112,6 +112,8 @@ test.describe("compositing the approved words over AI artwork", () => {
     await expect(page.locator(".li-body")).toBeVisible({ timeout: 40_000 });
     await page.locator(".fmt", { hasText: "Image" }).first().click();
     await expect(page.getByRole("heading", { name: "Media" })).toBeVisible({ timeout: 40_000 });
+    /* generating a new picture lives under the image's "More options" */
+    await page.locator("summary", { hasText: "More options" }).click({ timeout: 40_000 });
 
     const panel = page.locator(".card", { hasText: "Visual style" }).first();
     await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -176,6 +178,8 @@ test.describe("end to end with the image relay mocked", () => {
     await expect(page.locator(".li-body")).toBeVisible({ timeout: 40_000 });
     await page.locator(".fmt", { hasText: "Image" }).first().click();
     await expect(page.getByRole("heading", { name: "Media" })).toBeVisible({ timeout: 40_000 });
+    /* generating a new picture lives under the image's "More options" */
+    await page.locator("summary", { hasText: "More options" }).click({ timeout: 40_000 });
 
     const go = page.getByRole("button", { name: /Generate artwork \(AI\)/ });
     await expect(go).toBeEnabled({ timeout: 30_000 });
@@ -228,6 +232,8 @@ test.describe("end to end with the image relay mocked", () => {
 
     await page.locator(".fmt", { hasText: "Image" }).first().click();
     await expect(page.getByRole("heading", { name: "Media" })).toBeVisible({ timeout: 40_000 });
+    /* generating a new picture lives under the image's "More options" */
+    await page.locator("summary", { hasText: "More options" }).click({ timeout: 40_000 });
     await page.locator(".chip", { hasText: "Illustrated" }).first().click();
     const go = page.getByRole("button", { name: /Generate artwork \(AI\)/ });
     await expect(go).toBeEnabled({ timeout: 30_000 });

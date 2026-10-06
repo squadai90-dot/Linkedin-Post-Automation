@@ -22,7 +22,9 @@ const debounce = (fn, ms) => {
 };
 
 export function ImageStudio({ brief, draft, profile, photosOn = true, value, onChange, notify }) {
-  const [templateId, setTemplateId] = useState(value?.templateId || "statement");
+  /* Nothing is picked until the user picks it: opening the editor must not
+     change the picture that will be posted. */
+  const [templateId, setTemplateId] = useState(value?.templateId || null);
   const [fields, setFields] = useState(() => value?.fields || autoFill(value?.templateId || "statement", brief, draft));
   const [photo, setPhoto] = useState(value?.photo || null);
   const [photos, setPhotos] = useState([]);
@@ -33,7 +35,13 @@ export function ImageStudio({ brief, draft, profile, photosOn = true, value, onC
   /* Report upward on every change so the post always carries what is on
      screen, never a stale render. */
   const emit = useCallback((t, f, p) => onChange?.({ templateId: t, fields: f, photo: p, svg: renderTemplate(t, f, p) }), [onChange]);
-  useEffect(() => { emit(templateId, fields, photo);   }, [templateId, fields, photo]);
+  const opened = useRef({ templateId, fields, photo });
+  useEffect(() => {
+    const o = opened.current;
+    if (o && o.templateId === templateId && o.fields === fields && o.photo === photo) return;
+    opened.current = null;
+    emit(tpl.id, fields, photo);
+  }, [templateId, fields, photo]);
 
   /* Switching template keeps any field the new one also uses, so a headline
      you have already edited is not lost to a layout change. */
