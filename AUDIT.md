@@ -381,3 +381,29 @@ found beyond the stray numbering); the draft editor's controls; re-running
 research or switching a post's intent still drops the attachment (documented
 behaviour: the post it illustrated is rewritten — the chosen design and its
 edits are kept and one click away).
+
+---
+
+## 11. 12 October 2026 — several LinkedIn Pages (test only)
+
+Built to publish one post to any combination of the three test Pages, now or
+scheduled, with a result per Page and retry of failed Pages only. Off unless a
+deployment sets `LINKEDIN_DESTINATIONS` and `MAKE_MULTI_WEBHOOK_URL`, so
+production behaviour is unchanged. Full write-up, flows, payloads and rollout
+checklist: [MULTI-ACCOUNT.md](MULTI-ACCOUNT.md). Test results: TESTING.md,
+12 October.
+
+Findings that shaped it:
+
+- The production LinkedIn connection already administers all three test Pages,
+  and the Make modules already map the Company dynamically. One connection,
+  per-job organization — no new authorisation, no Enterprise feature.
+- The Make account is on the **Free** plan: 2 scenarios in its licence, **one**
+  data store (1 MB), 1,000 operations a month. So the test scenarios share the
+  production data store under `mt:` keys and `mt*` statuses, the test
+  scheduler is on-demand, and both test scenarios are inactive pending your
+  decision (activation was not permitted from this session).
+- The production immediate scenario answers nothing when LinkedIn refuses a
+  post (its error handler ends in Ignore), which Unison reports as "never said
+  what it did". The test scenario answers each refusal with the Page and
+  LinkedIn's reason. Worth carrying into production at rollout.

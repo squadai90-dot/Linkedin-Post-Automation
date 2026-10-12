@@ -10,6 +10,47 @@ Labels: **PASS** actually tested end to end, with the id LinkedIn returned ·
 **FAIL** tested and failed · **BLOCKED** cannot be tested here, with the
 reason · **NOT TESTED** no test was performed.
 
+## 12 October 2026 — publishing to several LinkedIn Pages
+
+Design and configuration: MULTI-ACCOUNT.md. **No post was published to
+LinkedIn in this round.** The two Make test scenarios exist but are inactive;
+activating them was not permitted from this session (MULTI-ACCOUNT.md §8).
+
+Checked live in Make (read-only): the production LinkedIn connection is an
+admin of all three test Pages — Make's own Company list for that connection
+returns *Unison Content OS Test* (urn:li:organization:146260120), *Test 2*
+(145298202) and *Test 3* (145301196) — and every LinkedIn module in both
+production scenarios already takes the Company as a mapped value.
+
+| Check | Result |
+|---|---|
+| `npx vitest run` | 660 passed, 0 failed (30 files) — 42 new: `destinations-server` (19), `destinations-client` (12), `multi-account-scenarios` (11) |
+| `npm run test:e2e` (desktop + mobile) | 70 passed, 0 failed — 4 new in `e2e/multi-account.spec.js` |
+| Protected files (`api/publish.js`, `api/linkedin.js`, original `make/*.json`, `src/lib/publish.js`, `linkedin*.js`, `media.js`, `image.js`, `publish-payload.spec.js`, `publish-contract` / `publish-relay` tests) | no diff |
+| Publishing functions in `src/App.jsx` | 14 of 15 byte-identical; `publishNow` gained one guarded branch taken only when the server has a Page list |
+| Production Make scenarios 7482325 / 7524924 | unchanged (same `lastEdit`, both still active) |
+
+Mocked (Make and LinkedIn not involved) — what is proven:
+
+| Matrix item | Where | Result |
+|---|---|---|
+| Text → one Page; → Page 3 only | e2e | one request, only that Page, job key = post id |
+| Text → all three | e2e | three requests, one per Page, in order |
+| One Page fails, others succeed; retry only the failure | e2e + unit | successes kept; retry sends only the failed Page with the same job key |
+| No Page selected | e2e + unit | Publish and Schedule disabled; server answers 422 |
+| Unknown / unavailable Page | unit | 422, nothing forwarded; a mixed list is refused whole |
+| Repeat request / double click | unit | second request answered from the server cache; settled Pages skipped in the browser |
+| URN from the browser | unit | discarded; the server's URN is used |
+| Scheduled → Pages 1+3 | e2e + unit | one request carrying both Pages; content and media once |
+| Pages survive reopening | e2e | reload restores the ticked Pages |
+| No Page list on the server | e2e | no picker; single-Page path |
+| Image / video / poll payloads | unit (server) | media and poll pass through untouched; type kept |
+| Make blueprints | unit | each LinkedIn call uses the job's Page; allow-list filters hold exactly the three test URNs; test writes use `mt:` keys and `mt*` statuses the production scheduler never selects |
+
+Not tested (needs activation — MULTI-ACCOUNT.md §8–9): every real LinkedIn
+post in the immediate and scheduled matrices, including image, video and poll
+uploads to Pages 2 and 3.
+
 ## 6 October 2026 — usability pass (one post image)
 
 What changed is in AUDIT.md §10. Run against the production build in real

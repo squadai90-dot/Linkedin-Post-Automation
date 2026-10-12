@@ -16,6 +16,7 @@ so on screen rather than pretending.
 | Deploy on **Vercel**: every environment variable, redeploying, the in-app Deployment check, and whether Canva needs reconfiguring | [`VERCEL-SETUP.md`](VERCEL-SETUP.md) |
 | Know what was audited, found, fixed and left alone | [`AUDIT.md`](AUDIT.md) |
 | See exactly what has been tested, and what has not | [`TESTING.md`](TESTING.md) |
+| Publish one post to **several LinkedIn Pages** (test deployment only, for now) | [`MULTI-ACCOUNT.md`](MULTI-ACCOUNT.md) |
 | Configure Groq, OpenAI, Google, Runway or Canva | [Setup, below](#first-run-three-things-to-set-up), and [`.env.example`](.env.example) |
 
 **One standing caution about keys.** Vite bakes every `VITE_*` variable into the
@@ -253,6 +254,11 @@ Canva edits**.
 | Transitions, scene timing, audio, animation from Unison | No. Do those in Canva's editor; Unison does not pretend to |
 
 ### 4. Publishing (Settings → LinkedIn)
+
+> **Several Pages.** A deployment that sets `LINKEDIN_DESTINATIONS` and
+> `MAKE_MULTI_WEBHOOK_URL` shows a Page picker in the Publish step and sends
+> one job per Page through `api/publish-to.js`. Without them, everything below
+> applies unchanged. See [`MULTI-ACCOUNT.md`](MULTI-ACCOUNT.md).
 
 LinkedIn has no browser-callable posting API, so the post has to leave through
 something. Three routes, tried in this order:

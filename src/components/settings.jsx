@@ -250,7 +250,7 @@ export function Settings(props) {
     aiSettings, updateAI, aiInfo, refreshAI,
     liSettings, updateLinkedIn, pubSettings, updatePublish,
     extras = DEFAULT_EXTRAS, setExtras, exportSession, importSession, storageIssue, posts = [],
-    sync, syncNow,
+    sync, syncNow, destReg,
   } = props;
   const [tab, setTab] = useState(TAB_ALIAS[initialTab] || initialTab || "workspace");
   const [invite, setInvite] = useState({ email: "", role: "Creator" });
@@ -561,6 +561,31 @@ export function Settings(props) {
       {/* ================= LINKEDIN ================= */}
       {tab === "linkedin" && (
         <>
+          {/* The Pages a post can be sent to. Set on the server, so it is shown
+              here rather than edited: adding a Page means authorising it in
+              Make and adding it to LINKEDIN_DESTINATIONS (see MULTI-ACCOUNT.md). */}
+          {destReg && destReg.reason !== "checking" && (
+            <div className="conn" data-testid="settings-destinations">
+              <div style={{ fontWeight: 600 }}>Pages you can publish to</div>
+              {destReg.enabled ? (
+                <>
+                  <div className="u-muted" style={{ fontSize: 13, marginTop: 4 }}>Choose any of these when publishing. They are set on the server; the LinkedIn connection in Make must be an admin of each.</div>
+                  {destReg.destinations.map((d) => (
+                    <div key={d.id} className="dash-stat" style={{ marginTop: 6 }}>
+                      <span className={"dot " + (d.enabled === false ? "y" : "g")} />
+                      <span>{d.name}</span>
+                      <span className="u-muted mono" style={{ marginLeft: "auto", fontSize: 11.5 }}>{d.enabled === false ? "not available" : d.id}</span>
+                    </div>
+                  ))}
+                  {(destReg.problems || []).map((x, i) => <div key={i} className="badge warn" style={{ display: "block", marginTop: 8 }}>{x}</div>)}
+                </>
+              ) : (
+                <div className="u-muted" style={{ fontSize: 13, marginTop: 4 }}>
+                  One Page, as configured below. Publishing to several Pages is switched on per deployment with <code>LINKEDIN_DESTINATIONS</code> and <code>MAKE_MULTI_WEBHOOK_URL</code> — see MULTI-ACCOUNT.md.
+                </div>
+              )}
+            </div>
+          )}
           <div className="conn">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row" style={{ gap: 11, minWidth: 0 }}>

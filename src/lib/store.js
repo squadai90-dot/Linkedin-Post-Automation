@@ -38,6 +38,8 @@ const SHAPE = {
   research: asObj, angles: asObj, angle: asObj, draft: asObj, verification: asObj, quality: asObj,
   media: asObj, assets: asObj, schedule: asObj, analytics: asObj, voice: asObj, profile: asObj,
   makeCompany: asObj, usage: asObj, opps: asObj, extras: asObj,
+  /* the LinkedIn Pages the open post goes to, and how each fared */
+  destinations: (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : undefined), destResults: asObj,
   searchOn: asBool, bg3d: asBool, publishUnverified: asBool, setupHidden: asBool,
 };
 

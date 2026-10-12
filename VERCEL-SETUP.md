@@ -69,6 +69,16 @@ case-sensitive.
 
 Nothing in this release reads, renames or changes these.
 
+### Several LinkedIn Pages — optional, test deployment only for now
+
+| Variable | What it does |
+|---|---|
+| `MAKE_MULTI_WEBHOOK_URL` | The webhook of *Unison LinkedIn Publisher - Multi Account Test* (copy it from Make → Webhooks). Server only. |
+| `LINKEDIN_DESTINATIONS` | JSON list of `{id, name, organizationUrn}` Pages. Server only; not secret. |
+
+Both unset (production today): one Page, as before. Full guide:
+[MULTI-ACCOUNT.md](MULTI-ACCOUNT.md).
+
 ### Canva
 
 | Variable | Required for Canva | What it does |

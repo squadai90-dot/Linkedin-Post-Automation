@@ -23,7 +23,8 @@ import { nextSlot, localTimezone } from "./lib/dates.js";
 import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js";
 import { downloadBlob } from "./lib/brand.js";
 import { todayISO, isDue, zonedToUtc } from "./lib/dates.js";
-import { loadPublishSettings, savePublishSettings } from "./lib/publish.js";
+import { loadPublishSettings, savePublishSettings, scheduledMediaFit } from "./lib/publish.js";
+import { fetchDestinations, defaultSelection, reconcileSelection, publishNowTo, scheduleTo, overall as destOverall, pendingFor } from "./lib/destinations.js";
 import { workspaceHealth, pull as pullShared, push as pushShared, mergeShared, syncSummary, SYNC, resetWorkspaceProbe } from "./lib/sync.js";
 import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources, fetchImageAsDataUrl } from "./lib/freeApis.js";
 import {
@@ -107,6 +108,13 @@ export default function UnisonContentOS() {
   const [sentKeys, setSentKeys] = useState([]);            // idempotency: posts already handed to Make
   const [makeCompany, setMakeCompany] = useState({ name: "", urn: "" });
   const [relay, setRelay] = useState({ relay: false, checked: false });
+  /* LinkedIn Pages this deployment may publish to (server list). Off unless
+     the server opts in — then publishing is unchanged. */
+  const [destReg, setDestReg] = useState({ enabled: false, destinations: [], reason: "checking" });
+  const [destSel, setDestSel] = useState([]);          // Page ids this post goes to
+  const [destResults, setDestResults] = useState({});  // per-Page outcome of the last send
+  useEffect(() => { fetchDestinations().then(setDestReg); }, []);
+  useEffect(() => { if (destReg.enabled) setDestSel((cur) => (cur.length ? cur : defaultSelection(destReg.destinations))); }, [destReg]);
   useEffect(() => { makeLinkedInService.health().then((r) => setRelay({ ...r, checked: true })); }, []);
 
   const [analytics, setAnalytics] = useState(null);
@@ -223,6 +231,8 @@ export default function UnisonContentOS() {
           d.drafts && setDrafts(d.drafts);
           d.sentKeys && setSentKeys(d.sentKeys);
           d.makeCompany && setMakeCompany(d.makeCompany);
+          if (!busyAlready && Array.isArray(d.destinations)) setDestSel(d.destinations);
+          if (!busyAlready && d.destResults && typeof d.destResults === "object") setDestResults(d.destResults);
           if (!busyAlready) d.assets && setAssets({ ...EMPTY_ASSETS, ...d.assets });
           if (!busyAlready) d.versions && setVersions(d.versions);
           d.schedule && setSchedule(d.schedule);
@@ -275,6 +285,7 @@ export default function UnisonContentOS() {
         media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany,
         posts, team, notes, audit, usage, opps, searchOn, bg3d, extras, setupHidden, tone, pov, length,
         publishState, publishVia, attempts, publishError, publishLimits, publishKind, publishUnverified,
+        destinations: destSel, destResults,
         assets: compactAssets(assets),
       };
       try {
@@ -294,7 +305,7 @@ export default function UnisonContentOS() {
     }, 700);
   }, [restored, theme, idea, stage, steps, research, angles, angle, draft, verification, quality,
       media, formats, workId, drafts, versions, schedule, analytics, voice, profile, sentKeys, makeCompany, posts, team, notes, audit, usage, opps, searchOn, bg3d, extras, assets,
-      tone, pov, length, publishState, publishVia, attempts, publishError, publishLimits, publishKind, publishUnverified, setupHidden]);
+      tone, pov, length, publishState, publishVia, attempts, publishError, publishLimits, publishKind, publishUnverified, setupHidden, destSel, destResults]);
 
   /* Adopt whatever the team already has, once, on the way in. Merged rather
      than replaced: a post this browser made offline is not thrown away
@@ -374,7 +385,7 @@ export default function UnisonContentOS() {
   const snapshotWork = () => ({
     id: workId, title: idea, idea, formats, stage, steps, research, angles, angle, draft, verification, quality,
     media, assets: compactAssets(assets), versions: versions.slice(-6), schedule, tone, pov, length, undoStack: undoStack.slice(-3),
-    audit: audit.slice(-40), analytics, savedAt: new Date().toISOString(),
+    audit: audit.slice(-40), analytics, destinations: destSel, destResults, savedAt: new Date().toISOString(),
   });
   useEffect(() => {
     if (!restored || !workId || !idea) return;
@@ -385,7 +396,7 @@ export default function UnisonContentOS() {
       if (i < 0) return [snap, ...d];
       const next = [...d]; next[i] = snap; return next;
     });
-  }, [restored, workId, idea, formats, stage, steps, research, angles, angle, draft, verification, quality, media, assets, versions, schedule, tone, pov, length]);
+  }, [restored, workId, idea, formats, stage, steps, research, angles, angle, draft, verification, quality, media, assets, versions, schedule, tone, pov, length, destSel, destResults]);
 
   /* Clears the workspace without touching the drafts list. */
   function clearWork() {
@@ -395,6 +406,7 @@ export default function UnisonContentOS() {
     setAssets(EMPTY_ASSETS); setMstate({}); setVersions([]); setPublishState(null); setAttempts([]);
     setAnalytics(null); setSteps([]); setAudit([]); setUndoStack([]); setBusy(false);
     setDupDismissed(false); setOpenClaim(null); setPublishError(null); setPublishVia(null); setPublishLimits([]); setPublishKind(null); setPublishFramed(false); setPublishUnverified(false); lastPayloadRef.current = null; autoRef.current = "";
+    setDestSel(defaultSelection(destReg.destinations)); setDestResults({});
   }
 
   function openDraft(d, opts = {}) {
@@ -405,6 +417,8 @@ export default function UnisonContentOS() {
     setDraft(d.draft || null); setVerification(d.verification || null); setQuality(d.quality || null);
     setMedia(d.media || null); setAssets({ ...EMPTY_ASSETS, ...(d.assets || {}) }); setMstate({});
     setVersions(d.versions || []); if (d.schedule) setSchedule(d.schedule);
+    /* The Pages a post was set to go to come back with it — never swapped for others. */
+    setDestSel(Array.isArray(d.destinations) ? d.destinations : defaultSelection(destReg.destinations)); setDestResults(d.destResults || {});
     d.tone && setTone(d.tone); d.pov && setPov(d.pov); d.length && setLength(d.length);
     setUndoStack(d.undoStack || []); setAnalytics(d.analytics || null);
     setPublishState(opts.publishState || null); setPublishVia(opts.publishState ? "make" : null); setAttempts(opts.attempts || []);
@@ -716,6 +730,7 @@ Be terse.`,
        post (or switching what it is for) keeps them. The attachment itself is
        dropped, because the post it illustrated is being rewritten. */
     const keptDesign = reRun ? assets.designStudio : null;
+    if (!reRun) { setDestSel(defaultSelection(destReg.destinations)); setDestResults({}); }
     setQuality(null); setMedia(null); setAssets({ ...EMPTY_ASSETS, sourceDoc: keptDoc, designStudio: keptDesign }); setMstate({});
     setAnalytics(null); setPublishState(null); setAttempts([]); setVersions([]); setAudit([]);
     setDupDismissed(false); setUndoStack([]); setRecFormat(null); autoRef.current = "";
@@ -1593,6 +1608,9 @@ Give up to 4 of each. Only include what the document actually says.`,
        post; only an explicit confirmation in Make's reply means LinkedIn has
        it. The stages are reported exactly as far as they are known. */
     const postType = postTypeOf();
+    /* Several Pages: only when the server has a Page list. Everything below
+       this line is the single-Page path, unchanged. */
+    if (destReg.enabled) { await publishToPages({ scheduled, postId, postType, step, live }); return; }
     /* Only a real route may send anything: the Make workflow, or a browser
        sign-in with a Page selected. A sample Page or no connection is a dry run. */
     if (!publishReady) { simulatePublish(postId); return; }
@@ -1719,6 +1737,77 @@ Give up to 4 of each. Only include what the document actually says.`,
         : "Unable to publish to LinkedIn. Please try again.");
       logAudit(kind === "sandbox" ? "Publishing paused — preview environment can't reach the publishing service" : `Publishing failed — ${kind || "unknown"}${e?.status ? " " + e.status : ""}`);
       notify(kind === "sandbox" ? "Not sent — this preview can't reach the publishing service. Your post is saved." : "Publishing failed. Nothing was posted.");
+    } finally {
+      publishingRef.current = false;
+    }
+  }
+
+  /* ---- publishing to the chosen LinkedIn Pages ----
+     One job per Page, each with its own result. A Page that already has the
+     post is never sent again, so pressing Publish after a partial failure
+     retries only the Pages that failed. Nothing here calls a post published
+     without LinkedIn's urn for it. */
+  const destName = (id) => destReg.destinations.find((d) => d.id === id)?.name || id;
+  async function publishToPages({ scheduled, postId, postType, step, live }) {
+    const { valid, missing, unavailable } = reconcileSelection(destSel, destReg.destinations);
+    if (missing.length || unavailable.length) {
+      notify(`${[...missing, ...unavailable].map(destName).join(", ")} can't be published to from here any more. Review the Pages under Publish — nothing was sent.`, { tone: "warn", ms: 9000 });
+      return;
+    }
+    if (!valid.length) { notify("Choose at least one LinkedIn Page to publish to.", { tone: "warn" }); return; }
+    const todo = pendingFor(valid, destResults);
+    if (!todo.length) { notify("Every chosen Page already has this post. Nothing was sent again.", { tone: "warn" }); return; }
+    publishingRef.current = true;
+    setStage("PUBLISHING"); setPublishState("PREPARING"); setPublishVia("make");
+    step("Preparing", "ok");
+    try {
+      if (failMode) throw Object.assign(new Error("Simulated failure."), { kind: "simulated" });
+      const { payload, limits } = await buildPublishPayload(postId, { scheduled });
+      if (postType === "video" && !payload.media.some((m) => m.kind === "video")) throw Object.assign(new Error("No video file to send."), { kind: "no-video" });
+      if (scheduled) { const fit = scheduledMediaFit(payload); if (!fit.ok) throw Object.assign(new Error(fit.reason), { kind: "store-full" }); }
+      if (!live()) return;
+      setPublishLimits(limits);
+      lastPayloadRef.current = payload;
+      setPublishState("SENDING");
+      const n = todo.length;
+      step(scheduled ? `Handing to Make for ${n} Page${n === 1 ? "" : "s"}` : `Publishing to ${n} Page${n === 1 ? "" : "s"}`, "ok");
+      const send = scheduled ? scheduleTo : publishNowTo;
+      const results = await send({ payload, selected: valid, results: destResults, onUpdate: (r) => live() && setDestResults(r) });
+      const state = destOverall(valid, results);
+      const ids = (pred) => valid.filter((id) => pred(results[id]?.state));
+      const done = ids((x) => x === "published");
+      const failedIds = ids((x) => x === "failed" || x === "rejected");
+      const first = valid.map((id) => results[id]).find((r) => r?.urn) || {};
+      const at = new Date().toISOString();
+      const record = postRecord({
+        id: postId, state: state === "published" ? "PUBLISHED" : "SENT", date: scheduled ? schedule.date : todayISO(), viaMake: true,
+        scheduledHandoff: scheduled, ...(scheduled ? scheduleStamp() : {}), postType, mediaSent: payload.media.length, limits,
+        sentAt: at, publishedAt: state === "published" ? at : null, reference: first.urn || null, url: first.url || null,
+        destinations: valid, destResults: results, makeState: state,
+      });
+      if (state !== "failed") replacePost(record);
+      if (!live()) return;
+      for (const id of todo) step(`${destName(id)} — ${({ published: "published", queued: "queued in Make", accepted: "sent, not confirmed", unknown: "no answer — check the Page", failed: "failed", rejected: "refused" })[results[id]?.state] || results[id]?.state}`, ["failed", "rejected"].includes(results[id]?.state) ? "failed" : results[id]?.state === "published" || results[id]?.state === "queued" ? "ok" : "pending");
+      logAudit(`Published to Pages — ${valid.map((id) => `${destName(id)}: ${results[id]?.state}`).join("; ")}`);
+      if (state === "published") {
+        setPublishState("PUBLISHED"); setStage("PUBLISHED");
+        notify(`Published to ${done.length} Page${done.length === 1 ? "" : "s"}.`, { tone: "ok" });
+      } else if (state === "failed" || state === "partial") {
+        setPublishState("FAILED"); setStage("FAILED"); setPublishKind(state === "partial" ? "partial" : "failed");
+        setPublishError(`${failedIds.map((id) => `${destName(id)}: ${results[id]?.message || "refused"}`).join(" · ")}${state === "partial" ? ` — the other Page${valid.length - failedIds.length === 1 ? "" : "s"} kept ${valid.length - failedIds.length === 1 ? "its" : "their"} post. Retry sends only to the Pages that failed.` : ""}`);
+        notify(state === "partial" ? "Some Pages failed. The others have the post — retry sends only to the ones that failed." : "Publishing failed. Nothing was posted.", { tone: "bad", ms: 8000 });
+      } else {
+        setPublishState("SENT");
+        notify(state === "queued" ? `Queued in Make for ${valid.length} Page${valid.length === 1 ? "" : "s"}. Nothing is on LinkedIn yet.` : "Sent to Make. LinkedIn hasn't confirmed every Page yet — check before sending again.", { tone: state === "queued" ? "ok" : "warn", ms: 8000 });
+      }
+    } catch (e) {
+      if (!live()) return;
+      const kind = e?.kind || "failed";
+      step(kind === "store-full" ? "Too much media to hold until the scheduled time" : kind === "no-video" ? "No video file to send" : "Not sent", "failed");
+      setPublishState("FAILED"); setStage("FAILED"); setPublishKind(kind);
+      setPublishError(kind === "simulated" ? "Simulated failure (Settings → Simulate a publishing failure). Nothing was sent." : e?.message || "Nothing was sent.");
+      logAudit(`Publishing to Pages failed before sending — ${kind}`);
+      notify("Not sent. Nothing was posted.", { tone: "bad" });
     } finally {
       publishingRef.current = false;
     }
@@ -1905,6 +1994,7 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
     makeAiImage, visualStyle, setVisualStyle, genState, gen,
     recommendFormat: () => recommendFormat([draft?.hook, draft?.body, draft?.cta].filter(Boolean).join("\n\n")), recommending: recBusy, recommended: recFormat,
     publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras, publishReady,
+    destReg, destSel, setDestSel, destResults,
     setModal: openModal,
   };
 
@@ -1986,7 +2076,7 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
 
       {modal === "settings" && (
         <Modal wide onClose={() => { setModal(null); setSettingsTab("workspace"); }} title="Settings">
-          <Settings {...{ usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, setModal, searchOn, setSearchOn, failMode, setFailMode, makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify, profile, setProfile, wipe, bg3d, setBg3d, initialTab: settingsTab,
+          <Settings {...{ destReg, usage, linkedin, liMeta, relay, disconnectLinkedIn, openLinkedIn, setModal, searchOn, setSearchOn, failMode, setFailMode, makeCompany, setMakeCompany, team, setTeam, theme, setTheme, schedule, setSchedule, notes, setNotes, notify, profile, setProfile, wipe, bg3d, setBg3d, initialTab: settingsTab,
             aiSettings, updateAI, aiInfo, refreshAI, liSettings, updateLinkedIn, pubSettings, updatePublish, extras, setExtras, exportSession, importSession, storageIssue, posts,
             sync, syncNow }} />
         </Modal>
