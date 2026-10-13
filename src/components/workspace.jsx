@@ -105,7 +105,7 @@ export function Workspace(p) {
     setFailMode, undoStack, undo, pushUndo, assets, patchAssets, mstate, makeImage,
     makeVideo, makePoll, ingestDocument, attachUpload, exportVideo, profile, notify, extras = {}, publishReady, setFormats,
     recommendFormat, recommending, recommended,
-    destReg, destSel = [], setDestSel, destResults = {},
+    destReg, destSel = [], setDestSel, destResults = {}, markDestNotPublished,
   } = p;
   /* With a Page list, nothing can be sent until at least one Page is chosen. */
   const noPage = !!destReg?.enabled && !destSel.length;
@@ -581,7 +581,7 @@ export function Workspace(p) {
                   </div>
                 </div>
                 {stage === "SCHEDULED" && <DestinationPicker registry={destReg} selected={destSel} setSelected={setDestSel} results={destResults} />}
-                {stage !== "SCHEDULED" && <DestinationResults registry={destReg} selected={destSel} results={destResults} />}
+                {stage !== "SCHEDULED" && publishState !== "FAILED" && <DestinationResults registry={destReg} selected={destSel} results={destResults} onNotPublished={markDestNotPublished} onRetry={() => publishNow()} />}
                 {stage === "SCHEDULED" && (
                   <div className="u-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
                     Unison publishes this at {schedule.time} on its own, to the minute, provided it is open then — nothing to come back and press. If it will be closed, hand it to Make instead: Make publishes without Unison running, but only looks for due posts on a timer. {scheduledWindow(schedule.date, schedule.time).sentence}
@@ -634,7 +634,7 @@ export function Workspace(p) {
                       : publishKind === "partial" ? "Some Pages didn't get the post."
                       : publishVia === "make" ? "Unable to publish to LinkedIn." : "Publishing failed."}</b>
                     <div className="u-muted" style={{ marginTop: 5 }}>{publishError || "LinkedIn rejected the request."} Your draft and media are safe.</div>
-                    <DestinationResults registry={destReg} selected={destSel} results={destResults} />
+                    <DestinationResults registry={destReg} selected={destSel} results={destResults} onNotPublished={markDestNotPublished} />
                     {publishLimits.length > 0 && publishLimits.map((l, i) => <div key={i} className="badge warn" style={{ marginTop: 10 }}>{l}</div>)}
                     {publishKind === "sandbox" && (
                       <div className="u-muted" style={{ fontSize: 13, marginTop: 10 }}>
@@ -673,7 +673,7 @@ export function Workspace(p) {
             {publishState === "SIMULATED"
               ? <span className="badge warn">Simulated publish — nothing was sent to LinkedIn</span>
               : <span className="badge">Published to LinkedIn{destReg?.enabled ? ` · ${destSel.length} Page${destSel.length === 1 ? "" : "s"}` : linkedin.org ? ` · ${linkedin.org}` : ""}</span>}
-            <DestinationResults registry={destReg} selected={destSel} results={destResults} />
+            <DestinationResults registry={destReg} selected={destSel} results={destResults} onNotPublished={markDestNotPublished} />
             {/* A post can go out and still not be quite what was on screen —
                 a video recorded as WebM, an AI photo that had to be swapped
                 for the branded render. That was only ever shown when

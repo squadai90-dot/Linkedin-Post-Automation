@@ -6,9 +6,15 @@ schedule, with a separate result for every Page. This document covers how it
 works, how to turn it on for the **test** deployment, how to test it, what to
 do when something goes wrong, and how it would move to production.
 
-Status on 12 October 2026: **built and tested with Make and LinkedIn mocked.
-Not yet run against LinkedIn** — the two Make test scenarios are created but
-switched off (see §8, *What still needs you*).
+Status on 13 October 2026: **built and tested with Make and LinkedIn mocked.**
+One real test on 13 October published an image to Test 2; Test 3 did not
+publish because the test scenario was switched off when its request arrived
+(§11). **Real multi-Page publishing is not yet confirmed** — it needs a new,
+clearly labelled test with the scenario switched on (§8).
+
+> **Before switching the test scenario on:** its webhook queue holds three
+> requests from 13 October that were never run (§11). Switching the scenario
+> on posts all three. Delete them first unless you want them posted.
 
 ---
 
@@ -27,13 +33,23 @@ Publish to 3 Pages
 - A new post starts with **one Page** ticked — the first on the list — so a
   user who never touches the picker publishes exactly as before.
 - **Publish now** and **Schedule post** are disabled while no Page is ticked.
-- After publishing, each Page shows its own result: *Published* (with a link
-  to the post), *Scheduled in Make*, *Failed* (with LinkedIn's reason),
-  *Sent — not confirmed*, or *Unknown — check the Page*.
-- If some Pages fail, the card says **Some Pages didn't get the post** and the
-  button reads **Retry failed Pages**. Retrying sends only to the Pages that
-  failed; a Page that already has the post is never sent it again (its
-  checkbox is locked).
+- After publishing, each Page shows its own result:
+
+  | Result | Means | Sent again by Retry? |
+  |---|---|---|
+  | *Published* + link | LinkedIn returned a post id (urn) for this Page | Never |
+  | *Scheduled in Make* | Make stored the job for its due time | Never |
+  | *Waiting in Make — not run yet* | Make answered with its default "Accepted": the scenario did **not** run (switched off or busy) and the request is in the webhook queue. It will post when the scenario runs. | Never |
+  | *Sent — not confirmed* / *Unknown — check the Page* | Make answered without a result, an error without a reason, a timeout, or the page was closed mid-send. LinkedIn may have the post. | Never — only after someone checks |
+  | *Failed* + LinkedIn's reason, *Refused* | The scenario said LinkedIn refused it, or the Page is not allowed | Yes |
+
+- **Retry failed Pages** sends only to *Failed* and *Refused* Pages. A Page
+  whose outcome is unknown or waiting is never resent automatically, because
+  resending is how one Page ends up with two posts.
+- For an unknown or waiting Page there is **Not on LinkedIn? Allow resend**.
+  Use it only after checking the Page (and, for *Waiting in Make*, deleting the
+  request from the webhook queue in Make); it turns that Page into *Failed* so
+  Retry can send it.
 - The chosen Pages are saved with the post. Reopening a draft or a scheduled
   post brings the same Pages back. A Page that has since been removed from the
   server's list is reported, and **no other Page is used in its place**.
@@ -256,7 +272,9 @@ webhook only.
 | Settings shows "Skipped …" warnings | An entry in `LINKEDIN_DESTINATIONS` has a bad id or URN | Ids: lower-case letters, digits, dashes. URNs: `urn:li:organization:<digits>` |
 | A Page says **Refused** | The server or the Make filter does not allow it | Add it to both (§5) |
 | A Page says **Failed — … 403** | The LinkedIn connection is not an admin of that Page, or LinkedIn refused the content | Make → Connections → the LinkedIn connection → reauthorise as a Page admin; check the Page's admin list |
-| **Unknown — check the Page** | No answer in time (often a large video) | Look at the Page and at the test scenario's History in Make. Unison does not resend it automatically, to avoid a duplicate |
+| **Unknown — check the Page** | No answer in time (often a large video), or Make failed without a reason | Look at the Page. If the post is not there, **Not on LinkedIn? Allow resend**, then **Retry failed Pages** |
+| **Waiting in Make — not run yet** | The test scenario was switched off or busy when the request arrived; Make queued it and replied "Accepted" | Switch the scenario on (it then posts the queued request) — or delete the request from the webhook queue in Make, then **Not on LinkedIn? Allow resend** and retry. Never both. |
+| One Page published and the next says *Waiting in Make* | The scenario was run with **Run once**, which handles one request and stops | Switch the scenario on instead of using Run once when testing several Pages |
 | Every Page fails at once with "not set up" | `MAKE_MULTI_WEBHOOK_URL` missing or not a Make hook | Fix the variable, redeploy |
 | Image or video fails on one Page only | LinkedIn rejected the upload for that Page | The reason is on the Page's row; retry that Page only |
 | Poll fails | Fewer than 2 or more than 4 options, or option over 30 characters | Fix in the Poll step; retry |
@@ -272,7 +290,12 @@ webhook only.
 These were not done because they change live Make state or publish to
 LinkedIn, and the session was not permitted to:
 
+0. **Clear the test webhook's queue** (Make → Webhooks → *Unison LinkedIn
+   Publisher - Multi Account Test Webhook* → queue). It holds three requests
+   from 13 October (§11). Activating the scenario with them still queued posts
+   all three, including a second image post nobody approved for today.
 1. **Activate** *Unison LinkedIn Publisher - Multi Account Test* (7904894).
+   Do not test several Pages with **Run once**: it runs a single request.
    It is safe to activate: it listens only to its own webhook. **Check your Make
    plan first** — the Free plan's licence lists 2 scenarios, and both are
    production. If activation is refused, either upgrade the plan or pause the
@@ -324,3 +347,68 @@ Record each LinkedIn urn in TESTING.md.
 6. Remember the production Vercel project builds from a different GitHub
    repository — copy the code there, or connect Vercel to this repository.
 7. Watch the first scheduled multi-Page post through to the end.
+
+---
+
+## 11. 13 October test: why Test 3 did not publish
+
+**What was observed.** An image post was published to Test 2 and Make's
+image module returned a LinkedIn post id for urn:li:organization:145298202.
+Test 3 (145301196) showed *Sent — not confirmed* and has no post.
+
+**What the evidence shows** (read from Make on 13 October, nothing changed or
+replayed):
+
+| Time (UTC) | Request in the test webhook | What happened |
+|---|---|---|
+| 06:35:34 | `p-w-mv6b3d7qf3vl~test-2` (first post, Test 2) | Queued — scenario off |
+| 06:35:36 | `p-w-mv6b3d7qf3vl~test-3` (first post, Test 3) | Queued — scenario off |
+| 06:38:35 | `p-w-mv6b6w74uc7u~test-2` (second post, Test 2) | Run by a manual **Run once**, published (execution 60d86236…, 5 operations) |
+| 06:38:38 | `p-w-mv6b6w74uc7u~test-3` (second post, Test 3) | Arrived 1 s after that single run ended — queued |
+
+The scenario is inactive and the three queued requests are still in the
+webhook queue.
+
+**Root cause.** The test scenario was not running when the Test 3 requests
+arrived. Make accepts requests for a scenario that is off (or busy), queues
+them, and answers with its default text `Accepted` instead of the scenario's
+own reply. **Run once** handles exactly one request, so the Test 2 job of the
+second post ran and the Test 3 job, sent the moment Test 2's answer came back,
+was queued.
+
+**Ruled out, with evidence.**
+- *Unison's payload.* The queued Test 3 request carries
+  `destinationId: "test-3"`, `companyUrn: "urn:li:organization:145301196"`,
+  `company: "Unison Content OS Test 3"`, `postId` and `idempotencyKey`
+  `p-w-mv6b6w74uc7u~test-3`, `parentPostId`, `postType: "image"` and the
+  image. That is exactly what the relay is built to send, and a unit test now
+  rebuilds it field for field.
+- *Make's routing and filters.* The live blueprint (fetched 13 October) matches
+  the repository: the image route's filter accepts all three URNs and maps the
+  Company from `companyUrn`. A test evaluates the filters for every Page and
+  post type: each job matches exactly one route, image jobs reach the image
+  module, and the Company resolves to that job's Page.
+- *Authorization.* Not involved: the Test 3 request never reached a LinkedIn
+  module. (Make's Company list for the connection does include Test 3.)
+
+**What was wrong in Unison, and fixed.** Unison did not claim Test 3 was
+published, but it could not tell *queued, not run* from *ran, no answer*, and
+its retry rule would have resent some outcomes that may already have reached
+LinkedIn:
+
+| Before | After |
+|---|---|
+| Make's bare "Accepted" → *Sent — not confirmed* | → *Waiting in Make — not run yet*, with the reason, never retried |
+| Make 500 without a result → *Failed*, retried | → *Unknown*, not retried (LinkedIn may have the post) |
+| A relay timeout page (non-JSON 504) → *Failed*, retried | → *Unknown*, not retried |
+| A Page still *Sending* when the page was closed → retried on reopen | → *Unknown* on reopen, not retried |
+| No way to resend an unknown Page after checking | **Not on LinkedIn? Allow resend** (with a warning about Make's queue) |
+| Retry only from the failure card | **Retry failed Pages** also in the results list, counting only failed/refused Pages |
+
+The Make blueprint copy in the repository now records `sequential: false`,
+matching the live scenario.
+
+**Still to confirm on LinkedIn** (clearly labelled "TEST —" posts, scenario
+switched on, queue cleared first): image to Test 2 + Test 3, and image to all
+three Pages — each Page must show *Published* with its own link.
+

@@ -24,7 +24,7 @@ import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js"
 import { downloadBlob } from "./lib/brand.js";
 import { todayISO, isDue, zonedToUtc } from "./lib/dates.js";
 import { loadPublishSettings, savePublishSettings, scheduledMediaFit } from "./lib/publish.js";
-import { fetchDestinations, defaultSelection, reconcileSelection, publishNowTo, scheduleTo, overall as destOverall, pendingFor } from "./lib/destinations.js";
+import { fetchDestinations, defaultSelection, reconcileSelection, publishNowTo, scheduleTo, overall as destOverall, pendingFor, restoreResults, markNotPublished, labelFor as destLabel } from "./lib/destinations.js";
 import { workspaceHealth, pull as pullShared, push as pushShared, mergeShared, syncSummary, SYNC, resetWorkspaceProbe } from "./lib/sync.js";
 import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources, fetchImageAsDataUrl } from "./lib/freeApis.js";
 import {
@@ -232,7 +232,7 @@ export default function UnisonContentOS() {
           d.sentKeys && setSentKeys(d.sentKeys);
           d.makeCompany && setMakeCompany(d.makeCompany);
           if (!busyAlready && Array.isArray(d.destinations)) setDestSel(d.destinations);
-          if (!busyAlready && d.destResults && typeof d.destResults === "object") setDestResults(d.destResults);
+          if (!busyAlready && d.destResults && typeof d.destResults === "object") setDestResults(restoreResults(d.destResults));
           if (!busyAlready) d.assets && setAssets({ ...EMPTY_ASSETS, ...d.assets });
           if (!busyAlready) d.versions && setVersions(d.versions);
           d.schedule && setSchedule(d.schedule);
@@ -418,7 +418,7 @@ export default function UnisonContentOS() {
     setMedia(d.media || null); setAssets({ ...EMPTY_ASSETS, ...(d.assets || {}) }); setMstate({});
     setVersions(d.versions || []); if (d.schedule) setSchedule(d.schedule);
     /* The Pages a post was set to go to come back with it — never swapped for others. */
-    setDestSel(Array.isArray(d.destinations) ? d.destinations : defaultSelection(destReg.destinations)); setDestResults(d.destResults || {});
+    setDestSel(Array.isArray(d.destinations) ? d.destinations : defaultSelection(destReg.destinations)); setDestResults(restoreResults(d.destResults));
     d.tone && setTone(d.tone); d.pov && setPov(d.pov); d.length && setLength(d.length);
     setUndoStack(d.undoStack || []); setAnalytics(d.analytics || null);
     setPublishState(opts.publishState || null); setPublishVia(opts.publishState ? "make" : null); setAttempts(opts.attempts || []);
@@ -1756,7 +1756,7 @@ Give up to 4 of each. Only include what the document actually says.`,
     }
     if (!valid.length) { notify("Choose at least one LinkedIn Page to publish to.", { tone: "warn" }); return; }
     const todo = pendingFor(valid, destResults);
-    if (!todo.length) { notify("Every chosen Page already has this post. Nothing was sent again.", { tone: "warn" }); return; }
+    if (!todo.length) { notify("No Page needs sending: each one has the post, is waiting in Make, or is unconfirmed. Check unconfirmed Pages on LinkedIn first.", { tone: "warn", ms: 8000 }); return; }
     publishingRef.current = true;
     setStage("PUBLISHING"); setPublishState("PREPARING"); setPublishVia("make");
     step("Preparing", "ok");
@@ -1787,7 +1787,7 @@ Give up to 4 of each. Only include what the document actually says.`,
       });
       if (state !== "failed") replacePost(record);
       if (!live()) return;
-      for (const id of todo) step(`${destName(id)} — ${({ published: "published", queued: "queued in Make", accepted: "sent, not confirmed", unknown: "no answer — check the Page", failed: "failed", rejected: "refused" })[results[id]?.state] || results[id]?.state}`, ["failed", "rejected"].includes(results[id]?.state) ? "failed" : results[id]?.state === "published" || results[id]?.state === "queued" ? "ok" : "pending");
+      for (const id of todo) step(`${destName(id)} — ${destLabel(results[id]).toLowerCase()}`, ["failed", "rejected"].includes(results[id]?.state) ? "failed" : results[id]?.state === "published" || results[id]?.state === "queued" ? "ok" : "pending");
       logAudit(`Published to Pages — ${valid.map((id) => `${destName(id)}: ${results[id]?.state}`).join("; ")}`);
       if (state === "published") {
         setPublishState("PUBLISHED"); setStage("PUBLISHED");
@@ -1798,7 +1798,10 @@ Give up to 4 of each. Only include what the document actually says.`,
         notify(state === "partial" ? "Some Pages failed. The others have the post — retry sends only to the ones that failed." : "Publishing failed. Nothing was posted.", { tone: "bad", ms: 8000 });
       } else {
         setPublishState("SENT");
-        notify(state === "queued" ? `Queued in Make for ${valid.length} Page${valid.length === 1 ? "" : "s"}. Nothing is on LinkedIn yet.` : "Sent to Make. LinkedIn hasn't confirmed every Page yet — check before sending again.", { tone: state === "queued" ? "ok" : "warn", ms: 8000 });
+        const waiting = valid.filter((id) => results[id]?.stage === "make-queue");
+        notify(state === "queued" ? `Queued in Make for ${valid.length} Page${valid.length === 1 ? "" : "s"}. Nothing is on LinkedIn yet.`
+          : waiting.length ? `Make did not run ${waiting.map(destName).join(", ")}: the multi-account scenario is off or was busy, so ${waiting.length === 1 ? "it is" : "they are"} waiting in Make's queue and will post when it runs. Don't send ${waiting.length === 1 ? "it" : "them"} again.`
+          : "Sent to Make. LinkedIn hasn't confirmed every Page yet — check before sending again.", { tone: state === "queued" ? "ok" : "warn", ms: 10000 });
       }
     } catch (e) {
       if (!live()) return;
@@ -1995,6 +1998,8 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
     recommendFormat: () => recommendFormat([draft?.hook, draft?.body, draft?.cta].filter(Boolean).join("\n\n")), recommending: recBusy, recommended: recFormat,
     publishLimits, publishKind, publishFramed, publishUnverified, getLastPayload: () => lastPayloadRef.current, confirmPublished, workId, posts, relay, profile, notify, extras, publishReady,
     destReg, destSel, setDestSel, destResults,
+    /* After checking LinkedIn by hand: this Page does not have the post, so it may be sent again. */
+    markDestNotPublished: (id) => { setDestResults((r) => markNotPublished(r, id)); logAudit(`Marked not on LinkedIn after checking — ${destName(id)}`); },
     setModal: openModal,
   };
 

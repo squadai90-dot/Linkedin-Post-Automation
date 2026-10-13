@@ -10,6 +10,64 @@ Labels: **PASS** actually tested end to end, with the id LinkedIn returned ·
 **FAIL** tested and failed · **BLOCKED** cannot be tested here, with the
 reason · **NOT TESTED** no test was performed.
 
+## 13 October 2026 — why Page 3 did not get the multi-Page post
+
+Full diagnosis: MULTI-ACCOUNT.md §11. **No post was published to LinkedIn in
+this round, and nothing was replayed.** Real multi-Page publishing is still
+**NOT TESTED**: it needs the new, clearly labelled test in MULTI-ACCOUNT.md §8.
+
+What happened (read-only evidence from Make): the requests for Test 2 and
+Test 3 left Unison correctly formed — `destinationId` `test-3`,
+`companyUrn` `urn:li:organization:145301196`, `postId` and `idempotencyKey`
+`<post>~test-3`, `parentPostId`, the image — and reached the multi-account
+test webhook. The test scenario was **inactive**, so Make queued them and
+answered its default `Accepted`. The one Test 2 post that did go out was run
+by hand with *Run once*, which processes a single queued request. Unison read
+the bare `Accepted` as "sent", so Test 3 looked done when nothing had run.
+
+Ruled out: the payload (field-for-field identical to what the scenario
+expects), the filters and routing (the live blueprint matches the repo; the
+image route admits all three URNs and resolves the Company from the job), and
+LinkedIn authorization (the connection administers all three Pages; no
+LinkedIn call was ever made for Test 3).
+
+Fixed in Unison:
+
+| Before | Now |
+|---|---|
+| Make's bare `Accepted` counted as sent | **Waiting in Make — not run yet** (`accepted`, stage `make-queue`); never resent automatically |
+| A Make error without a result counted as failed, so *Retry* could post twice | **Unknown — check the Page**; not retried |
+| A browser timeout or a reload mid-send could be retried | **Unknown**; not retried |
+| *Retry failed Pages* resent anything not published | resends only Pages that were never sent or were refused outright (`failed`, `rejected`) |
+| — | **Not on LinkedIn? Allow resend** on an unknown or waiting Page, after a warning, once a person has checked LinkedIn (and cleared Make's queue) |
+
+| Check | Result |
+|---|---|
+| `npx vitest run` | 687 passed, 0 failed (31 files) — new `multi-account-fanout` (25); `destinations-server` now 21 |
+| `npm run test:e2e` (desktop + mobile) | 71 passed, 0 failed — new: the 13 October case in `e2e/multi-account.spec.js` |
+| `npm run build` | OK |
+| `npm run lint` | 0 errors |
+| Protected files (`api/publish.js`, `api/linkedin.js`, original `make/*.json`, `src/lib/publish.js`, production scenarios) | no diff; production scenarios 7482325 / 7524924 untouched |
+| Publishing functions in `src/App.jsx` | unchanged since 12 October |
+
+Mocked (Make and LinkedIn not involved) — what the new tests prove:
+
+| Item | Where | Result |
+|---|---|---|
+| Two Pages, image | unit (real relay + blueprint routes) | two requests, each with its own `destinationId`, `companyUrn`, `postId`/`idempotencyKey` `<post>~<page>` and `parentPostId`; each takes exactly one route, the Image Post module, Company = its own URN |
+| Three Pages, image | unit | three requests, no Page twice, none missing |
+| Every URN × every post type | unit (filter evaluator) | exactly one route matches, the right LinkedIn module; an unlisted URN takes the refusal route |
+| The 13 October Test 3 request | unit | rebuilt field for field; routes to Image Post for Test 3 |
+| Make queue (`Accepted`) | unit + e2e | waiting, not confirmed, not retried; resent only after *Allow resend* |
+| LinkedIn refusal on one Page | unit + e2e | that Page failed; retry sends only it, with the same key |
+| Make 500 text / 504 HTML / timeout | unit | unknown, not retried |
+| Webhook missing (404) | unit | failed — nothing ran |
+
+Still to do by hand (MULTI-ACCOUNT.md §8): delete the three queued requests
+from the test webhook's queue **before** activating the test scenario —
+otherwise they will post — then activate it (not *Run once*) and publish a
+post titled `TEST —` with an image to Test 2 + Test 3, then to all three.
+
 ## 12 October 2026 — publishing to several LinkedIn Pages
 
 Design and configuration: MULTI-ACCOUNT.md. **No post was published to

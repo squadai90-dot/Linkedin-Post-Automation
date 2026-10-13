@@ -63,6 +63,39 @@ export function readReply(body) {
   return { state, published, urn, url, message: body.message || body.error || null, stage: body.stage || null };
 }
 
+/**
+ * What Make's answer means for this Page, from the evidence in it.
+ *
+ *   JSON from the scenario      its own status: published (with urn), failed,
+ *                               rejected, queued …
+ *   2xx, body "Accepted"        Make's default reply. The scenario did NOT run
+ *                               for this request: it was switched off, or busy,
+ *                               so Make put the request in the webhook queue.
+ *                               It runs — and posts — when the scenario next
+ *                               runs. Resending would post twice.
+ *   2xx, anything else          the scenario ran but said nothing we can read
+ *   400/404/410, no JSON        the webhook address is gone: nothing ran
+ *   other non-2xx, no JSON      Make failed somewhere; LinkedIn may already
+ *                               have the post. Unknown, not failed.
+ *
+ * Only "failed" and "rejected" may be retried automatically.
+ */
+export const MAKE_QUEUED_MESSAGE = "Make received this but did not run it: the multi-account test scenario is switched off or was busy, so the request is waiting in its webhook queue. It will be posted when the scenario next runs. Do not send it again.";
+export function classifyResponse(r) {
+  if (r.parsed && typeof r.parsed === "object") {
+    const reply = readReply(r.parsed);
+    if (r.ok) return reply;
+    if (["failed", "rejected"].includes(reply.state)) return reply;
+    return { ...reply, state: "unknown", message: reply.message || `Make answered ${r.status} without saying what happened. Check the Page before sending again.` };
+  }
+  const raw = String(r.raw || "").trim();
+  const none = { published: false, urn: null, url: null };
+  if (r.ok && /^accepted\.?$/i.test(raw)) return { ...none, state: "accepted", stage: "make-queue", message: MAKE_QUEUED_MESSAGE };
+  if (r.ok) return { ...none, state: "unknown", stage: "make", message: "Make answered without a result for this Page. Check the Page before sending again." };
+  if ([400, 404, 410].includes(r.status)) return { ...none, state: "failed", stage: "webhook", message: `Make says this webhook does not exist (${r.status}). Nothing was run.` };
+  return { ...none, state: "unknown", stage: "make", message: `Make answered ${r.status}${raw ? ` (“${raw.slice(0, 80)}”)` : ""}. LinkedIn may or may not have the post — check the Page before sending again.` };
+}
+
 function invalid(post, mode) {
   if (!post || typeof post !== "object") return "post must be an object.";
   if (!String(post.postId || "").trim()) return "post.postId is required.";
@@ -170,11 +203,11 @@ export default async function handler(req, res) {
       delivered: false, state: r.error === "timeout" ? "unknown" : "failed", destinationIds: ok.map((d) => d.id),
     });
   }
-  const reply = readReply(r.parsed);
+  const reply = classifyResponse(r);
   if (!r.ok) {
     return res.status(502).json({
-      error: reply.message || `The publishing workflow refused the post (${r.status}).`,
-      delivered: false, state: reply.state === "accepted" ? "failed" : reply.state, stage: reply.stage,
+      error: reply.message || `The publishing workflow answered ${r.status}.`,
+      delivered: false, state: reply.state, stage: reply.stage,
       makeStatus: r.status, destinationIds: ok.map((d) => d.id),
     });
   }

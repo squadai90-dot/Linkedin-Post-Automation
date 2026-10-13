@@ -1,4 +1,4 @@
-import { toggle, selectAll, publishLabel, reconcileSelection, STATE_LABEL } from "../lib/destinations.js";
+import { toggle, selectAll, publishLabel, reconcileSelection, labelFor, SETTLED, pendingFor } from "../lib/destinations.js";
 
 /* ============================================================
    WHERE THE POST GOES — the LinkedIn Pages picker and its results
@@ -18,7 +18,7 @@ export function DestinationPicker({ registry, selected, setSelected, results = {
   if (!registry?.enabled) return null;
   const list = registry.destinations || [];
   const { valid, missing, unavailable } = reconcileSelection(selected, list);
-  const settled = (id) => ["published", "queued", "accepted", "unknown"].includes(results[id]?.state);
+  const settled = (id) => SETTLED.includes(results[id]?.state);
   return (
     <div className="dest" data-testid="destinations">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
@@ -43,7 +43,7 @@ export function DestinationPicker({ registry, selected, setSelected, results = {
               <Logo d={d} />
               <span className="dest-name">{d.name}</span>
               {off && <span className="badge warn">Not available</span>}
-              {r && r.state !== "idle" && <span className={"badge " + (["failed", "rejected"].includes(r.state) ? "bad" : r.state === "published" || r.state === "queued" ? "" : "warn")} data-testid={`dest-state-${d.id}`}>{STATE_LABEL[r.state] || r.state}</span>}
+              {r && r.state !== "idle" && <span className={"badge " + (["failed", "rejected"].includes(r.state) ? "bad" : r.state === "published" || r.state === "queued" ? "" : "warn")} data-testid={`dest-state-${d.id}`}>{labelFor(r)}</span>}
             </label>
           );
         })}
@@ -60,10 +60,12 @@ export function DestinationPicker({ registry, selected, setSelected, results = {
 }
 
 /** Per-Page outcome after a send: published (with a link), queued, failed (with why). */
-export function DestinationResults({ registry, selected, results = {} }) {
+export function DestinationResults({ registry, selected, results = {}, onNotPublished, onRetry }) {
   if (!registry?.enabled) return null;
   const rows = (selected || []).filter((id) => results[id] && results[id].state !== "idle");
   if (!rows.length) return null;
+  const sending = rows.some((id) => results[id]?.state === "sending");
+  const retry = !sending && rows.some((id) => ["failed", "rejected"].includes(results[id]?.state)) ? pendingFor(selected, results) : [];
   const name = (id) => registry.destinations.find((d) => d.id === id)?.name || id;
   return (
     <div className="dest-results" data-testid="dest-results">
@@ -73,12 +75,28 @@ export function DestinationResults({ registry, selected, results = {} }) {
           <div key={id} className="dest-row">
             <span className={"dot " + (r.state === "published" ? "g" : ["failed", "rejected"].includes(r.state) ? "r" : "y")} />
             <span style={{ fontWeight: 600 }}>{name(id)}</span>
-            <span className="u-muted">— {STATE_LABEL[r.state] || r.state}</span>
+            <span className="u-muted" data-testid={`dest-result-${id}`}>— {labelFor(r)}</span>
             {r.url && <a href={r.url} target="_blank" rel="noreferrer">View post ↗</a>}
-            {["failed", "rejected", "unknown"].includes(r.state) && r.message && <span className="u-muted" style={{ fontSize: 12.5, flexBasis: "100%", paddingLeft: 18 }}>{r.message}</span>}
+            {/* Unconfirmed is never resent by itself. Only someone who looked at
+                the Page can say it is not there. */}
+            {["unknown", "accepted"].includes(r.state) && onNotPublished && (
+              <button className="btn sm ghost" data-testid={`dest-not-published-${id}`} onClick={() => {
+                const queued = r.stage === "make-queue";
+                if (window.confirm(queued
+                  ? `${name(id)}: Make still holds this request in its queue and will post it when the scenario runs. Only continue if you have deleted it from the webhook queue in Make and the post is not on the Page. Allow sending again?`
+                  : `Only continue if you have checked ${name(id)} on LinkedIn and the post is not there. Allow sending again?`)) onNotPublished(id);
+              }}>Not on LinkedIn? Allow resend</button>
+            )}
+            {["failed", "rejected", "unknown", "accepted"].includes(r.state) && r.message && <span className="u-muted" style={{ fontSize: 12.5, flexBasis: "100%", paddingLeft: 18 }}>{r.message}</span>}
           </div>
         );
       })}
+      {onRetry && retry.length > 0 && (
+        <div className="row" style={{ marginTop: 6 }}>
+          <button className="btn sm" data-testid="dest-retry" onClick={onRetry}>Retry failed Pages ({retry.length})</button>
+          <span className="u-muted" style={{ fontSize: 12.5 }}>Sends only to {retry.length === 1 ? "that Page" : "those Pages"}. Published and unconfirmed Pages are left alone.</span>
+        </div>
+      )}
     </div>
   );
 }

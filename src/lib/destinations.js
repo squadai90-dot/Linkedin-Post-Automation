@@ -23,6 +23,25 @@ export const DEST_STATES = ["idle", "sending", "published", "queued", "accepted"
 /* Sent and not refused: resending could post twice, so these are never resent
    automatically. `accepted`/`unknown` mean Make took it but did not confirm. */
 export const SETTLED = ["published", "queued", "accepted", "unknown"];
+/* The only states a retry may send again: never tried, or refused outright.
+   "sending" is not here: a send cut off by a reload may have reached Make. */
+export const RETRYABLE = ["idle", "failed", "rejected"];
+
+/** Results as saved with a post. A Page still "sending" when the page was
+    closed may or may not have reached Make, so it comes back as unknown. */
+export function restoreResults(saved) {
+  const out = {};
+  for (const [id, r] of Object.entries(saved && typeof saved === "object" ? saved : {})) {
+    out[id] = r?.state === "sending" ? { ...r, state: "unknown", message: "The page was closed while this Page was being sent. Check LinkedIn before sending again." } : r;
+  }
+  return out;
+}
+
+/** A person checked LinkedIn and the post is not on this Page: only then may
+    an unknown or unconfirmed Page be sent again. */
+export function markNotPublished(results, id) {
+  return { ...results, [id]: { ...(results[id] || {}), state: "failed", message: "Checked on LinkedIn: not there. It can be sent again.", checkedAt: new Date().toISOString() } };
+}
 
 export async function fetchDestinations({ fetchImpl = fetch } = {}) {
   try {
@@ -71,10 +90,11 @@ export function toggle(selected, id) {
 
 export const publishLabel = (n) => (n === 0 ? "Choose a Page" : n === 1 ? "Publish to 1 Page" : `Publish to ${n} Pages`);
 
-/** Which of the chosen Pages still need sending: everything not already
-    settled. A retry therefore never touches a Page that published. */
+/** Which of the chosen Pages may be sent now: those never sent, and those
+    that genuinely failed. Published, queued, unconfirmed, unknown and
+    in-flight Pages are never resent automatically. */
 export function pendingFor(selected, results = {}) {
-  return (selected || []).filter((id) => !SETTLED.includes(results[id]?.state));
+  return (selected || []).filter((id) => RETRYABLE.includes(results[id]?.state || "idle"));
 }
 
 /** One line for the whole post, from its Pages' states. */
@@ -104,9 +124,16 @@ async function call(body, { fetchImpl = fetch, timeoutMs = 60000 } = {}) {
     const raw = await r.text().catch(() => "");
     let parsed = null;
     try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-    if (!parsed) return { state: r.ok ? "accepted" : "failed", message: r.ok ? null : `The publishing service answered ${r.status}.` };
-    if (!r.ok) return { state: parsed.state === "unknown" ? "unknown" : parsed.state === "rejected" ? "rejected" : "failed", message: parsed.error || null, refused: parsed.refused || null };
-    return { state: parsed.state || "accepted", urn: parsed.urn || null, url: parsed.url || null, message: parsed.message || null, duplicate: !!parsed.duplicate, at: parsed.at || null };
+    if (!parsed) {
+      /* No JSON from our own relay. 404/405: there is no relay, nothing was
+         sent. Anything else (a platform timeout page, a proxy error) may have
+         come after the job reached Make: unknown, never retried blindly. */
+      if (r.status === 404 || r.status === 405) return { state: "failed", message: "There is no publishing service at this address. Nothing was sent." };
+      return { state: "unknown", message: `The publishing service answered ${r.status} without a result. Check the Page before sending again.` };
+    }
+    const known = (x) => (DEST_STATES.includes(x) && !["idle", "sending"].includes(x) ? x : null);
+    if (!r.ok) return { state: known(parsed.state) || "failed", stage: parsed.stage || null, message: parsed.error || parsed.message || null, refused: parsed.refused || null };
+    return { state: known(parsed.state) || "unknown", stage: parsed.stage || null, urn: parsed.urn || null, url: parsed.url || null, message: parsed.message || null, duplicate: !!parsed.duplicate, at: parsed.at || null };
   } catch (e) {
     /* No answer: the job may or may not have reached Make. Unknown, not failed,
        so it is not resent without someone checking first. */
@@ -153,3 +180,6 @@ export const STATE_LABEL = {
   idle: "Not sent", sending: "Sending…", published: "Published", queued: "Scheduled in Make",
   accepted: "Sent — not confirmed", unknown: "Unknown — check the Page", failed: "Failed", rejected: "Refused",
 };
+
+/** The label for one Page's result, using what Make said where it matters. */
+export const labelFor = (r) => (r?.state === "accepted" && r?.stage === "make-queue" ? "Waiting in Make — not run yet" : STATE_LABEL[r?.state] || r?.state || STATE_LABEL.idle);

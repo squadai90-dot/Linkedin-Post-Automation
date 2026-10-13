@@ -201,12 +201,26 @@ describe("POST /api/publish-to", () => {
     expect(r.body.state).toBe("unknown");
   });
 
-  it("reports a Make refusal as a failure for that Page", async () => {
+  it("reports a scenario's own refusal as a failure for that Page", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ status: "failed", stage: "linkedin", message: "LinkedIn refused the post for this Page: 403" }) });
+    const r = await send({ post: POST, destinationIds: ["test-2"], fanout: true });
+    expect(r.body.state).toBe("failed");
+    expect(r.body.message).toMatch(/403/);
+  });
+
+  it("treats a Make error without a result as unknown — LinkedIn may have the post", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => "Scenario failed to complete." });
     const r = await send({ post: POST, destinationIds: ["test-2"], fanout: true });
     expect(r.code).toBe(502);
-    expect(r.body.state).toBe("failed");
+    expect(r.body.state).toBe("unknown");
     expect(r.body.destinationIds).toEqual(["test-2"]);
+  });
+
+  it("knows Make's bare \"Accepted\" means the job is queued, not run", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, text: async () => "Accepted" });
+    const r = await send({ post: POST, destinationIds: ["test-3"], fanout: true });
+    expect(r.code).toBe(200);
+    expect(r.body).toMatchObject({ state: "accepted", stage: "make-queue", published: false });
   });
 
   it("asks for the team token when one is set", async () => {

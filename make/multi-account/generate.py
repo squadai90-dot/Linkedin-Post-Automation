@@ -118,7 +118,7 @@ def nothing():
         [{"a": "{{2.publishMode}}", "b": "now", "o": "text:equal"}] + [{"a": "{{2.postType}}", "b": t, "o": "text:notequal"} for t in ["text", "image", "video", "poll"]]]}
     return {"flow": [r]}
 
-imm = {"name": "Unison LinkedIn Publisher - Multi Account Test", "metadata": {"instant": True, "version": 1, "scenario": {"dlq": False, "maxErrors": 3, "autoCommit": True, "roundtrips": 1, "sequential": True, "confidential": False, "dataloss": False, "freshVariables": False, "autoCommitTriggerLast": True}},
+imm = {"name": "Unison LinkedIn Publisher - Multi Account Test", "metadata": {"instant": True, "version": 1, "scenario": {"dlq": False, "maxErrors": 3, "autoCommit": True, "roundtrips": 1, "sequential": False, "confidential": False, "dataloss": False, "freshVariables": False, "autoCommitTriggerLast": True}},
     "flow": [
         {"id": 1, "module": "gateway:CustomWebHook", "version": 1, "parameters": {"hook": HOOK, "maxResults": 1}, "mapper": {}},
         {"id": 2, "module": "json:ParseJSON", "version": 1, "parameters": {"type": PARSE_TYPE}, "mapper": {"json": "{{1.value}}"}},

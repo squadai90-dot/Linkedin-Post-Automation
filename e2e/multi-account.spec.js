@@ -94,6 +94,37 @@ test.describe("publishing to several LinkedIn Pages", () => {
     expect(sent[3].fanout).toBe(true);                     // so it keeps its own job key
   });
 
+  test("13 Oct case: Page 3 waiting in Make's queue is shown as waiting, not retried, and resent only after a person checks", async ({ page }) => {
+    const sent = [];
+    await quiet(page);
+    let queued = true;
+    await server(page, { sent, answer: (b) => {
+      const id = b.destinationIds[0];
+      /* what api/publish-to.js answers when Make replies a bare "Accepted" */
+      if (id === "test-3" && queued) return { json: { delivered: true, state: "accepted", stage: "make-queue", published: false, message: "Make received this but did not run it: the multi-account test scenario is switched off or was busy, so the request is waiting in its webhook queue. It will be posted when the scenario next runs. Do not send it again." } };
+      return { json: { delivered: true, state: "published", published: true, urn: `urn:li:share:${id}`, url: `https://www.linkedin.com/feed/update/urn:li:share:${id}/` } };
+    } });
+    const picker = await approved(page, "TEST — two-Page image check, please ignore");
+    await picker.getByRole("checkbox", { name: "Unison Content OS Test", exact: true }).uncheck();
+    await picker.getByRole("checkbox", { name: "Unison Content OS Test 2" }).check();
+    await picker.getByRole("checkbox", { name: "Unison Content OS Test 3" }).check();
+    await page.getByRole("button", { name: "Publish now" }).click();
+
+    await expect(page.getByTestId("dest-result-test-3")).toHaveText(/Waiting in Make — not run yet/, { timeout: 20_000 });
+    await expect(page.getByTestId("dest-result-test-2")).toHaveText(/Published/);
+    expect(sent.map((b) => b.destinationIds[0])).toEqual(["test-2", "test-3"]);
+    /* nothing to retry: Page 3 may still be posted from Make's queue */
+    await expect(page.getByTestId("dest-retry")).toHaveCount(0);
+
+    /* a person checked, cleared Make's queue, and allows a resend */
+    page.once("dialog", (d) => d.accept());
+    await page.getByTestId("dest-not-published-test-3").click();
+    queued = false;
+    await page.getByTestId("dest-retry").click();
+    await expect(page.getByText(/Published to LinkedIn · 2 Pages/)).toBeVisible({ timeout: 20_000 });
+    expect(sent.map((b) => b.destinationIds[0])).toEqual(["test-2", "test-3", "test-3"]);
+  });
+
   test("Page 3 only goes to Page 3", async ({ page }) => {
     const sent = [];
     await quiet(page);
