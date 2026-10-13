@@ -19,10 +19,29 @@ export const DESTINATIONS_PATH = "/api/destinations";
 export const PUBLISH_TO_PATH = "/api/publish-to";
 
 /** States a Page can be in for one post. Only `published` is proof. */
-export const DEST_STATES = ["idle", "sending", "published", "queued", "accepted", "unknown", "failed", "rejected"];
+export const DEST_STATES = ["idle", "sending", "published", "queued", "accepted", "processing", "unknown", "failed", "rejected", "cancelled"];
 /* Sent and not refused: resending could post twice, so these are never resent
-   automatically. `accepted`/`unknown` mean Make took it but did not confirm. */
-export const SETTLED = ["published", "queued", "accepted", "unknown"];
+   automatically. `accepted`/`unknown` mean Make took it but did not confirm;
+   `processing` means Make has claimed it; `cancelled` was stopped on purpose. */
+export const SETTLED = ["published", "queued", "accepted", "processing", "unknown", "cancelled"];
+
+/**
+ * The one vocabulary Unison reports a Page in, whatever it was built from:
+ *
+ *   scheduled   held in Make for a future time (internal: queued)
+ *   queued      Make has the request but has not run it (internal: accepted)
+ *   processing  being sent now, or claimed by Make (internal: sending, processing)
+ *   published   LinkedIn returned the post's urn
+ *   failed      definitely not posted, and safe to send again (failed, rejected)
+ *   unknown     cannot tell whether LinkedIn has it: check before resending
+ *   cancelled   stopped before publishing
+ *   not sent    nothing has been sent (idle)
+ */
+export const CANONICAL = {
+  idle: "not sent", sending: "processing", processing: "processing", queued: "scheduled", accepted: "queued",
+  published: "published", failed: "failed", rejected: "failed", unknown: "unknown", cancelled: "cancelled",
+};
+export const canonicalState = (r) => CANONICAL[r?.state || "idle"] || "unknown";
 /* The only states a retry may send again: never tried, or refused outright.
    "sending" is not here: a send cut off by a reload may have reached Make. */
 export const RETRYABLE = ["idle", "failed", "rejected"];
@@ -40,7 +59,10 @@ export function restoreResults(saved) {
 /** A person checked LinkedIn and the post is not on this Page: only then may
     an unknown or unconfirmed Page be sent again. */
 export function markNotPublished(results, id) {
-  return { ...results, [id]: { ...(results[id] || {}), state: "failed", message: "Checked on LinkedIn: not there. It can be sent again.", checkedAt: new Date().toISOString() } };
+  const r = results[id] || {};
+  /* resends gives the next attempt its own key, so Make does not answer it
+     from the unfinished one. */
+  return { ...results, [id]: { ...r, state: "failed", message: "Checked on LinkedIn: not there. It can be sent again.", checkedAt: new Date().toISOString(), resends: (r.resends || 0) + 1 } };
 }
 
 export async function fetchDestinations({ fetchImpl = fetch } = {}) {
@@ -154,10 +176,12 @@ export async function publishNowTo({ payload, selected, results = {}, onUpdate, 
   const fanout = (selected || []).length > 1;
   const next = { ...results };
   for (const id of todo) {
-    next[id] = { state: "sending" };
+    const before = results[id] || {};
+    const keep = { postId: payload.postId, attempt: (before.attempt || 0) + 1, resends: before.resends || 0 };
+    next[id] = { state: "sending", ...keep };
     onUpdate?.({ ...next });
-    const r = await call({ post: payload, destinationIds: [id], fanout }, { fetchImpl, timeoutMs });
-    next[id] = { ...r, at: r.at || new Date().toISOString() };
+    const r = await call({ post: payload, destinationIds: [id], fanout, attempt: keep.attempt, resend: keep.resends }, { fetchImpl, timeoutMs });
+    next[id] = { ...r, ...keep, at: r.at || new Date().toISOString() };
     onUpdate?.({ ...next });
   }
   return next;
@@ -168,17 +192,54 @@ export async function scheduleTo({ payload, selected, results = {}, onUpdate, fe
   const todo = pendingFor(selected, results);
   if (!todo.length) return results;
   const next = { ...results };
-  for (const id of todo) next[id] = { state: "sending" };
+  const keep = Object.fromEntries(todo.map((id) => [id, { postId: payload.postId, attempt: (results[id]?.attempt || 0) + 1, resends: results[id]?.resends || 0 }]));
+  for (const id of todo) next[id] = { state: "sending", ...keep[id] };
   onUpdate?.({ ...next });
-  const r = await call({ post: payload, destinationIds: todo, fanout: (selected || []).length > 1 }, { fetchImpl, timeoutMs });
-  for (const id of todo) next[id] = { ...r, at: r.at || new Date().toISOString() };
+  const attempt = Math.max(...todo.map((id) => keep[id].attempt));
+  const r = await call({ post: payload, destinationIds: todo, fanout: (selected || []).length > 1, attempt }, { fetchImpl, timeoutMs });
+  for (const id of todo) next[id] = { ...r, ...keep[id], at: r.at || new Date().toISOString() };
   onUpdate?.({ ...next });
   return next;
 }
 
+/** The post id the results belong to, if any Page has been sent. */
+export const postIdOf = (results) => Object.values(results || {}).map((r) => r?.postId).find(Boolean) || null;
+
+/**
+ * Ask Make what it has recorded for each Page of a post, and bring the
+ * results up to date. A Page that has the post is never changed; a Page Make
+ * has no record of keeps what it had (absence is not evidence either way).
+ */
+export async function checkStatus({ postId, selected, results = {}, fetchImpl = fetch, timeoutMs = 30000 }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetchImpl(PUBLISH_TO_PATH, {
+      method: "POST", headers: { "Content-Type": "application/json", ...relayAuthHeaders() },
+      body: JSON.stringify({ action: "status", postId }), signal: ctrl.signal,
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || body?.state !== "report") return { ok: false, results, message: body?.error || `The status check answered ${r.status}.` };
+    const next = { ...results };
+    const changed = [];
+    for (const id of selected || []) {
+      const page = body.pages?.[id];
+      if (!page || next[id]?.state === "published") continue;
+      if (next[id]?.state !== page.state) changed.push(id);
+      next[id] = { ...(next[id] || {}), state: page.state, stage: "make-record", urn: page.urn, url: page.url, message: page.message || next[id]?.message || null, makeStatus: page.makeStatus, checkedInMakeAt: body.at };
+    }
+    return { ok: true, results: next, changed };
+  } catch (e) {
+    return { ok: false, results, message: e?.name === "AbortError" ? "Make did not answer in time." : "The publishing service could not be reached." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const STATE_LABEL = {
   idle: "Not sent", sending: "Sending…", published: "Published", queued: "Scheduled in Make",
-  accepted: "Sent — not confirmed", unknown: "Unknown — check the Page", failed: "Failed", rejected: "Refused",
+  accepted: "Sent — not confirmed", processing: "Publishing in Make…", unknown: "Unknown — check the Page", failed: "Failed", rejected: "Refused",
+  cancelled: "Cancelled",
 };
 
 /** The label for one Page's result, using what Make said where it matters. */

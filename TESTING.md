@@ -10,6 +10,37 @@ Labels: **PASS** actually tested end to end, with the id LinkedIn returned ·
 **FAIL** tested and failed · **BLOCKED** cannot be tested here, with the
 reason · **NOT TESTED** no test was performed.
 
+## 13 October 2026 (later) — two unified replacement scenarios
+
+Design, audit and full matrix: UNIFIED-PUBLISHING.md. Cutover: CUTOVER.md.
+**No post was published, nothing was imported into Make, and nothing in
+production changed.** The production scenarios were read live and are
+untouched: `lastEdit` is still 25 September, and the webhook queue is 0.
+
+| Check | Result |
+|---|---|
+| `npx vitest run` | **781 passed**, 0 failed (33 files). New: `unified-matrix` (86), `unified-blueprints` (8) |
+| `npm run test:e2e` (desktop + mobile) | first full run: 71 passed, 1 failed, 72 skipped (mobile copies of desktop-only tests). The failure was `source-document.spec.js` (document upload after reload), which does not touch publishing. It passed 5 times out of 5 when re-run, alone and after the multi-Page spec, and passes on the unchanged base commit. Treated as intermittent; the full re-run is recorded below. The new multi-Page status-check test passed. |
+| `npm run build` | OK |
+| `npm run lint` | 0 errors |
+
+Mocked: `tests/helpers/make-sim.js` executes the blueprint JSON itself, and
+LinkedIn is a stand-in. The relay and browser code run for real. The
+simulator's operation count for a production immediate post (5) matches
+Make's history for a real run of the same shape.
+
+| Area | Mocked result |
+|---|---|
+| 56 combinations: 4 types × now/scheduled × 7 Page selections | all PASS |
+| Failures: partial, all failed, invalid / unauthorised Page, missing or invalid media, invalid poll, duplicate submission, repeated delivery, Make queue, timeout, 5xx, crash after LinkedIn, store write failure, store full, reload, scheduler restart, early run, duplicate scheduled run, old and new schedulers on one store | all PASS |
+| Regression: a production-format single-Page post through the production and unified blueprints | the same LinkedIn calls, records and answers for all 4 types, now and scheduled; a production-queued job runs under the unified scheduler as production would run it |
+| Browser: **Check status in Make** | Pages updated from Make's records; nothing sent |
+
+Real LinkedIn results through the unified scenarios: **none yet (NOT
+VERIFIED)**. The real evidence that exists is listed in UNIFIED-PUBLISHING.md
+§D: Page 1, all types, through production; Page 2, one image, through the
+12 October test copy; Page 3, nothing.
+
 ## 13 October 2026 — why Page 3 did not get the multi-Page post
 
 Full diagnosis: MULTI-ACCOUNT.md §11. **No post was published to LinkedIn in

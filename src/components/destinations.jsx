@@ -1,4 +1,4 @@
-import { toggle, selectAll, publishLabel, reconcileSelection, labelFor, SETTLED, pendingFor } from "../lib/destinations.js";
+import { toggle, selectAll, publishLabel, reconcileSelection, labelFor, SETTLED, pendingFor, canonicalState } from "../lib/destinations.js";
 
 /* ============================================================
    WHERE THE POST GOES — the LinkedIn Pages picker and its results
@@ -60,13 +60,14 @@ export function DestinationPicker({ registry, selected, setSelected, results = {
 }
 
 /** Per-Page outcome after a send: published (with a link), queued, failed (with why). */
-export function DestinationResults({ registry, selected, results = {}, onNotPublished, onRetry }) {
+export function DestinationResults({ registry, selected, results = {}, onNotPublished, onRetry, onCheckStatus }) {
   if (!registry?.enabled) return null;
   const rows = (selected || []).filter((id) => results[id] && results[id].state !== "idle");
   if (!rows.length) return null;
   const sending = rows.some((id) => results[id]?.state === "sending");
   const retry = !sending && rows.some((id) => ["failed", "rejected"].includes(results[id]?.state)) ? pendingFor(selected, results) : [];
   const name = (id) => registry.destinations.find((d) => d.id === id)?.name || id;
+  const open = !sending && rows.some((id) => ["queued", "accepted", "processing", "unknown"].includes(results[id]?.state));
   return (
     <div className="dest-results" data-testid="dest-results">
       {rows.map((id) => {
@@ -75,7 +76,7 @@ export function DestinationResults({ registry, selected, results = {}, onNotPubl
           <div key={id} className="dest-row">
             <span className={"dot " + (r.state === "published" ? "g" : ["failed", "rejected"].includes(r.state) ? "r" : "y")} />
             <span style={{ fontWeight: 600 }}>{name(id)}</span>
-            <span className="u-muted" data-testid={`dest-result-${id}`}>— {labelFor(r)}</span>
+            <span className="u-muted" data-testid={`dest-result-${id}`} data-state={canonicalState(r)}>— {labelFor(r)}</span>
             {r.url && <a href={r.url} target="_blank" rel="noreferrer">View post ↗</a>}
             {/* Unconfirmed is never resent by itself. Only someone who looked at
                 the Page can say it is not there. */}
@@ -91,6 +92,12 @@ export function DestinationResults({ registry, selected, results = {}, onNotPubl
           </div>
         );
       })}
+      {onCheckStatus && open && (
+        <div className="row" style={{ marginTop: 6 }}>
+          <button className="btn sm ghost" data-testid="dest-check-status" onClick={onCheckStatus}>Check status in Make</button>
+          <span className="u-muted" style={{ fontSize: 12.5 }}>Reads what Make recorded for each Page. Sends nothing to LinkedIn.</span>
+        </div>
+      )}
       {onRetry && retry.length > 0 && (
         <div className="row" style={{ marginTop: 6 }}>
           <button className="btn sm" data-testid="dest-retry" onClick={onRetry}>Retry failed Pages ({retry.length})</button>

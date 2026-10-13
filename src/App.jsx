@@ -24,7 +24,7 @@ import { downscaleImage, readFileAsDataUrl, dataUrlBytes } from "./lib/image.js"
 import { downloadBlob } from "./lib/brand.js";
 import { todayISO, isDue, zonedToUtc } from "./lib/dates.js";
 import { loadPublishSettings, savePublishSettings, scheduledMediaFit } from "./lib/publish.js";
-import { fetchDestinations, defaultSelection, reconcileSelection, publishNowTo, scheduleTo, overall as destOverall, pendingFor, restoreResults, markNotPublished, labelFor as destLabel } from "./lib/destinations.js";
+import { fetchDestinations, defaultSelection, reconcileSelection, publishNowTo, scheduleTo, overall as destOverall, pendingFor, restoreResults, markNotPublished, labelFor as destLabel, checkStatus, postIdOf } from "./lib/destinations.js";
 import { workspaceHealth, pull as pullShared, push as pushShared, mergeShared, syncSummary, SYNC, resetWorkspaceProbe } from "./lib/sync.js";
 import { DEFAULT_EXTRAS, hnStories, hnToOpportunities, wikiSearch, wikiToSources, fetchImageAsDataUrl } from "./lib/freeApis.js";
 import {
@@ -1800,7 +1800,7 @@ Give up to 4 of each. Only include what the document actually says.`,
         setPublishState("SENT");
         const waiting = valid.filter((id) => results[id]?.stage === "make-queue");
         notify(state === "queued" ? `Queued in Make for ${valid.length} Page${valid.length === 1 ? "" : "s"}. Nothing is on LinkedIn yet.`
-          : waiting.length ? `Make did not run ${waiting.map(destName).join(", ")}: the multi-account scenario is off or was busy, so ${waiting.length === 1 ? "it is" : "they are"} waiting in Make's queue and will post when it runs. Don't send ${waiting.length === 1 ? "it" : "them"} again.`
+          : waiting.length ? `Make did not run ${waiting.map(destName).join(", ")}: the Make scenario is off or was busy, so ${waiting.length === 1 ? "it is" : "they are"} waiting in Make's queue and will post when it runs. Don't send ${waiting.length === 1 ? "it" : "them"} again.`
           : "Sent to Make. LinkedIn hasn't confirmed every Page yet — check before sending again.", { tone: state === "queued" ? "ok" : "warn", ms: 10000 });
       }
     } catch (e) {
@@ -2000,6 +2000,16 @@ ${others.length ? `Page average across ${others.length} other posts: impressions
     destReg, destSel, setDestSel, destResults,
     /* After checking LinkedIn by hand: this Page does not have the post, so it may be sent again. */
     markDestNotPublished: (id) => { setDestResults((r) => markNotPublished(r, id)); logAudit(`Marked not on LinkedIn after checking — ${destName(id)}`); },
+    /* Reads what Make recorded for each Page; sends nothing to LinkedIn. */
+    checkDestStatus: async () => {
+      const postId = postIdOf(destResults);
+      if (!postId) { notify("Nothing has been sent for this post yet.", { tone: "warn" }); return; }
+      const out = await checkStatus({ postId, selected: destSel, results: destResults });
+      if (!out.ok) { notify(`Couldn't read the status from Make: ${out.message}`, { tone: "warn", ms: 8000 }); return; }
+      setDestResults(out.results);
+      logAudit(`Checked Page status in Make — ${destSel.map((id) => `${destName(id)}: ${out.results[id]?.state || "no record"}`).join("; ")}`);
+      notify(out.changed.length ? `Updated from Make: ${out.changed.map(destName).join(", ")}.` : "Make has nothing newer for these Pages.", { tone: "ok" });
+    },
     setModal: openModal,
   };
 

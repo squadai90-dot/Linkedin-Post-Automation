@@ -191,3 +191,110 @@ That writes `unison-content-os.html`. It contains no API key.
 | The draft says it is **only your topic** | No AI was reachable. On your own machine: Settings → AI. Deployed: set `GROQ_API_KEY` on the server and redeploy (see VERCEL-SETUP.md). |
 | Settings → AI → **Deployment check** shows a red row | That server variable is missing or wrong. The row names it and says what to do. |
 | Canva says *"Connect Canva first"* | Each person connects once — Settings → AI → Connect Canva. |
+
+---
+
+## 9. Multi-Page publishing: test, preview, push
+
+Everything here runs on your machine or on a **preview** deployment. Nothing
+here touches production. It needs Git ([git-scm.com](https://git-scm.com))
+and Python 3 ([python.org](https://www.python.org)) as well as Node.js.
+
+### Get the branch
+
+```powershell
+git clone https://github.com/squadai90-dot/Linkedin-Post-Automation.git
+cd Linkedin-Post-Automation
+git checkout claude/website-review-improvements-ndtwl3
+npm ci
+```
+
+### Run every check
+
+```powershell
+npm run lint
+npm test
+npm run build
+npx vitest run tests/unified-matrix.test.js tests/unified-blueprints.test.js
+```
+
+The last line runs the 56-combination matrix and the blueprint checks alone.
+You should see `Tests  94 passed`.
+
+Browser tests: `npm run test:e2e` uses a shell syntax that Windows does not
+understand. Run these three lines instead. They set the `.env.local` file
+aside, so no real key ends up in the test build, and then put it back.
+
+```powershell
+if (Test-Path .env.local) { Rename-Item .env.local .env.local.off }
+npx playwright install chromium
+npx vite build; npx playwright test; if (Test-Path .env.local.off) { Rename-Item .env.local.off .env.local }
+```
+
+The browser tests end with `passed`, and the mobile copies of desktop-only
+tests show as `skipped`.
+
+### Check the blueprints are the generated ones
+
+```powershell
+python make\unified\generate.py
+python make\unified\generate.py --profile test
+git status --short make\unified
+```
+
+`git status` printing nothing means the committed blueprints are exactly
+what the generator produces.
+
+### Start the app
+
+```powershell
+npm run dev
+```
+
+Open <http://localhost:5173>. `npm run dev` has no server functions, so the
+Page picker stays hidden. That is expected. To see it locally, use
+`npx vercel dev` with the two variables below in `.env.local`. Point the
+webhook at the **test** webhook only.
+
+### Push the branch to the UX test project and get a preview
+
+The test project lives in a different repository. This adds it as a second
+remote and pushes the branch there under a new branch name. Nothing is
+merged, and nothing goes to production.
+
+```powershell
+git remote add uxtest https://github.com/drashtirmakwana15-rgb/unison-content-os-ux-test.git
+git fetch uxtest
+git push uxtest claude/website-review-improvements-ndtwl3:multi-page-unified
+```
+
+If Vercel is connected to that repository, it builds a **Preview** for the
+branch `multi-page-unified`. Before using it:
+
+1. In Vercel → the test project → Settings → Environment Variables, add
+   these for the **Preview** environment only:
+   - `LINKEDIN_DESTINATIONS`: the three Pages, as in MULTI-ACCOUNT.md §5.
+   - `MAKE_MULTI_WEBHOOK_URL`: the address of the **test** webhook
+     *Unison LinkedIn Publisher - Multi Account Test Webhook*. Copy it from
+     Make → Webhooks. Never paste the production one here.
+   - `GROQ_API_KEY`: already used by the app for writing.
+2. Redeploy the preview (Deployments → the preview → ⋯ → Redeploy).
+3. Check the preview runs this code:
+   - In Vercel, the deployment's commit must equal the output of
+     `git rev-parse --short HEAD`.
+   - Opening `https://<preview-address>/api/destinations` must show
+     `"service":"unison-destinations"`, `"enabled":true` and the three
+     Pages. It must not show any webhook address.
+   - Open the preview → Settings → LinkedIn: *Pages you can publish to*
+     lists the three Pages.
+
+Do **not** run `vercel --prod` and do not promote the preview. Production
+deploys only through CUTOVER.md, after your approval.
+
+### Commit your own changes, if you make any
+
+```powershell
+git add -A
+git commit -m "Describe the change"
+git push origin claude/website-review-improvements-ndtwl3
+```

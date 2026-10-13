@@ -101,7 +101,7 @@ test.describe("publishing to several LinkedIn Pages", () => {
     await server(page, { sent, answer: (b) => {
       const id = b.destinationIds[0];
       /* what api/publish-to.js answers when Make replies a bare "Accepted" */
-      if (id === "test-3" && queued) return { json: { delivered: true, state: "accepted", stage: "make-queue", published: false, message: "Make received this but did not run it: the multi-account test scenario is switched off or was busy, so the request is waiting in its webhook queue. It will be posted when the scenario next runs. Do not send it again." } };
+      if (id === "test-3" && queued) return { json: { delivered: true, state: "accepted", stage: "make-queue", published: false, message: "Make received this but did not run it: the Make scenario is switched off or was busy (or out of operations), so the request is waiting in its webhook queue. It will be posted when the scenario next runs. Do not send it again." } };
       return { json: { delivered: true, state: "published", published: true, urn: `urn:li:share:${id}`, url: `https://www.linkedin.com/feed/update/urn:li:share:${id}/` } };
     } });
     const picker = await approved(page, "TEST — two-Page image check, please ignore");
@@ -164,6 +164,29 @@ test.describe("publishing to several LinkedIn Pages", () => {
     await expect(results).toContainText(/Unison Content OS Test\s*— Scheduled in Make/);
     await expect(results).toContainText(/Unison Content OS Test 3\s*— Scheduled in Make/);
     await expect(results).not.toContainText("Unison Content OS Test 2");
+  });
+
+  test("a scheduled post's Pages are brought up to date from Make's records, without sending anything", async ({ page }) => {
+    const sent = [];
+    await quiet(page);
+    await server(page, { sent, answer: (b) => (b.action === "status"
+      ? { json: { delivered: true, state: "report", postId: b.postId, pages: {
+          "test-1": { state: "published", makeStatus: "published", urn: "urn:li:share:71", url: "https://www.linkedin.com/feed/update/urn:li:share:71/" },
+          "test-3": { state: "failed", makeStatus: "failed", message: "LinkedIn refused this post: 403" } } } }
+      : { json: { delivered: true, state: "queued", mode: "scheduled" } }) });
+    const picker = await approved(page, "Scheduled status check for Pages 1 and 3 — please ignore");
+    await picker.getByRole("checkbox", { name: "Unison Content OS Test 3" }).check();
+    await page.getByRole("button", { name: "Schedule post" }).click();
+    await page.getByRole("button", { name: /^Hand to Make for / }).click();
+    await expect(page.getByTestId("dest-result-test-1").first()).toHaveAttribute("data-state", "scheduled", { timeout: 20_000 });
+
+    await page.getByTestId("dest-check-status").first().click();
+    await expect(page.getByTestId("dest-result-test-1").first()).toHaveText(/Published/, { timeout: 20_000 });
+    await expect(page.getByTestId("dest-result-test-3").first()).toHaveAttribute("data-state", "failed");
+    await expect(page.getByTestId("dest-results").first()).toContainText("LinkedIn refused this post: 403");
+    expect(sent.filter((b) => b.action === "status")).toHaveLength(1);
+    expect(sent.filter((b) => b.action !== "status")).toHaveLength(1);   // the status check sent no post
+    expect(sent[1].postId).toBe(sent[0].post.postId);
   });
 
   test("without a Page list on the server nothing changes: no picker, the single-Page path", async ({ page }) => {

@@ -1,0 +1,1222 @@
+{
+ "name": "Unison LinkedIn Publisher - Unified Test (no data store)",
+ "metadata": {
+  "instant": true,
+  "version": 1,
+  "designer": {
+   "orphans": []
+  },
+  "scenario": {
+   "dlq": false,
+   "slots": null,
+   "dataloss": false,
+   "maxErrors": 3,
+   "autoCommit": true,
+   "roundtrips": 1,
+   "sequential": false,
+   "confidential": false,
+   "freshVariables": false,
+   "autoCommitTriggerLast": true
+  }
+ },
+ "flow": [
+  {
+   "id": 1,
+   "module": "gateway:CustomWebHook",
+   "version": 1,
+   "parameters": {
+    "hook": 3885267,
+    "maxResults": 1
+   },
+   "mapper": {}
+  },
+  {
+   "id": 2,
+   "module": "json:ParseJSON",
+   "version": 1,
+   "parameters": {
+    "type": 631043
+   },
+   "mapper": {
+    "json": "{{1.value}}"
+   }
+  },
+  {
+   "id": 3,
+   "module": "builtin:BasicRouter",
+   "version": 1,
+   "mapper": null,
+   "routes": [
+    {
+     "flow": [
+      {
+       "id": 101,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"unsupported\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"Unison no longer offers this post type, because it could not be published to LinkedIn reliably. Nothing was published. Update your copy of Unison and send the post as text, image, video or poll — the text and media are stored in Make so nothing is lost.\"}",
+        "status": 200,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Now · A post type Unison no longer sends",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "multi"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "document"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "carousel"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "article"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 121,
+       "module": "builtin:BasicRouter",
+       "version": 1,
+       "mapper": null,
+       "routes": [
+        {
+         "flow": [
+          {
+           "id": 102,
+           "module": "linkedin:CreateTextShare",
+           "version": 2,
+           "parameters": {
+            "__IMTCONN__": 10513797
+           },
+           "mapper": {
+            "visibility": "PUBLIC",
+            "organization": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+            "feedDistribution": "MAIN_FEED",
+            "isReshareDisabledByAuthor": false,
+            "content": "{{2.content}}"
+           },
+           "metadata": {
+            "restore": {
+             "parameters": {
+              "__IMTCONN__": {
+               "data": {
+                "scoped": "true",
+                "connection": "linkedin2"
+               },
+               "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+              }
+             }
+            },
+            "advanced": true
+           },
+           "onerror": [
+            {
+             "id": 103,
+             "module": "gateway:WebhookRespond",
+             "version": 1,
+             "parameters": {},
+             "mapper": {
+              "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"LinkedIn refused the post for this Page: {{replace(102.error.message; \"/[^a-zA-Z0-9 .,:;()'_=-]/g\"; \" \")}}\"}",
+              "status": 200,
+              "headers": [
+               {
+                "key": "Content-Type",
+                "value": "application/json"
+               },
+               {
+                "key": "Access-Control-Allow-Origin",
+                "value": "*"
+               }
+              ]
+             },
+             "metadata": {
+              "advanced": true
+             }
+            },
+            {
+             "id": 104,
+             "module": "builtin:Ignore",
+             "version": 1,
+             "mapper": {}
+            }
+           ],
+           "filter": {
+            "name": "Now · Text",
+            "conditions": [
+             [
+              {
+               "a": "{{2.postType}}",
+               "o": "text:equal",
+               "b": "text"
+              }
+             ]
+            ]
+           }
+          },
+          {
+           "id": 105,
+           "module": "gateway:WebhookRespond",
+           "version": 1,
+           "parameters": {},
+           "mapper": {
+            "body": "{\"status\":\"published\",\"urn\":\"{{102.id}}\",\"url\":\"https://www.linkedin.com/feed/update/{{102.id}}/\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\"}",
+            "status": 200,
+            "headers": [
+             {
+              "key": "Content-Type",
+              "value": "application/json"
+             },
+             {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+             }
+            ]
+           },
+           "metadata": {
+            "advanced": true
+           }
+          }
+         ]
+        },
+        {
+         "flow": [
+          {
+           "id": 106,
+           "module": "linkedin:CreateCompanyImagePost",
+           "version": 2,
+           "parameters": {
+            "__IMTCONN__": 10513797
+           },
+           "mapper": {
+            "visibility": "PUBLIC",
+            "organization": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+            "feedDistribution": "MAIN_FEED",
+            "isReshareDisabledByAuthor": false,
+            "data": "{{toBinary(2.media[1].data; \"base64\")}}",
+            "method": "upload",
+            "altText": "{{2.media[1].altText}}",
+            "content": "{{2.content}}",
+            "fileName": "{{2.media[1].filename}}"
+           },
+           "metadata": {
+            "restore": {
+             "parameters": {
+              "__IMTCONN__": {
+               "data": {
+                "scoped": "true",
+                "connection": "linkedin2"
+               },
+               "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+              }
+             }
+            },
+            "advanced": true
+           },
+           "onerror": [
+            {
+             "id": 107,
+             "module": "gateway:WebhookRespond",
+             "version": 1,
+             "parameters": {},
+             "mapper": {
+              "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"LinkedIn refused the post for this Page: {{replace(106.error.message; \"/[^a-zA-Z0-9 .,:;()'_=-]/g\"; \" \")}}\"}",
+              "status": 200,
+              "headers": [
+               {
+                "key": "Content-Type",
+                "value": "application/json"
+               },
+               {
+                "key": "Access-Control-Allow-Origin",
+                "value": "*"
+               }
+              ]
+             },
+             "metadata": {
+              "advanced": true
+             }
+            },
+            {
+             "id": 108,
+             "module": "builtin:Ignore",
+             "version": 1,
+             "mapper": {}
+            }
+           ],
+           "filter": {
+            "name": "Now · Image",
+            "conditions": [
+             [
+              {
+               "a": "{{2.postType}}",
+               "o": "text:equal",
+               "b": "image"
+              }
+             ]
+            ]
+           }
+          },
+          {
+           "id": 109,
+           "module": "gateway:WebhookRespond",
+           "version": 1,
+           "parameters": {},
+           "mapper": {
+            "body": "{\"status\":\"published\",\"urn\":\"{{106.id}}\",\"url\":\"https://www.linkedin.com/feed/update/{{106.id}}/\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\"}",
+            "status": 200,
+            "headers": [
+             {
+              "key": "Content-Type",
+              "value": "application/json"
+             },
+             {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+             }
+            ]
+           },
+           "metadata": {
+            "advanced": true
+           }
+          }
+         ]
+        },
+        {
+         "flow": [
+          {
+           "id": 110,
+           "module": "linkedin:createOrganizationVideoPost",
+           "version": 2,
+           "parameters": {
+            "__IMTCONN__": 10513797
+           },
+           "mapper": {
+            "visibility": "PUBLIC",
+            "organization": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+            "feedDistribution": "MAIN_FEED",
+            "isReshareDisabledByAuthor": false,
+            "video": "{{toBinary(2.media[1].data; \"base64\")}}",
+            "method": "upload",
+            "content": "{{2.content}}",
+            "videoName": "{{2.media[1].filename}}"
+           },
+           "metadata": {
+            "restore": {
+             "parameters": {
+              "__IMTCONN__": {
+               "data": {
+                "scoped": "true",
+                "connection": "linkedin2"
+               },
+               "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+              }
+             }
+            },
+            "advanced": true
+           },
+           "onerror": [
+            {
+             "id": 111,
+             "module": "gateway:WebhookRespond",
+             "version": 1,
+             "parameters": {},
+             "mapper": {
+              "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"LinkedIn refused the post for this Page: {{replace(110.error.message; \"/[^a-zA-Z0-9 .,:;()'_=-]/g\"; \" \")}}\"}",
+              "status": 200,
+              "headers": [
+               {
+                "key": "Content-Type",
+                "value": "application/json"
+               },
+               {
+                "key": "Access-Control-Allow-Origin",
+                "value": "*"
+               }
+              ]
+             },
+             "metadata": {
+              "advanced": true
+             }
+            },
+            {
+             "id": 112,
+             "module": "builtin:Ignore",
+             "version": 1,
+             "mapper": {}
+            }
+           ],
+           "filter": {
+            "name": "Now · Video",
+            "conditions": [
+             [
+              {
+               "a": "{{2.postType}}",
+               "o": "text:equal",
+               "b": "video"
+              }
+             ]
+            ]
+           }
+          },
+          {
+           "id": 113,
+           "module": "gateway:WebhookRespond",
+           "version": 1,
+           "parameters": {},
+           "mapper": {
+            "body": "{\"status\":\"published\",\"urn\":\"{{110.id}}\",\"url\":\"https://www.linkedin.com/feed/update/{{110.id}}/\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\"}",
+            "status": 200,
+            "headers": [
+             {
+              "key": "Content-Type",
+              "value": "application/json"
+             },
+             {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+             }
+            ]
+           },
+           "metadata": {
+            "advanced": true
+           }
+          }
+         ]
+        },
+        {
+         "flow": [
+          {
+           "id": 114,
+           "module": "builtin:BasicFeeder",
+           "version": 1,
+           "parameters": {},
+           "mapper": {
+            "array": "{{2.poll.options}}"
+           },
+           "metadata": {
+            "restore": {
+             "expect": {
+              "array": {
+               "mode": "edit"
+              }
+             }
+            }
+           },
+           "filter": {
+            "name": "Now · Poll",
+            "conditions": [
+             [
+              {
+               "a": "{{2.postType}}",
+               "o": "text:equal",
+               "b": "poll"
+              }
+             ]
+            ]
+           }
+          },
+          {
+           "id": 115,
+           "module": "builtin:BasicAggregator",
+           "version": 1,
+           "parameters": {
+            "feeder": 114
+           },
+           "mapper": {
+            "text": "{{114.value}}"
+           }
+          },
+          {
+           "id": 116,
+           "module": "json:CreateJSON",
+           "version": 1,
+           "parameters": {
+            "type": 597911
+           },
+           "mapper": {
+            "author": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+            "content": {
+             "poll": {
+              "options": "{{115.array}}",
+              "question": "{{2.poll.question}}",
+              "settings": {
+               "duration": "{{switch(2.poll.duration; \"1 day\"; \"ONE_DAY\"; \"3 days\"; \"THREE_DAYS\"; \"1 week\"; \"SEVEN_DAYS\"; \"2 weeks\"; \"FOURTEEN_DAYS\"; \"SEVEN_DAYS\")}}",
+               "voteSelectionType": "SINGLE_VOTE"
+              }
+             }
+            },
+            "commentary": "{{2.content}}",
+            "visibility": "PUBLIC",
+            "distribution": {
+             "feedDistribution": "MAIN_FEED"
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": false
+           }
+          },
+          {
+           "id": 117,
+           "module": "linkedin:MakeAPICall",
+           "version": 2,
+           "parameters": {
+            "__IMTCONN__": 10513797
+           },
+           "mapper": {
+            "url": "/rest/posts",
+            "body": "{{116.json}}",
+            "method": "POST",
+            "headers": [
+             {
+              "key": "Content-Type",
+              "value": "application/json"
+             },
+             {
+              "key": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+             },
+             {
+              "key": "Linkedin-Version",
+              "value": "202605"
+             }
+            ],
+            "sendUnencodedQueryString": false
+           },
+           "metadata": {
+            "restore": {
+             "parameters": {
+              "__IMTCONN__": {
+               "data": {
+                "scoped": "true",
+                "connection": "linkedin2"
+               },
+               "label": "Drashti's LinkedIn connection (Drashti Makwana)"
+              }
+             }
+            },
+            "advanced": true
+           },
+           "onerror": [
+            {
+             "id": 118,
+             "module": "gateway:WebhookRespond",
+             "version": 1,
+             "parameters": {},
+             "mapper": {
+              "body": "{\"status\":\"failed\",\"stage\":\"linkedin\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"LinkedIn refused the post for this Page: {{replace(117.error.message; \"/[^a-zA-Z0-9 .,:;()'_=-]/g\"; \" \")}}\"}",
+              "status": 200,
+              "headers": [
+               {
+                "key": "Content-Type",
+                "value": "application/json"
+               },
+               {
+                "key": "Access-Control-Allow-Origin",
+                "value": "*"
+               }
+              ]
+             },
+             "metadata": {
+              "advanced": true
+             }
+            },
+            {
+             "id": 119,
+             "module": "builtin:Ignore",
+             "version": 1,
+             "mapper": {}
+            }
+           ]
+          },
+          {
+           "id": 120,
+           "module": "gateway:WebhookRespond",
+           "version": 1,
+           "parameters": {},
+           "mapper": {
+            "body": "{\"status\":\"published\",\"urn\":\"{{ifempty(get(117.headers; \"x-restli-id\"); 117.body.id)}}\",\"url\":\"https://www.linkedin.com/feed/update/{{ifempty(get(117.headers; \"x-restli-id\"); 117.body.id)}}/\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"companyUrn\":\"{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\"}",
+            "status": 200,
+            "headers": [
+             {
+              "key": "Content-Type",
+              "value": "application/json"
+             },
+             {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+             }
+            ]
+           },
+           "metadata": {
+            "advanced": true
+           }
+          }
+         ]
+        }
+       ],
+       "filter": {
+        "name": "Now · allowed Page",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "text"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:146260120"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "image"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:146260120"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "video"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:146260120"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "poll"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:146260120"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "text"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145298202"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "image"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145298202"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "video"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145298202"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "poll"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145298202"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "text"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145301196"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "image"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145301196"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "video"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145301196"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:equal",
+           "b": "poll"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145301196"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 122,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"rejected\",\"stage\":\"destination\",\"postId\":\"{{2.postId}}\",\"destinationId\":\"{{2.destinationId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"now\",\"message\":\"This Page is not on the allow-list of Pages this scenario may post to, so nothing was sent.\"}",
+        "status": 422,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Now · not an allowed Page",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "multi"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "document"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "carousel"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "article"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:notequal",
+           "b": "urn:li:organization:146260120"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:notequal",
+           "b": "urn:li:organization:145298202"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:notequal",
+           "b": "urn:li:organization:145301196"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 123,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"rejected\",\"stage\":\"config\",\"postId\":\"{{2.postId}}\",\"mode\":\"{{2.publishMode}}\",\"message\":\"This test copy has no data store of its own, and test jobs may not be written to the production store, so scheduling and status cannot be tested here. Nothing was stored.\"}",
+        "status": 422,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Scheduled · one Page",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "scheduled"
+          },
+          {
+           "a": "{{ifempty(length(2.destinations); 0)}}",
+           "o": "number:equal",
+           "b": "0"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:146260120"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "scheduled"
+          },
+          {
+           "a": "{{ifempty(length(2.destinations); 0)}}",
+           "o": "number:equal",
+           "b": "0"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145298202"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "scheduled"
+          },
+          {
+           "a": "{{ifempty(length(2.destinations); 0)}}",
+           "o": "number:equal",
+           "b": "0"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:equal",
+           "b": "urn:li:organization:145301196"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 124,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"rejected\",\"stage\":\"destination\",\"postId\":\"{{2.postId}}\",\"mode\":\"scheduled\",\"message\":\"This Page is not on the allow-list of Pages this scenario may post to, so nothing was stored.\"}",
+        "status": 422,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Scheduled · one Page · not allowed",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "scheduled"
+          },
+          {
+           "a": "{{ifempty(length(2.destinations); 0)}}",
+           "o": "number:equal",
+           "b": "0"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:notequal",
+           "b": "urn:li:organization:146260120"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:notequal",
+           "b": "urn:li:organization:145298202"
+          },
+          {
+           "a": "{{ifempty(2.companyUrn; \"urn:li:organization:146260120\")}}",
+           "o": "text:notequal",
+           "b": "urn:li:organization:145301196"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 125,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"rejected\",\"stage\":\"config\",\"postId\":\"{{2.postId}}\",\"mode\":\"{{2.publishMode}}\",\"message\":\"This test copy has no data store of its own, and test jobs may not be written to the production store, so scheduling and status cannot be tested here. Nothing was stored.\"}",
+        "status": 422,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Scheduled · several Pages",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "scheduled"
+          },
+          {
+           "a": "{{ifempty(length(2.destinations); 0)}}",
+           "o": "number:greater",
+           "b": "0"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 126,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"rejected\",\"stage\":\"config\",\"postId\":\"{{2.postId}}\",\"mode\":\"{{2.publishMode}}\",\"message\":\"This test copy has no data store of its own, and test jobs may not be written to the production store, so scheduling and status cannot be tested here. Nothing was stored.\"}",
+        "status": 422,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Status · report every job for a post",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "status"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "flow": [
+      {
+       "id": 127,
+       "module": "gateway:WebhookRespond",
+       "version": 1,
+       "parameters": {},
+       "mapper": {
+        "body": "{\"status\":\"rejected\",\"postId\":\"{{2.postId}}\",\"postType\":\"{{2.postType}}\",\"mode\":\"{{2.publishMode}}\",\"message\":\"This scenario has no route for that combination of publish mode and post type, so nothing was sent to LinkedIn.\"}",
+        "status": 422,
+        "headers": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+         }
+        ]
+       },
+       "metadata": {
+        "advanced": true
+       },
+       "filter": {
+        "name": "Nothing matched · say so",
+        "conditions": [
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:notequal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:notequal",
+           "b": "scheduled"
+          },
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:notequal",
+           "b": "status"
+          }
+         ],
+         [
+          {
+           "a": "{{2.publishMode}}",
+           "o": "text:equal",
+           "b": "now"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "text"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "image"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "video"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "poll"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "multi"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "document"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "carousel"
+          },
+          {
+           "a": "{{2.postType}}",
+           "o": "text:notequal",
+           "b": "article"
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

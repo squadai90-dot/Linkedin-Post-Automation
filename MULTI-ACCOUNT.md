@@ -6,15 +6,24 @@ schedule, with a separate result for every Page. This document covers how it
 works, how to turn it on for the **test** deployment, how to test it, what to
 do when something goes wrong, and how it would move to production.
 
-Status on 13 October 2026: **built and tested with Make and LinkedIn mocked.**
-One real test on 13 October published an image to Test 2; Test 3 did not
-publish because the test scenario was switched off when its request arrived
-(§11). **Real multi-Page publishing is not yet confirmed** — it needs a new,
-clearly labelled test with the scenario switched on (§8).
-
-> **Before switching the test scenario on:** its webhook queue holds three
-> requests from 13 October that were never run (§11). Switching the scenario
-> on posts all three. Delete them first unless you want them posted.
+> **Superseded on 13 October 2026 by [UNIFIED-PUBLISHING.md](UNIFIED-PUBLISHING.md)
+> and [CUTOVER.md](CUTOVER.md).** The final design is two unified scenarios
+> that replace the production pair, because the Free plan allows only two
+> active scenarios. This file still describes the Unison side, which is
+> unchanged in principle. Its Make sections describe the 12 October test
+> scenarios. Two corrections apply to them:
+>
+> - **Do not activate** test scenario 7904894 in this organization. Both
+>   active slots are production; a third active scenario is not allowed.
+>   Use Run once with the no-data-store test copy instead
+>   (UNIFIED-PUBLISHING.md, *Isolated testing*).
+> - **Do not run** test scheduler 7904912, and do not Run once the current
+>   7904894 blueprint. Both write test records into the production data
+>   store, which is no longer permitted.
+>
+> The three requests that waited in the test webhook's queue on 13 October
+> have since been removed (queue 0, no run). **Real multi-Page publishing is
+> still not confirmed.**
 
 ---
 
@@ -273,8 +282,8 @@ webhook only.
 | A Page says **Refused** | The server or the Make filter does not allow it | Add it to both (§5) |
 | A Page says **Failed — … 403** | The LinkedIn connection is not an admin of that Page, or LinkedIn refused the content | Make → Connections → the LinkedIn connection → reauthorise as a Page admin; check the Page's admin list |
 | **Unknown — check the Page** | No answer in time (often a large video), or Make failed without a reason | Look at the Page. If the post is not there, **Not on LinkedIn? Allow resend**, then **Retry failed Pages** |
-| **Waiting in Make — not run yet** | The test scenario was switched off or busy when the request arrived; Make queued it and replied "Accepted" | Switch the scenario on (it then posts the queued request) — or delete the request from the webhook queue in Make, then **Not on LinkedIn? Allow resend** and retry. Never both. |
-| One Page published and the next says *Waiting in Make* | The scenario was run with **Run once**, which handles one request and stops | Switch the scenario on instead of using Run once when testing several Pages |
+| **Waiting in Make — not run yet** | The test scenario was switched off or busy when the request arrived; Make queued it and replied "Accepted" | Run the scenario once in Make (it then posts that request) — or delete the request from the webhook queue in Make, then **Not on LinkedIn? Allow resend** and retry. Never both. |
+| One Page published and the next says *Waiting in Make* | The scenario was run with **Run once**, which handles one request and stops | In this organization, press Run once again for each waiting request (one per Page). Unison shows them as waiting; check the Pages, then **Check status in Make** |
 | Every Page fails at once with "not set up" | `MAKE_MULTI_WEBHOOK_URL` missing or not a Make hook | Fix the variable, redeploy |
 | Image or video fails on one Page only | LinkedIn rejected the upload for that Page | The reason is on the Page's row; retry that Page only |
 | Poll fails | Fewer than 2 or more than 4 options, or option over 30 characters | Fix in the Poll step; retry |
@@ -287,25 +296,18 @@ webhook only.
 
 ## 8. What still needs you
 
-These were not done because they change live Make state or publish to
-LinkedIn, and the session was not permitted to:
+See UNIFIED-PUBLISHING.md, *Isolated testing* and *G. Readiness*. In short:
 
-0. **Clear the test webhook's queue** (Make → Webhooks → *Unison LinkedIn
-   Publisher - Multi Account Test Webhook* → queue). It holds three requests
-   from 13 October (§11). Activating the scenario with them still queued posts
-   all three, including a second image post nobody approved for today.
-1. **Activate** *Unison LinkedIn Publisher - Multi Account Test* (7904894).
-   Do not test several Pages with **Run once**: it runs a single request.
-   It is safe to activate: it listens only to its own webhook. **Check your Make
-   plan first** — the Free plan's licence lists 2 scenarios, and both are
-   production. If activation is refused, either upgrade the plan or pause the
-   production *Scheduled* scenario only for the length of a test session (no
-   scheduled posts will go out meanwhile).
-2. Configure the test Vercel project (§5) and redeploy it.
-3. Run the real test matrix in §9 against the three test Pages. Every test
-   post text should start with "TEST —" and be deleted afterwards.
-4. For scheduled tests, run *Unison Scheduled Publisher - Multi Account Test*
-   (7904912) on demand after each due time. Keep it on-demand.
+1. Choose how to test live: immediate only, in this organization, with the
+   no-data-store test copy and Run once; or everything, in a separate Make
+   organization.
+2. Configure the test Vercel project (§5 here; WINDOWS-SETUP.md §9 for the
+   preview) and redeploy it.
+3. Run the real matrix (§9) with posts labelled "TEST —", and record every
+   urn in TESTING.md.
+4. Approve or decline removing the test leftovers listed in
+   UNIFIED-PUBLISHING.md (scenario 7904912, and the `mt:` record in the
+   production store).
 
 ---
 
@@ -328,25 +330,11 @@ Record each LinkedIn urn in TESTING.md.
 
 ---
 
-## 10. Production rollout checklist (do not start without approval)
+## 10. Production rollout
 
-1. All of §9 passed on the test deployment, with urns recorded.
-2. Decide the production Page list and confirm the production LinkedIn
-   connection administers every Page.
-3. Choose one of:
-   - **A (recommended):** fold the multi-account routes into the production
-     scenarios: add the destination allow-list filters and the scheduled
-     parent/child intake to *Unison LinkedIn Publisher*, and the `mt*`-style
-     child processing (with production statuses) to *Unison Scheduled
-     Publisher*. Then `MAKE_MULTI_WEBHOOK_URL` can equal the production webhook.
-   - **B:** keep separate multi-account scenarios, which needs a Make plan with
-     more than two active scenarios.
-4. Export both production blueprints before changing anything.
-5. Set `LINKEDIN_DESTINATIONS` and `MAKE_MULTI_WEBHOOK_URL` on production,
-   redeploy, and publish one text post to one Page first.
-6. Remember the production Vercel project builds from a different GitHub
-   repository — copy the code there, or connect Vercel to this repository.
-7. Watch the first scheduled multi-Page post through to the end.
+Replaced by [CUTOVER.md](CUTOVER.md): two unified scenarios take over both
+production slots and the production webhook, with stop conditions and
+rollback.
 
 ---
 
