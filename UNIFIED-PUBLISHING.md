@@ -352,7 +352,7 @@ Allow resend** first.
 | Check | Result |
 |---|---|
 | `npx vitest run` | **781 passed**, 0 failed, 33 files. New: `unified-matrix` (86), `unified-blueprints` (8) |
-| `npm run test:e2e` (desktop + mobile) | see TESTING.md, 13 October (unified) |
+| `npm run test:e2e` (desktop + mobile) | **72 passed**, 0 failed, 72 skipped (mobile copies of desktop-only tests). An earlier full run had 1 intermittent failure in `source-document.spec.js`, which does not touch publishing; see TESTING.md. |
 | `npm run build` | OK |
 | `npm run lint` | 0 errors (the 4 warnings were already there) |
 

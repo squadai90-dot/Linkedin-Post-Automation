@@ -20,7 +20,7 @@ untouched: `lastEdit` is still 25 September, and the webhook queue is 0.
 | Check | Result |
 |---|---|
 | `npx vitest run` | **781 passed**, 0 failed (33 files). New: `unified-matrix` (86), `unified-blueprints` (8) |
-| `npm run test:e2e` (desktop + mobile) | first full run: 71 passed, 1 failed, 72 skipped (mobile copies of desktop-only tests). The failure was `source-document.spec.js` (document upload after reload), which does not touch publishing. It passed 5 times out of 5 when re-run, alone and after the multi-Page spec, and passes on the unchanged base commit. Treated as intermittent; the full re-run is recorded below. The new multi-Page status-check test passed. |
+| `npm run test:e2e` (desktop + mobile) | first full run: 71 passed, 1 failed, 72 skipped (mobile copies of desktop-only tests). The failure was `source-document.spec.js` (document upload after reload), which does not touch publishing. It passed 5 times out of 5 when re-run, alone and after the multi-Page spec, and passes on the unchanged base commit. Treated as intermittent. **Full re-run: 72 passed, 0 failed, 72 skipped**, including the new multi-Page status-check test. |
 | `npm run build` | OK |
 | `npm run lint` | 0 errors |
 
